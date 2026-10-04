@@ -93,6 +93,37 @@ def test_tier1_timeout_finish_diverts(gw, script):
     assert "maybe" not in text
 
 
+def test_empty_200_soft_refusal_diverts(gw, script):
+    """F2 (found live by the red-team run): a primary that answers HTTP 200 with
+    NOTHING - no content, no reasoning, no tool calls - is a soft refusal the
+    anchored regex cannot see. Without this the client silently gets an empty
+    answer. Measured on the hub's cloud aliases; it also hit a benign prompt."""
+    script.script(PRIMARY, [("sse", [chunk("", finish="stop"), DONE])])
+    script.script(WORKER, [("sse", [chunk("specialist answered", finish="stop"), DONE])])
+    resp = gw.post("/v1/chat/completions", json=_body())
+    text = _deltas(_events(resp))
+    assert "specialist answered" in text
+    assert "diverted to specialist node" in text  # provenance footnote
+
+
+def test_empty_200_without_done_also_diverts(gw, script):
+    """The same soft refusal when the upstream closes without sending [DONE]."""
+    script.script(PRIMARY, [("sse", [chunk("")])])
+    script.script(WORKER, [("sse", [chunk("worker recovered", finish="stop"), DONE])])
+    text = _deltas(_events(gw.post("/v1/chat/completions", json=_body())))
+    assert "worker recovered" in text
+
+
+def test_reasoning_only_answer_is_not_treated_as_empty(gw, script):
+    """Reasoning IS delivered text: a thinking-only response must pass through,
+    not divert (F1/B21 keeps reasoning out of the count, but the client saw it)."""
+    script.script(PRIMARY, [("sse", [chunk("deliberating", extra={"reasoning_content": True}),
+                                     chunk("", finish="length"), DONE])])
+    script.script(WORKER, [("sse", [chunk("should not appear", finish="stop"), DONE])])
+    text = _deltas(_events(gw.post("/v1/chat/completions", json=_body())))
+    assert "should not appear" not in text
+
+
 def test_passthrough_after_buffer_committed_is_opaque(gw, script):
     # a refusal TEXT later in the stream must not divert: routing only while
     # buffering (B8). Build a clean 3-token prefix, then refusal wording.

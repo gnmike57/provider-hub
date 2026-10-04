@@ -130,6 +130,7 @@ def audit_record(
     worker_model,
     signal,
     mode,
+    principal="",
     artifact="",
     deliverable="",
     audit_log=None,
@@ -138,6 +139,7 @@ def audit_record(
         rec = {
             "ts": round(time.time(), 3),
             "request_id": request_id,
+            "principal": principal,
             "primary_model": primary_model,
             "worker_model": worker_model,
             "routing_signal": signal,

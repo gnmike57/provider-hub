@@ -316,6 +316,7 @@ def run_guards(body: dict, principal: str = None) -> None:
             worker_model="",
             signal="gate7_no_go",
             mode="pre-routing",
+            principal=principal or "",
             audit_log=SETTINGS.audit_log,
         )
         raise HTTPException(status_code=403, detail="request falls into a hard no-go class")
@@ -396,6 +397,7 @@ async def fallback_stream(
     signal: str = "tier3",
     settings: Settings = None,
     system_prompt: str = None,
+    principal: str = "",
 ) -> AsyncGenerator[bytes, None]:
     """Stream the specialist for a diverted request. Yields OpenAI SSE chunks:
     specialist output verbatim, then a provenance footnote delta,
@@ -416,6 +418,7 @@ async def fallback_stream(
         worker_model=s.fallback_model,
         signal=signal,
         mode="stream",
+        principal=principal,
         audit_log=s.audit_log,
     )
 
@@ -516,7 +519,8 @@ def _last_user_text(messages) -> str:
 @app.post("/v1/chat/completions")
 async def chat_proxy(request: Request):
     body = await request.json()
-    run_guards(body, request.headers.get(PRINCIPAL_HEADER))
+    principal = request.headers.get(PRINCIPAL_HEADER) or ""
+    run_guards(body, principal or None)
     incr("requests_total")
     app.state.in_flight = getattr(app.state, "in_flight", 0) + 1
 
@@ -556,6 +560,7 @@ async def chat_proxy(request: Request):
                     worker_model=settings.fallback_model,
                     signal="hedge_forced" if body.get("hedge") is True else "hedge_hint",
                     mode="hedge",
+                    principal=principal,
                     audit_log=settings.audit_log,
                 )
 
@@ -582,6 +587,7 @@ async def chat_proxy(request: Request):
                         request_id=request_id,
                         signal=f"tier1_open_{exc.status}",
                         settings=settings,
+                        principal=principal,
                     ):
                         yield chunk
                 else:
@@ -595,6 +601,7 @@ async def chat_proxy(request: Request):
             buffer_text = ""
             content_tokens = 0
             routed_reason = ""
+            saw_reasoning = False  # F2: reasoning alone still means the client saw text
 
             try:
                 # B7: ONE pass over ONE iterator - never re-enter, never drop.
@@ -605,6 +612,14 @@ async def chat_proxy(request: Request):
                     body_s = line[5:].strip()
                     if body_s == "[DONE]":
                         if state == "BUFFERING":
+                            # F2: HTTP 200 with NOTHING (no content, no reasoning,
+                            # no tool calls) is a soft refusal. The regex cannot
+                            # see it, so without this the client silently gets an
+                            # empty answer and no divert. Measured live on the hub's
+                            # cloud aliases; also hit a benign dev prompt.
+                            if content_tokens == 0 and not saw_reasoning:
+                                routed_reason = "tier1_empty"
+                                break
                             for p in pending:
                                 yield f"{p}\n\n".encode()
                         yield b"data: [DONE]\n\n"
@@ -630,6 +645,7 @@ async def chat_proxy(request: Request):
                         )
                         if reasoning:
                             # F1/B21: forward for TTFT, never count
+                            saw_reasoning = True
                             if settings.buffer_reasoning:
                                 pending.append(line)
                             else:
@@ -653,6 +669,9 @@ async def chat_proxy(request: Request):
                                 yield f"{p}\n\n".encode()
                             pending.clear()
                         if finish:
+                            if content_tokens == 0 and not saw_reasoning:
+                                routed_reason = "tier1_empty"  # F2: same soft refusal
+                                break
                             for p in pending:
                                 yield f"{p}\n\n".encode()
                             yield b"data: [DONE]\n\n"
@@ -664,10 +683,13 @@ async def chat_proxy(request: Request):
                             return
                 # upstream ended without [DONE]
                 if state == "BUFFERING" and not routed_reason:
-                    for p in pending:
-                        yield f"{p}\n\n".encode()
-                    yield b"data: [DONE]\n\n"
-                    return
+                    if content_tokens == 0 and not saw_reasoning:
+                        routed_reason = "tier1_empty"  # F2: nothing arrived at all
+                    else:
+                        for p in pending:
+                            yield f"{p}\n\n".encode()
+                        yield b"data: [DONE]\n\n"
+                        return
             finally:
                 with contextlib.suppress(Exception):
                     await resp.aclose()
@@ -679,6 +701,7 @@ async def chat_proxy(request: Request):
                 request_id=request_id,
                 signal=routed_reason or "tier1",
                 settings=settings,
+                principal=principal,
             ):
                 yield chunk
         finally:
@@ -798,7 +821,8 @@ async def execute(request: Request):
     if not SETTINGS.assembly_enabled:
         raise HTTPException(status_code=501, detail="assembly disabled (ASSEMBLY_ENABLED=0)")
     body = await request.json()
-    run_guards(body, request.headers.get(PRINCIPAL_HEADER))
+    principal = request.headers.get(PRINCIPAL_HEADER) or ""
+    run_guards(body, principal or None)
     incr("assembly_total")
     request_id = f"ex-{uuid.uuid4().hex[:12]}"
     settings = SETTINGS
@@ -835,6 +859,7 @@ async def execute(request: Request):
             worker_model="",
             signal="direct",
             mode="execute",
+            principal=principal,
             artifact=plan.direct_response or "",
             deliverable=plan.direct_response or "",
             audit_log=settings.audit_log,
@@ -861,6 +886,7 @@ async def execute(request: Request):
         worker_model=settings.fallback_model,
         signal="assembly",
         mode="execute",
+        principal=principal,
         artifact=artifact,
         deliverable=deliverable,
         audit_log=settings.audit_log,
