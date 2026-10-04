@@ -145,14 +145,19 @@ async def hedge_stream(
             )
             try:
                 sovereign = await stack.enter_async_context(sovereign_cm)
+            except httpx.TransportError:
+                sovereign = None  # B10: an unreachable sovereign means DIVERT, not fail
+            try:
                 worker = await stack.enter_async_context(worker_cm)
-            except httpx.TransportError as exc:
-                yield f"data: {json.dumps({'error': f'speculative dispatch failed: {exc}'})}\n\n".encode()
+            except httpx.TransportError:
+                worker = None
+            if sovereign is None and worker is None:
+                yield f"data: {json.dumps({'error': 'speculative dispatch failed: both branches unreachable'})}\n\n".encode()
                 yield b"data: [DONE]\n\n"
                 return
 
-            sovereign_ok = classify_status(sovereign.status_code) == "ok"
-            worker_ok = classify_status(worker.status_code) == "ok"
+            sovereign_ok = sovereign is not None and classify_status(sovereign.status_code) == "ok"
+            worker_ok = worker is not None and classify_status(worker.status_code) == "ok"
 
             use_worker = not sovereign_ok
             commit_sovereign = False

@@ -103,7 +103,22 @@ def test_hedge_diverts_on_timeout_finish_reason(script):
     assert "maybe" not in text
 
 
-def test_reasoning_held_not_counted_never_leaks_to_worker_path(script):
+def test_hedge_unreachable_sovereign_diverts_to_worker(script):
+    """B10: an unreachable primary is a DIVERT, not a failure — the worker serves."""
+    script.script(SOVEREIGN, [("raise", httpx.ConnectError("sovereign is down"))])
+    script.script(WORKER, [("sse", [chunk("worker saved it", finish="stop"), DONE])])
+    text = _text(_run(script))
+    assert "worker saved it" in text
+    assert "diverted to specialist node" in text  # provenance footnote
+    assert "speculative dispatch failed" not in text
+
+
+def test_hedge_both_branches_unreachable_errors_cleanly(script):
+    script.script(SOVEREIGN, [("raise", httpx.ConnectError("down"))])
+    script.script(WORKER, [("raise", httpx.ConnectError("down too"))])
+    text = _text(_run(script))
+    assert "both branches unreachable" in text
+
     # deliberation streams long before any content: must NOT commit the hedge
     # to the sovereign, and on the worker path the held reasoning is discarded.
     events = [chunk("deliberating quietly...", extra={"reasoning_content": True})]
