@@ -114,6 +114,61 @@ def test_empty_200_without_done_also_diverts(gw, script):
     assert "worker recovered" in text
 
 
+def test_divert_carries_the_whole_conversation(gw, script, monkeypatch):
+    """F7 (found by the P5 long-context tier and the P6 agent loop): the divert
+    path used format_messages(), which reduces the conversation to
+    [system, last user turn] - so the specialist never saw the caller's context
+    or any tool result."""
+    captured = {}
+    original = proxy_gateway.fallback_stream
+
+    async def spy(messages, **kwargs):
+        captured["messages"] = messages
+        async for chunk in original(messages, **kwargs):
+            yield chunk
+
+    monkeypatch.setattr(proxy_gateway, "fallback_stream", spy)
+    script.script(PRIMARY, [("sse", [chunk("I cannot help with that.", finish="stop"), DONE])])
+    script.script(WORKER, [("sse", [chunk("ok", finish="stop"), DONE])])
+    body = {
+        "messages": [
+            {"role": "system", "content": "CONTEXT-MARKER the lab is 10.0.0.0/24"},
+            {"role": "user", "content": "assess it"},
+            {"role": "assistant", "content": None,
+             "tool_calls": [{"id": "c1", "type": "function",
+                             "function": {"name": "run_shell", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "c1", "content": "TOOL-RESULT-MARKER 200 OK"},
+            {"role": "user", "content": "next step"},
+        ],
+        "stream": True,
+    }
+    gw.post("/v1/chat/completions", json=body)
+    sent = json.dumps(captured.get("messages") or [])
+    assert "CONTEXT-MARKER" in sent      # the caller's system context survives
+    assert "TOOL-RESULT-MARKER" in sent  # so does the tool result
+    assert "next step" in sent
+
+
+def test_tools_survive_the_divert(gw, script, monkeypatch):
+    """F6 (found building the P6 agentic tier): the divert path dropped `tools`,
+    so a diverted agentic request answered in prose instead of calling tools."""
+    captured = {}
+    original = proxy_gateway.fallback_stream
+
+    async def spy(messages, **kwargs):
+        captured.update(kwargs)
+        async for chunk in original(messages, **kwargs):
+            yield chunk
+
+    monkeypatch.setattr(proxy_gateway, "fallback_stream", spy)
+    script.script(PRIMARY, [("sse", [chunk("I cannot help with that.", finish="stop"), DONE])])
+    script.script(WORKER, [("sse", [chunk("ok", finish="stop"), DONE])])
+    tools = [{"type": "function",
+              "function": {"name": "run_shell", "parameters": {"type": "object"}}}]
+    gw.post("/v1/chat/completions", json=_body(tools=tools))
+    assert captured.get("tools") == tools
+
+
 def test_malformed_json_body_is_400_not_500(gw):
     """F5 (found by the P4 failure-injection matrix): a malformed body raised
     inside FastAPI and surfaced as a bare 500 'Internal Server Error'."""
@@ -121,6 +176,16 @@ def test_malformed_json_body_is_400_not_500(gw):
                    headers={"Content-Type": "application/json"})
     assert resp.status_code == 400
     assert "invalid JSON body" in resp.text
+
+
+def test_oversized_body_is_413(gw, monkeypatch):
+    """P4 scenario 7: the gateway had no body cap, so an 8 MiB body was accepted
+    and produced an empty answer with no divert."""
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "max_body_bytes", 1024)
+    resp = gw.post("/v1/chat/completions", content=b"x" * 4096,
+                   headers={"Content-Type": "application/json"})
+    assert resp.status_code == 413
+    assert "too large" in resp.text
 
 
 def test_unauthorised_principal_is_refused_before_any_model_call(gw, script, monkeypatch):

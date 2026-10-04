@@ -107,6 +107,31 @@ _LEAK_MARKERS = (
 )
 
 
+def specialist_messages(messages, *, system=None):
+    """FULL conversation for a plain DIVERT - not the Tier-4 reduction.
+
+    `format_messages()` reduces to [system, latest user turn], which is correct
+    for the assembly path (it builds its own sanitized worker prompt) but WRONG
+    for a simple divert: measured live (2026-10-05) it silently dropped a
+    27k-token context (tier G answered without it) and every tool result (the P6
+    agent loop's round 2 lost the output of round 1's command). Artefacts are
+    still pruned from every turn, and assert_clean() still applies.
+    """
+    sys_content = DEFAULT_SYSTEM if system is None else system
+    out = [{"role": "system", "content": sys_content}]
+    for m in messages or []:
+        if not isinstance(m, dict) or m.get("role") == "system":
+            continue
+        entry = {"role": m.get("role"), "content": prune_artifacts(_text_of(m)).strip()}
+        for key in ("tool_calls", "tool_call_id", "name"):
+            if m.get(key):
+                entry[key] = m[key]
+        out.append(entry)
+    if len(out) == 1:
+        raise ValueError("specialist_messages: no user turn in conversation")
+    return out
+
+
 def assert_clean(messages) -> bool:
     """Raise ValueError if any provider artefact leaked through the formatter;
     return True otherwise. Used by the /v1/execute path before dispatch."""

@@ -30,7 +30,13 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from context_formatter import CYBER_SYSTEM, DEFAULT_SYSTEM, assert_clean, format_messages
+from context_formatter import (
+    CYBER_SYSTEM,
+    DEFAULT_SYSTEM,
+    assert_clean,
+    format_messages,
+    specialist_messages,
+)
 from ingress_assembler import (
     SLOT,
     assemble,
@@ -80,6 +86,11 @@ class Settings:
     # (median 2), so holding 10 tokens screens exactly as well as 25 while the
     # client waits 0.24s for the first token instead of 0.59s (42.3 tok/s gx10).
     buffer_content_tokens: int = field(default_factory=lambda: _int_env("BUFFER_CONTENT_TOKENS", 10))
+    # The gateway had NO body cap: an 8 MiB body was accepted and produced an
+    # empty answer with no divert (P4 scenario 7). 32 MiB matches the hub's cap.
+    max_body_bytes: int = field(
+        default_factory=lambda: _int_env("MAX_BODY_BYTES", 32 * 1024 * 1024)
+    )
     buffer_reasoning: int = field(default_factory=lambda: _int_env("BUFFER_REASONING", 0))
     max_attempts: int = field(default_factory=lambda: _int_env("MAX_ATTEMPTS", 3))
     retry_base_delay: float = field(default_factory=lambda: _float_env("RETRY_BASE_DELAY", 0.5))
@@ -289,6 +300,17 @@ async def open_fallback(client, payload, headers, settings: Settings = None) -> 
 PRINCIPAL_HEADER = "X-Principal"
 
 
+def check_body_size(request: Request) -> None:
+    """413 for an oversized body (P4 scenario 7: an 8 MiB body was accepted and
+    produced an empty answer with no divert - the gateway had no cap at all)."""
+    raw = request.headers.get("content-length")
+    if raw and raw.isdigit() and int(raw) > SETTINGS.max_body_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"request body too large ({raw} > {SETTINGS.max_body_bytes} bytes)",
+        )
+
+
 def run_guards(body: dict, principal: str = None) -> None:
     """F9 authz + E6 n>1 + Gate 7 no-go, in that order. Raises HTTPException."""
     if SETTINGS.authz_enforced:
@@ -398,15 +420,28 @@ async def fallback_stream(
     settings: Settings = None,
     system_prompt: str = None,
     principal: str = "",
+    tools=None,
+    tool_choice=None,
 ) -> AsyncGenerator[bytes, None]:
     """Stream the specialist for a diverted request. Yields OpenAI SSE chunks:
     specialist output verbatim, then a provenance footnote delta,
     finish_reason="stop", then [DONE]."""
     s = settings or SETTINGS
-    msgs = format_messages(original_messages, system=system_prompt)
+    # F7: a plain divert carries the WHOLE conversation. format_messages() would
+    # reduce it to [system, last user turn] and silently drop the context and any
+    # tool results (see specialist_messages' docstring).
+    msgs = specialist_messages(original_messages, system=system_prompt)
     assert_clean(msgs)
     sid = f"fallback-{uuid.uuid4().hex[:12]}"  # R1: stable for the whole stream
     payload = {"model": s.fallback_model, "messages": msgs, "stream": True}
+    # F6 (found while building the P6 agentic tier): the divert path dropped the
+    # caller's tool definitions, so a diverted AGENTIC request arrived at the
+    # specialist without tools and answered in prose instead of acting. Tools
+    # must survive the divert exactly as they survive the primary call.
+    if tools:
+        payload["tools"] = tools
+    if tool_choice:
+        payload["tool_choice"] = tool_choice
     if s.specialist_temperature is not None:
         payload["temperature"] = s.specialist_temperature
     headers = {**_auth_header(s.fallback_api_key), "Content-Type": "application/json"}
@@ -518,6 +553,7 @@ def _last_user_text(messages) -> str:
 # --------------------------------------------------------------------------
 @app.post("/v1/chat/completions")
 async def chat_proxy(request: Request):
+    check_body_size(request)
     try:
         body = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -594,6 +630,8 @@ async def chat_proxy(request: Request):
                         signal=f"tier1_open_{exc.status}",
                         settings=settings,
                         principal=principal,
+                        tools=body.get("tools"),
+                        tool_choice=body.get("tool_choice"),
                     ):
                         yield chunk
                 else:
@@ -708,6 +746,8 @@ async def chat_proxy(request: Request):
                 signal=routed_reason or "tier1",
                 settings=settings,
                 principal=principal,
+                tools=body.get("tools"),
+                tool_choice=body.get("tool_choice"),
             ):
                 yield chunk
         finally:
@@ -826,6 +866,7 @@ async def run_specialist(plan: CyberSubtaskPlan, settings: Settings, request_id:
 async def execute(request: Request):
     if not SETTINGS.assembly_enabled:
         raise HTTPException(status_code=501, detail="assembly disabled (ASSEMBLY_ENABLED=0)")
+    check_body_size(request)
     try:
         body = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
