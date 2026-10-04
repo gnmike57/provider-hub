@@ -114,6 +114,33 @@ def test_empty_200_without_done_also_diverts(gw, script):
     assert "worker recovered" in text
 
 
+def test_malformed_json_body_is_400_not_500(gw):
+    """F5 (found by the P4 failure-injection matrix): a malformed body raised
+    inside FastAPI and surfaced as a bare 500 'Internal Server Error'."""
+    resp = gw.post("/v1/chat/completions", content=b"{not json at all",
+                   headers={"Content-Type": "application/json"})
+    assert resp.status_code == 400
+    assert "invalid JSON body" in resp.text
+
+
+def test_unauthorised_principal_is_refused_before_any_model_call(gw, script, monkeypatch):
+    """M5: authz is enforced ahead of routing - the client gets 403 and the
+    upstream is never touched."""
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "authz_enforced", True)
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "authorised_principals", ("red-1",))
+    called = {"n": 0}
+
+    def _never(*a, **k):
+        called["n"] += 1
+        raise AssertionError("upstream must not be called for a denied principal")
+
+    monkeypatch.setattr(proxy_gateway, "open_primary", _never)
+    resp = gw.post("/v1/chat/completions", json=_body(),
+                   headers={"X-Principal": "intruder"})
+    assert resp.status_code == 403
+    assert called["n"] == 0
+
+
 def test_reasoning_only_answer_is_not_treated_as_empty(gw, script):
     """Reasoning IS delivered text: a thinking-only response must pass through,
     not divert (F1/B21 keeps reasoning out of the count, but the client saw it)."""

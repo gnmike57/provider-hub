@@ -6,8 +6,11 @@ awaitable - the legacy asyncio.gather(...) form raised TypeError).
 
 - Gated by should_hedge() (B11): the CALLER checks the gate before invoking
   hedge_stream; hedging on every request doubles cost and halves concurrency.
-- Reasoning deltas are HELD but never counted toward COMMIT_TOKENS (F1/B21):
-  committing to the sovereign during deliberation would leak the error.
+- Reasoning deltas are never counted toward COMMIT_TOKENS and never screened
+  (F1/B21): committing to the sovereign during deliberation would leak the error,
+  and a model thinking "I cannot help" must not trip the refusal detector. They
+  ARE forwarded live by default (HEDGE_LIVE_REASONING=1) so the client watches
+  all the thinking as it happens; =0 holds them until the commit decision.
 - Commit rules: timeout/error -> worker; >= COMMIT_TOKENS content tokens or
   [DONE]/finish -> sovereign (buffer replayed verbatim); the worker path
   discards the sovereign buffer entirely and appends the provenance footnote.
@@ -62,6 +65,11 @@ class HedgeSettings:
         # made the client wait 0.59s for the first visible token instead of
         # 0.24s (measured at 42.3 tok/s on the gx10).
         self.commit_tokens = _int_env("COMMIT_TOKENS", 10)
+        # Live thinking (default ON, operator preference 2026-10-05): forward the
+        # sovereign's reasoning deltas the moment they arrive instead of holding
+        # them until the commit decision. It is still never counted and never
+        # screened (F1/B21); set HEDGE_LIVE_REASONING=0 to hold it again.
+        self.live_reasoning = os.getenv("HEDGE_LIVE_REASONING", "1") == "1"
         self.system_prompt = os.getenv("SPECIALIST_SYSTEM", "") or None
 
 
@@ -202,8 +210,21 @@ async def hedge_stream(
                             or delta.get("reasoning")
                             or delta.get("thinking")
                         )
-                        if reasoning:  # F1/B21: held, never counted, never screened
-                            buffered.append(line)
+                        if reasoning:
+                            # F1/B21 is KEPT: reasoning is never counted toward the
+                            # commit window and never screened for refusals (a
+                            # model that thinks "I cannot help" must not trip the
+                            # detector). CHANGED 2026-10-05 by operator preference:
+                            # it IS forwarded live, so the client watches all the
+                            # model's thinking as it happens instead of waiting for
+                            # the commit point. Tradeoff: on a divert the
+                            # sovereign's thinking has already been shown - the
+                            # ANSWER still comes from the specialist, footnoted.
+                            # HEDGE_LIVE_REASONING=0 restores the held behaviour.
+                            if s.live_reasoning:
+                                yield f"{line}\n\n".encode()
+                            else:
+                                buffered.append(line)
                             continue
                         content = delta.get("content") or ""
                         if content:

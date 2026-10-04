@@ -120,17 +120,56 @@ def test_hedge_both_branches_unreachable_errors_cleanly(script):
     assert "both branches unreachable" in text
 
 
-def test_reasoning_held_not_counted_never_leaks_to_worker_path(script):
-    # deliberation streams long before any content: must NOT commit the hedge
-    # to the sovereign, and on the worker path the held reasoning is discarded.
+def test_reasoning_streams_live_but_never_counts_or_screens(script):
+    """Operator preference (2026-10-05): the client sees ALL thinking live.
+
+    F1/B21 still holds: reasoning is never counted toward the commit window and
+    never screened for refusals. So the sovereign's thinking reaches the client,
+    while the refusal that follows it still diverts and is still discarded.
+    """
     events = [chunk("deliberating quietly...", extra={"reasoning_content": True})]
     events += [chunk("I cannot fulfill this request.", finish="stop"), DONE]
     script.script(SOVEREIGN, [("sse", events)])
     script.script(WORKER, [("sse", [chunk("worker answer", finish="stop"), DONE])])
     text = _text(_run(script))
     assert "worker answer" in text
-    assert "deliberating quietly" not in text
-    assert "I cannot fulfill" not in text
+    assert "deliberating quietly" in _all_text(_run(script))   # LIVE now, not held
+    assert "I cannot fulfill" not in text        # the refusal itself is discarded
+
+
+def test_reasoning_that_looks_like_a_refusal_does_not_divert(script):
+    """The reasoning is never SCREENED: a model that thinks 'I cannot help' and
+    then answers properly must commit to the sovereign, not divert."""
+    events = [chunk("I cannot help with that, but the real answer is", extra={"reasoning_content": True})]
+    events += [chunk("42.", finish="stop"), DONE]
+    script.script(SOVEREIGN, [("sse", events)])
+    script.script(WORKER, [("sse", [chunk("worker should not be used", finish="stop"), DONE])])
+    text = _text(_run(script))
+    assert "42." in text
+    assert "worker should not be used" not in text
+
+
+def _all_text(chunks):
+    """Like _text(), but includes reasoning_content - needed to assert that the
+    client really sees ALL the thinking live (operator preference 2026-10-05)."""
+    out = []
+    for c in chunks:
+        body = c.strip()
+        if not body.startswith("data:"):
+            continue
+        payload = body[5:].strip()
+        if payload == "[DONE]":
+            continue
+        try:
+            ev = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        delta = (ev.get("choices") or [{}])[0].get("delta") or {}
+        for key in ("reasoning_content", "reasoning", "thinking", "content"):
+            value = delta.get(key)
+            if isinstance(value, str) and value:
+                out.append(value)
+    return "".join(out)
 
 
 def _events(chunks):

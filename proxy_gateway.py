@@ -518,7 +518,13 @@ def _last_user_text(messages) -> str:
 # --------------------------------------------------------------------------
 @app.post("/v1/chat/completions")
 async def chat_proxy(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # F5 (found by the P4 failure-injection matrix): a malformed body used to
+        # raise inside FastAPI and surface as a bare 500 "Internal Server Error".
+        # A client error must be a 400.
+        raise HTTPException(status_code=400, detail="invalid JSON body")
     principal = request.headers.get(PRINCIPAL_HEADER) or ""
     run_guards(body, principal or None)
     incr("requests_total")
@@ -820,7 +826,10 @@ async def run_specialist(plan: CyberSubtaskPlan, settings: Settings, request_id:
 async def execute(request: Request):
     if not SETTINGS.assembly_enabled:
         raise HTTPException(status_code=501, detail="assembly disabled (ASSEMBLY_ENABLED=0)")
-    body = await request.json()
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="invalid JSON body")  # F5
     principal = request.headers.get(PRINCIPAL_HEADER) or ""
     run_guards(body, principal or None)
     incr("assembly_total")

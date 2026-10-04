@@ -59,11 +59,37 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
-        if length:
-            self.rfile.read(length)
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            model = str(json.loads(raw).get("model") or "")
+        except Exception:  # noqa: BLE001
+            model = ""
+        # Per-request mode selection. The client controls `model` and the gateway
+        # forwards it, so "model": "stub-500" drives an injected failure without
+        # restarting anything - that is how the P4 matrix is run.
         mode = self._mode()
+        if model.startswith("stub-"):
+            mode = model[len("stub-"):]
         if mode == "timeout":
             time.sleep(900)  # the gateway's read timeout decides this one
+            return
+        if mode == "finish_timeout":
+            # Fast equivalent of a real timeout: the model says it timed out via
+            # the finish_reason metadata, which is the Tier-1 intercept signal.
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+
+            def w(payload):
+                self.wfile.write(f"{len(payload):x}\r\n".encode() + payload + b"\r\n")
+                self.wfile.flush()
+
+            w(sse(chunk("", finish="timeout")))
+            w(sse(chunk("", finish="stop")))
+            w(b"data: [DONE]\n\n")
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
             return
         if mode == "500":
             body = b'{"error":{"message":"injected upstream failure","type":"server_error"}}'
@@ -73,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        text = REFUSAL if mode == "refuse" else ANSWER
+        text = REFUSAL if mode in ("refuse", "") else ANSWER
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Transfer-Encoding", "chunked")
