@@ -55,7 +55,13 @@ class HedgeSettings:
         self.worker_model = os.getenv("WORKER_MODEL") or os.getenv(
             "FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP"
         )
-        self.commit_tokens = _int_env("COMMIT_TOKENS", 25)
+        # CALIBRATED 2026-10-05 (evals/hedge_calibrate.py): the refusal regex is
+        # anchored to the start of the generation and fires by the 5th content
+        # word in the worst case (median 2), so a 10-token window catches every
+        # detectable refusal with 2x margin. 25 was 2.5x more than needed and
+        # made the client wait 0.59s for the first visible token instead of
+        # 0.24s (measured at 42.3 tok/s on the gx10).
+        self.commit_tokens = _int_env("COMMIT_TOKENS", 10)
         self.system_prompt = os.getenv("SPECIALIST_SYSTEM", "") or None
 
 

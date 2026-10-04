@@ -32,23 +32,32 @@ __all__ = [
 # ---------------------------------------------------------------------------
 # Tier 3: anchored refusal regex, matched against the RING BUFFER only.
 #
-# Anchored to the START of the generated text (\A\s*) so analytical prompts
-# that quote refusal language ("Explain why safety filters output 'I cannot
-# fulfill this request'") never trigger: the regex sees the model's OUTPUT,
-# and an answer ABOUT refusals does not open with one. normalise() folds
-# curly apostrophes and unicode spaces first (U+2018/2019/02BC -> ',
-# U+201C/201D -> ", NBSP/NARROW NBSP/figure space -> ' ').
+# Anchored to the START of the generated text so analytical prompts that quote
+# refusal language ("Explain why safety filters output 'I cannot fulfill this
+# request'") never trigger: the regex sees the model's OUTPUT, and an answer
+# ABOUT refusals does not open with one. normalise() folds curly apostrophes and
+# unicode spaces first (U+2018/2019/02BC -> ', U+201C/201D -> ", NBSP/NARROW
+# NBSP/figure space -> ' ').
+#
+# CALIBRATED 2026-10-05 (evals/hedge_calibrate.py) - two live gaps closed:
+#   * every contracted form was MISSED: `i\s+(?:am|'m)` demanded whitespace
+#     between "I" and "'m", so "I'm not allowed to assist with this." (a real
+#     refusal) passed through as an answer. Now `i\s*(?:am|'m)`.
+#   * a markdown or bullet opening ("**I cannot help with that.**",
+#     "- I cannot help with that.") was MISSED because the anchor only allowed
+#     leading whitespace. The anchor now tolerates leading markdown/bullet
+#     punctuation - the refusal that follows is still anchored at the start.
 # ---------------------------------------------------------------------------
 ROUTING_RE = re.compile(
-    r"""\A\s*(?:
-        i\s+(?:can'?t|cannot|can\s*not)\b
-      | i\s+(?:am|'m)\s+unable\s+to\b
-      | i\s+(?:am|'m)\s+not\s+able\s+to\b
-      | i\s+(?:am|'m)\s+not\s+allowed\s+to\b
-      | i\s+(?:am|'m)\s+not\s+authorized\s+to\b
-      | i\s+(?:am|'m)\s+unable\s+to\s+comply\b
-      | i\s+(?:can'?t|cannot|can\s*not)\s+comply\b
-      | i\s+(?:must\s+)?(?:decline|refuse)\b
+    r"""\A\s*(?:[#>*_\-•\u2022]+\s*)*(?:
+        i\s*(?:can'?t|cannot|can\s*not)\b
+      | i\s*(?:am|'m)\s+unable\s+to\b
+      | i\s*(?:am|'m)\s+not\s+able\s+to\b
+      | i\s*(?:am|'m)\s+not\s+allowed\s+to\b
+      | i\s*(?:am|'m)\s+not\s+authorized\s+to\b
+      | i\s*(?:am|'m)\s+unable\s+to\s+comply\b
+      | i\s*(?:can'?t|cannot|can\s*not)\s+comply\b
+      | i\s*(?:must\s+)?(?:decline|refuse)\b
       | i'?m\s+sorry\b
       | i\s+am\s+sorry\b
       | sorry,?\s+but\b
@@ -56,8 +65,8 @@ ROUTING_RE = re.compile(
       | i\s+won'?t\s+be\s+able\b
       | i\s+am\s+going\s+to\s+have\s+to\b
       | against\s+my\s+(?:safety\s+)?guidelines\b
-      | i\s+(?:can'?t|cannot|can\s*not)\s+(?:help|assist|provide|fulfill|do)\b
-      | i\s+(?:can'?t|cannot|can\s*not)\s+assist\b
+      | i\s*(?:can'?t|cannot|can\s*not)\s+(?:help|assist|provide|fulfill|do)\b
+      | i\s*(?:can'?t|cannot|can\s*not)\s+assist\b
       | cannot\s+(?:fulfill|assist\s+with|comply\s+with)\s+(?:this|that|your)\s+request\b
       | not\s+permitted\s+to\b
       | prohibited\s+from\b
@@ -150,19 +159,33 @@ def classify_status(status) -> str:
 # B11 hedge gate: speculative dual-dispatch doubles cost and halves
 # concurrency (p* ~= 0.51 break-even), so it fires only on latency hints
 # (or an explicit force from the operator).
+#
+# CALIBRATED 2026-10-05 with evals/hedge_calibrate.py against 20 realistic dev
+# prompts: the original set (urgent|asap|immediately|right now|low-latency|
+# latency-sensitive|real-time|streaming|live|snappy|quick|fast) fired on 10 of
+# 14 NON-urgent prompts - a 71% false-positive rate, i.e. double the tokens for
+# nothing on prompts that merely MENTION streaming/live/fast ("refactor the
+# streaming reader", "live migration in Kubernetes", "fast Fourier transform",
+# "the FAST TCP congestion control"). Technical nouns are not urgency.
+# Kept: the words that actually signal a deadline. Dropped: real-time,
+# streaming, live, snappy, fast(est) - all common technical nouns.
 # ---------------------------------------------------------------------------
 HEDGE_HINT_RE = re.compile(
-    r"\b(urgent|urgently|asap|immediately|right\s+now|low[-\s]?latency|"
-    r"latency[-\s]?sensitive|real[-\s]?time|streaming|live|snappy|"
-    r"quick(?:ly)?|fast(?:est)?)\b",
+    r"\b(urgent(?:ly)?|immediately|right\s+now|low[-\s]?latency|"
+    r"latency[-\s]?sensitive|quick(?:ly)?)\b",
     re.IGNORECASE,
 )
+# 'asap' is a protocol name as often as an urgency marker ("ASAP scheduling",
+# the ASAP protocol) but the colloquial request is lowercase ("answer asap").
+# Case-sensitive on purpose: 1 measured false positive -> 0.
+HEDGE_HINT_ASAP_RE = re.compile(r"\basap\b")
 
 
 def should_hedge(prompt: str, *, force: bool = False) -> bool:
     if force:
         return True
-    return bool(HEDGE_HINT_RE.search(prompt or ""))
+    text = prompt or ""
+    return bool(HEDGE_HINT_RE.search(text) or HEDGE_HINT_ASAP_RE.search(text))
 
 
 # ---------------------------------------------------------------------------

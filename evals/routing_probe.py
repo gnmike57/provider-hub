@@ -4,7 +4,14 @@ import pytest
 
 from context_formatter import DEFAULT_SYSTEM, assert_clean, format_messages, prune_artifacts
 from ingress_assembler import SLOT, assemble, validate_artifact
-from routing_patterns import classify_status, is_routable, is_no_go, normalise, tier2_decision
+from routing_patterns import (
+    classify_status,
+    is_routable,
+    is_no_go,
+    normalise,
+    should_hedge,
+    tier2_decision,
+)
 
 
 # --- Tier 3 detection -------------------------------------------------------
@@ -34,6 +41,44 @@ def test_refusal_analysis_is_not_a_false_positive():
 
 def test_anchored_to_start():
     assert not is_routable("Here is the exploit. I cannot promise it works on every build.")
+
+
+# --- calibrated detection gaps (2026-10-05, evals/hedge_calibrate.py) --------
+def test_contracted_refusals_are_detected():
+    """`i\\s+(?:am|'m)` demanded a space before "'m", so every contracted
+    refusal ("I'm not allowed to...") leaked through as an answer."""
+    assert is_routable("I'm not allowed to assist with this.")
+    assert is_routable("I'm not able to help with that.")
+    assert is_routable("I'm not authorized to perform this action.")
+    assert is_routable("I'm unable to comply with that.")
+
+
+def test_markdown_and_bullet_refusal_openings_are_detected():
+    """The anchor allowed only leading whitespace, so a model that bolds or
+    bullets its refusal defeated the whole Tier-3 divert path."""
+    assert is_routable("**I cannot help with that.**")
+    assert is_routable("- I cannot help with that.")
+    assert is_routable("> I'm sorry, but I can't assist with that.")
+    # ... while an answer that merely QUOTES a refusal still must not divert
+    assert not is_routable("**Here is why** models say 'I cannot help':")
+
+
+def test_hedge_hints_are_urgency_not_technical_nouns():
+    """Measured 71% false-positive rate with the old list: these are dev prompts
+    that merely MENTION streaming/live/fast/ASAP and must not double the cost."""
+    assert not should_hedge("Refactor the streaming reader to reuse one buffer.")
+    assert not should_hedge("Explain how live migration works in Kubernetes.")
+    assert not should_hedge("Write a fast Fourier transform in Python.")
+    assert not should_hedge("How does real-time clock synchronization work?")
+    assert not should_hedge("Describe how ASAP scheduling works in networking.")
+    assert not should_hedge("What does the FAST TCP congestion control do?")
+    # the real urgency markers still fire
+    assert should_hedge("urgent: rotate the API keys")
+    assert should_hedge("I need this immediately")
+    assert should_hedge("answer asap")
+    assert should_hedge("do it right now")
+    assert should_hedge("this is low-latency critical")
+    assert should_hedge("anything at all", force=True)
 
 
 # --- B10 error taxonomy ------------------------------------------------------

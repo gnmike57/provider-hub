@@ -75,7 +75,11 @@ class Settings:
     fallback_api_url: str = os.getenv("FALLBACK_API_URL", "http://127.0.0.1:8000/v1/chat/completions")
     fallback_api_key: str = os.getenv("FALLBACK_API_KEY", "none")
     fallback_model: str = os.getenv("FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP")
-    buffer_content_tokens: int = field(default_factory=lambda: _int_env("BUFFER_CONTENT_TOKENS", 25))
+    # CALIBRATED 2026-10-05 (evals/hedge_calibrate.py): the refusal regex is
+    # anchored to the start of the generation and fires by the 5th content word
+    # (median 2), so holding 10 tokens screens exactly as well as 25 while the
+    # client waits 0.24s for the first token instead of 0.59s (42.3 tok/s gx10).
+    buffer_content_tokens: int = field(default_factory=lambda: _int_env("BUFFER_CONTENT_TOKENS", 10))
     buffer_reasoning: int = field(default_factory=lambda: _int_env("BUFFER_REASONING", 0))
     max_attempts: int = field(default_factory=lambda: _int_env("MAX_ATTEMPTS", 3))
     retry_base_delay: float = field(default_factory=lambda: _float_env("RETRY_BASE_DELAY", 0.5))
