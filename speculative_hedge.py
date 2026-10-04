@@ -21,6 +21,7 @@ can forward them verbatim.
 
 import contextlib
 import json
+import logging
 import os
 import uuid
 from typing import AsyncGenerator
@@ -74,6 +75,29 @@ class HedgeSettings:
 
 
 SETTINGS = HedgeSettings()
+
+log = logging.getLogger("speculative_hedge")
+
+# F8 observability. A worker branch that failed used to collapse into a bare
+# `worker = None` with the exception discarded, so a request could fall back to
+# the sovereign without a single trace in any log or metric. Counted and logged
+# from here on: `transport_error` = connect/read blew up, `bad_status` = it
+# answered but not with 2xx (the common one being 404 model_not_found while the
+# specialist's weights are still loading after a reboot).
+_FAILURES = {"transport_error": 0, "bad_status": 0}
+
+
+def hedge_failure_counts() -> dict:
+    """Snapshot for the gateway's /metrics endpoint."""
+    return dict(_FAILURES)
+
+
+async def _body_snippet(resp, limit: int = 200) -> str:
+    """Best-effort error body, for the log only. Never raises."""
+    try:
+        return (await resp.aread())[:limit].decode("utf-8", "replace").replace("\n", " ")
+    except Exception:  # noqa: BLE001 - diagnostics must never mask the real path
+        return "<unreadable>"
 
 
 def make_client() -> httpx.AsyncClient:
@@ -162,12 +186,16 @@ async def hedge_stream(
             )
             try:
                 sovereign = await stack.enter_async_context(sovereign_cm)
-            except httpx.TransportError:
+            except httpx.TransportError as exc:
                 sovereign = None  # B10: an unreachable sovereign means DIVERT, not fail
+                _FAILURES["transport_error"] += 1
+                log.warning("sovereign %s unreachable: %s", s.sovereign_model, type(exc).__name__)
             try:
                 worker = await stack.enter_async_context(worker_cm)
-            except httpx.TransportError:
+            except httpx.TransportError as exc:
                 worker = None
+                _FAILURES["transport_error"] += 1
+                log.warning("worker %s unreachable: %s", s.worker_model, type(exc).__name__)
             if sovereign is None and worker is None:
                 yield f"data: {json.dumps({'error': 'speculative dispatch failed: both branches unreachable'})}\n\n".encode()
                 yield b"data: [DONE]\n\n"
@@ -175,6 +203,11 @@ async def hedge_stream(
 
             sovereign_ok = sovereign is not None and classify_status(sovereign.status_code) == "ok"
             worker_ok = worker is not None and classify_status(worker.status_code) == "ok"
+
+            if worker is not None and not worker_ok:
+                _FAILURES["bad_status"] += 1
+                log.warning("worker %s answered HTTP %d: %s",
+                            s.worker_model, worker.status_code, await _body_snippet(worker))
 
             use_worker = not sovereign_ok
             commit_sovereign = False
@@ -244,8 +277,25 @@ async def hedge_stream(
                 except httpx.TransportError:
                     use_worker = True  # sovereign died mid-screening
 
+            # F8: a screened-out sovereign is never something we may fall back TO.
+            # `use_worker` is True here only because screening caught a refusal, a
+            # timeout, or an error event in the sovereign's own output. Replaying
+            # the sovereign just because the specialist is unavailable hands the
+            # caller the primary's refusal as if it were the answer - no footnote,
+            # no finish_reason, no audit signal beyond the hedge marker. That is the
+            # exact M1 leak this gateway exists to prevent, and it fires whenever the
+            # specialist is briefly unusable (404 model_not_found while weights
+            # reload after a reboot, which is how it was found). Disclose instead.
+            screened_out = use_worker
             if not worker_ok:
-                use_worker = False  # nowhere to divert; surface the sovereign as-is
+                if screened_out:
+                    log.warning("sovereign %s screened out with no specialist "
+                                "available; withholding sovereign output",
+                                s.sovereign_model)
+                    yield f"data: {json.dumps({'error': 'specialist unavailable; sovereign output withheld (refusal/timeout/error detected)'})}\n\n".encode()
+                    yield b"data: [DONE]\n\n"
+                    return
+                use_worker = False  # sovereign is clean and there is nowhere to divert
 
             if commit_sovereign or (not use_worker and sovereign_ok):
                 async for chunk in _replay_sovereign(sovereign, buffered, exhausted=exhausted):

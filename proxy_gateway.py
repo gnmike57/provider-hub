@@ -137,12 +137,20 @@ def incr(name: str, n: int = 1) -> None:
 
 
 def metrics_snapshot() -> dict:
-    return dict(_METRICS)
+    import speculative_hedge  # local import: the gateway pulls the hedge in lazily
+
+    # F8: hedge-side failures live in the hedge module. Surfaced here because a
+    # silently-dead specialist used to leave no trace anywhere, and it is what
+    # turns a divert into a withheld answer.
+    counts = dict(_METRICS)
+    for name, value in speculative_hedge.hedge_failure_counts().items():
+        counts[f"hedge_{name}_total"] = value
+    return counts
 
 
 def render_prometheus() -> str:
     lines = []
-    for key, value in sorted(_METRICS.items()):
+    for key, value in sorted(metrics_snapshot().items()):
         help_text = {
             "requests_total": "requests accepted by the gateway",
             "requests_clean": "requests committed to the sovereign",
@@ -152,6 +160,8 @@ def render_prometheus() -> str:
             "assembly_total": "/v1/execute attempts",
             "in_flight": "streams currently open",
             "specialist_warm": "keep-alive liveness of the specialist (1/0)",
+            "hedge_transport_error_total": "hedge branches that failed to connect/read",
+            "hedge_bad_status_total": "hedge branches that answered non-2xx",
         }.get(key, key)
         lines.append(f"# HELP {key} {help_text}")
         lines.append(f"# TYPE {key} gauge")

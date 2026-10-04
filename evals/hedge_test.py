@@ -220,3 +220,62 @@ def test_chunk_carrying_content_and_finish_together_is_split_not_dropped(script)
     text = "".join((ev.get("choices") or [{}])[0].get("delta", {}).get("content") or "" for ev in events)
     assert "last token" in text
     assert "diverted to specialist node" in text
+# ---------------------------------------------------------------------------
+# F8: an unavailable specialist must never promote the sovereign's refusal into
+# an answer. Found live: the specialist answered 404 model_not_found while its
+# weights reloaded after a host reboot, and the hedge replayed the sovereign's
+# buffered refusal ("I cannot ") to the caller with no footnote and no
+# finish_reason - a silent M1 leak.
+# ---------------------------------------------------------------------------
+
+_REFUSAL_SSE = lambda: [chunk("I cannot "), chunk("help with that.", finish="stop"), DONE]  # noqa: E731
+
+
+def test_404_specialist_never_leaks_a_detected_refusal(script):
+    """Detection happened; absence of a divert target must not undo it."""
+    script.script(SOVEREIGN, [("sse", _REFUSAL_SSE())])
+    script.script(WORKER, [("status", 404, {"error": {"code": "model_not_found"}})])
+    chunks = _run(script)
+    text = _text(chunks)
+    assert "I cannot" not in text, "F8: primary refusal reached the caller"
+    assert "help with that" not in text
+    assert "<error:" in text, "failure must be disclosed, not swallowed"
+    assert any("[DONE]" in c for c in chunks), "stream must terminate cleanly"
+
+
+def test_unreachable_specialist_never_leaks_a_detected_refusal(script):
+    """Same contract when the branch dies at transport level instead of 404."""
+    script.script(SOVEREIGN, [("sse", _REFUSAL_SSE())])
+    script.script(WORKER, [("raise", httpx.ConnectError("connection refused"))])
+    chunks = _run(script)
+    text = _text(chunks)
+    assert "I cannot" not in text, "F8: primary refusal reached the caller"
+    assert "<error:" in text
+
+
+def test_timeout_sovereign_is_withheld_when_specialist_is_dead(script):
+    """A `finish: timeout` is a screened-out sovereign too, so it is withheld."""
+    script.script(SOVEREIGN, [("sse", [chunk("partial thoug"), chunk("ht here", finish="timeout"), DONE])])
+    script.script(WORKER, [("status", 503, {"error": "loader busy"})])
+    text = _text(_run(script))
+    assert "partial thoug" not in text
+    assert "<error:" in text
+
+
+def test_clean_sovereign_still_answers_when_specialist_is_dead(script):
+    """Guard against over-correcting: nothing was screened out, so the caller
+    still gets the sovereign's legitimate answer instead of an error."""
+    script.script(SOVEREIGN, [("sse", [chunk("clean "), chunk("answer", finish="stop"), DONE])])
+    script.script(WORKER, [("status", 404, {"error": {"code": "model_not_found"}})])
+    text = _text(_run(script))
+    assert "clean answer" in text
+    assert "<error:" not in text
+
+
+def test_hedge_specialist_failures_are_counted(script):
+    """The bug was invisible because the branch failure touched no counter."""
+    script.script(SOVEREIGN, [("sse", _REFUSAL_SSE())])
+    script.script(WORKER, [("status", 404, {"error": {"code": "model_not_found"}})])
+    before = speculative_hedge.hedge_failure_counts()["bad_status"]
+    _run(script)
+    assert speculative_hedge.hedge_failure_counts()["bad_status"] == before + 1
