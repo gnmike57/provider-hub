@@ -119,6 +119,8 @@ def test_hedge_both_branches_unreachable_errors_cleanly(script):
     text = _text(_run(script))
     assert "both branches unreachable" in text
 
+
+def test_reasoning_held_not_counted_never_leaks_to_worker_path(script):
     # deliberation streams long before any content: must NOT commit the hedge
     # to the sovereign, and on the worker path the held reasoning is discarded.
     events = [chunk("deliberating quietly...", extra={"reasoning_content": True})]
@@ -129,3 +131,53 @@ def test_hedge_both_branches_unreachable_errors_cleanly(script):
     assert "worker answer" in text
     assert "deliberating quietly" not in text
     assert "I cannot fulfill" not in text
+
+
+def _events(chunks):
+    out = []
+    for c in chunks:
+        body = c.strip()
+        if not body.startswith("data:"):
+            continue
+        payload = body[5:].strip()
+        if payload == "[DONE]":
+            continue
+        try:
+            out.append(json.loads(payload))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def test_stream_id_is_stable_across_every_chunk(script):
+    """R1: clients group chunks by id. A uuid per chunk makes ONE answer look
+    like N different answers to any client that keys on id."""
+    script.script(SOVEREIGN, [("sse", [chunk("I cannot help with that."), DONE])])
+    script.script(WORKER, [("sse", [chunk("a"), chunk("b"), chunk("c", finish="stop"), DONE])])
+    ids = {ev["id"] for ev in _events(_run(script)) if ev.get("id")}
+    assert len(ids) == 1, f"stream id changed mid-stream: {ids}"
+
+
+def test_footnote_precedes_finish_reason_and_keeps_the_upstream_reason(script):
+    """R4: finish_reason ends a stream - content after it is invisible to
+    clients that stop reading there (so the disclosure would be lost), and a
+    truncated worker answer must keep its own reason ("length")."""
+    script.script(SOVEREIGN, [("sse", [chunk("I cannot help with that."), DONE])])
+    script.script(WORKER, [("sse", [chunk("truncated"), chunk("", finish="length"), DONE])])
+    events = _events(_run(script))
+    finish_at = [i for i, ev in enumerate(events) if (ev.get("choices") or [{}])[0].get("finish_reason")]
+    assert finish_at, "no finish_reason emitted at all"
+    assert finish_at[0] == len(events) - 1, "content was emitted AFTER finish_reason"
+    assert events[finish_at[0]]["choices"][0]["finish_reason"] == "length"
+    assert "diverted to specialist node" in json.dumps(events[: finish_at[0]])
+
+
+def test_chunk_carrying_content_and_finish_together_is_split_not_dropped(script):
+    """R4 edge: some servers put the last token and finish_reason in one
+    chunk; holding it wholesale would silently eat that token."""
+    script.script(SOVEREIGN, [("sse", [chunk("I cannot help with that."), DONE])])
+    script.script(WORKER, [("sse", [chunk("last token", finish="stop"), DONE])])
+    events = _events(_run(script))
+    text = "".join((ev.get("choices") or [{}])[0].get("delta", {}).get("content") or "" for ev in events)
+    assert "last token" in text
+    assert "diverted to specialist node" in text

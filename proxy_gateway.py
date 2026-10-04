@@ -372,10 +372,12 @@ def _sse(event: dict) -> bytes:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode()
 
 
-def _delta_chunk(delta: dict, finish=None, model: str = "") -> bytes:
+def _delta_chunk(delta: dict, finish=None, model: str = "", stream_id: str = "") -> bytes:
     return _sse(
         {
-            "id": f"fallback-{uuid.uuid4().hex[:12]}",
+            # R1: one id per STREAM, not per chunk - clients group chunks by id,
+            # and a fresh uuid per chunk makes one answer look like N answers.
+            "id": stream_id or f"fallback-{uuid.uuid4().hex[:12]}",
             "object": "chat.completion.chunk",
             "model": model,
             "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
@@ -397,6 +399,7 @@ async def fallback_stream(
     s = settings or SETTINGS
     msgs = format_messages(original_messages, system=system_prompt)
     assert_clean(msgs)
+    sid = f"fallback-{uuid.uuid4().hex[:12]}"  # R1: stable for the whole stream
     payload = {"model": s.fallback_model, "messages": msgs, "stream": True}
     if s.specialist_temperature is not None:
         payload["temperature"] = s.specialist_temperature
@@ -416,7 +419,7 @@ async def fallback_stream(
         resp = await open_fallback(app.state.http, payload, headers, s)
     except PrimaryOpenError as exc:
         yield _sse({"error": f"specialist unavailable ({exc.status}): {exc.detail}"})
-        yield _delta_chunk({}, finish="stop", model=s.fallback_model)
+        yield _delta_chunk({}, finish="stop", model=s.fallback_model, stream_id=sid)
         yield b"data: [DONE]\n\n"
         return
 
@@ -428,6 +431,10 @@ async def fallback_stream(
             body = line[5:].strip()
             if body == "[DONE]":
                 break
+            # R1: adopt the specialist's stream id, so the footnote we inject
+            # below belongs to the SAME stream instead of opening a second one.
+            with contextlib.suppress(Exception):
+                sid = json.loads(body).get("id") or sid
             yield f"{line}\n\n".encode()
     except httpx.TransportError as exc:
         incr("fallback_errors_total")
@@ -436,8 +443,8 @@ async def fallback_stream(
         with contextlib.suppress(Exception):
             await resp.aclose()
 
-    yield _delta_chunk({"content": footnote(s.fallback_model)}, finish=None, model=s.fallback_model)
-    yield _delta_chunk({}, finish="stop", model=s.fallback_model)
+    yield _delta_chunk({"content": footnote(s.fallback_model)}, finish=None, model=s.fallback_model, stream_id=sid)
+    yield _delta_chunk({}, finish="stop", model=s.fallback_model, stream_id=sid)
     yield b"data: [DONE]\n\n"
 
 # --------------------------------------------------------------------------
@@ -535,6 +542,18 @@ async def chat_proxy(request: Request):
         try:
             if hedge_requested:
                 import speculative_hedge
+
+                # R2: audit parity. The divert path records BEFORE dispatch
+                # (crash-safe); a hedged request used to leave no trace at all,
+                # so the audit log silently missed every race the gateway ran.
+                audit_record(
+                    request_id=request_id,
+                    primary_model=primary_payload["model"],
+                    worker_model=settings.fallback_model,
+                    signal="hedge_forced" if body.get("hedge") is True else "hedge_hint",
+                    mode="hedge",
+                    audit_log=settings.audit_log,
+                )
 
                 h = speculative_hedge.SETTINGS
                 h.sovereign_url = settings.primary_api_url
@@ -794,6 +813,9 @@ async def execute(request: Request):
             "max_tokens": 2048,
         },
         headers={**_auth_header(settings.primary_api_key)},
+        # R3: a planning call is bounded work - the shared client's 300 s read
+        # budget would let a wedged orchestrator hold the request open.
+        timeout=httpx.Timeout(30.0, read=120.0),
     )
     if plan_resp.status_code >= 400:
         return JSONResponse(

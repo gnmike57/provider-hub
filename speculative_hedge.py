@@ -93,10 +93,11 @@ def _last_user_text(messages):
     return ""
 
 
-def _chunk(delta, finish=None, model=""):
+def _chunk(delta, finish=None, model="", stream_id=""):
     return json.dumps(
         {
-            "id": f"hedge-{uuid.uuid4().hex[:12]}",
+            # R1: one id per STREAM (see proxy_gateway._delta_chunk).
+            "id": stream_id or f"hedge-{uuid.uuid4().hex[:12]}",
             "object": "chat.completion.chunk",
             "model": model,
             "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
@@ -117,6 +118,8 @@ async def hedge_stream(
     reused; otherwise a dedicated client is created and closed here."""
     s = settings or SETTINGS
     from context_formatter import DEFAULT_SYSTEM
+
+    sid = f"hedge-{uuid.uuid4().hex[:12]}"  # R1: one id for the whole stream
 
     worker_msgs = [
         {"role": "system", "content": s.system_prompt or DEFAULT_SYSTEM},
@@ -223,7 +226,7 @@ async def hedge_stream(
                 return
 
             if use_worker:
-                async for chunk in _drain_worker(worker, s):
+                async for chunk in _drain_worker(worker, s, sid):
                     yield chunk
                 return
 
@@ -269,8 +272,17 @@ async def _replay_sovereign(sovereign, buffered, *, exhausted: bool = False) -> 
         return
 
 
-async def _drain_worker(worker, s) -> AsyncGenerator[bytes, None]:
-    saw_finish = False
+async def _drain_worker(worker, s, stream_id: str = "") -> AsyncGenerator[bytes, None]:
+    """Stream the worker, then disclose the diversion.
+
+    R4: the OpenAI contract says `finish_reason` is the LAST thing a stream
+    says - no content may follow it. The footnote is content, so the upstream
+    finish chunk is HELD, the footnote is emitted, and an equivalent finish
+    chunk (carrying the upstream's own reason, e.g. "length" on a truncated
+    answer) is emitted after it. A chunk that carries content AND a finish
+    reason is split rather than dropped.
+    """
+    finish_reason = None
     async for raw in worker.aiter_lines():
         line = raw.strip()
         if not line or not line.startswith("data:"):
@@ -280,15 +292,28 @@ async def _drain_worker(worker, s) -> AsyncGenerator[bytes, None]:
             break
         try:
             ev = json.loads(body)
-            if (ev.get("choices") or [{}])[0].get("finish_reason"):
-                saw_finish = True
-        except json.JSONDecodeError:
-            pass
+            choice = (ev.get("choices") or [{}])[0]
+            reason = choice.get("finish_reason")
+            if ev.get("id"):
+                # R1: adopt the worker's stream id - the footnote we append is
+                # part of THAT stream, so it must not introduce a second id.
+                stream_id = ev["id"]
+        except (json.JSONDecodeError, AttributeError, IndexError):
+            ev, choice, reason = None, {}, None
+        if reason:
+            finish_reason = reason
+            delta = choice.get("delta") or {}
+            if not any(delta.get(k) for k in ("content", "reasoning_content", "tool_calls")):
+                continue  # pure finish marker: held until after the footnote
+            ev["choices"][0]["finish_reason"] = None  # keep the content, hold the finish
+            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n".encode()
+            continue
         yield f"{line}\n\n".encode()
-    if not saw_finish:
-        yield f"data: {_chunk({}, finish='stop', model=s.worker_model)}\n\n".encode()
     yield (
-        f"data: {_chunk({'content': footnote(s.worker_model)}, finish=None, model=s.worker_model)}\n\n".encode()
+        f"data: {_chunk({'content': footnote(s.worker_model)}, finish=None, model=s.worker_model, stream_id=stream_id)}\n\n".encode()
+    )
+    yield (
+        f"data: {_chunk({}, finish=finish_reason or 'stop', model=s.worker_model, stream_id=stream_id)}\n\n".encode()
     )
     yield b"data: [DONE]\n\n"
 
