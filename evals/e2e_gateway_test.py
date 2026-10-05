@@ -2,6 +2,7 @@
 
 import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -314,5 +315,70 @@ def test_hedge_fires_only_on_latency_hint_or_force(gw, script):
     text = _deltas(_events(resp))
     assert "sovereign branch" in text
     assert "worker branch" not in text
+def test_primary_fail_fast_error_is_visible_not_silent(gw, script):
+    """F12: a fail-fast 4xx (not routable) must not become a silent empty 200.
+
+    The error EVENT alone is invisible to every standard OpenAI client, which
+    renders only delta.content - the same defect class F11 fixed on the
+    specialist path. Found by reviewing the F11 fix for parity.
+    """
+    script.script(PRIMARY, [("status", 401, {"error": "invalid api key"})])
+    resp = gw.post("/v1/chat/completions", json=_body())
+    assert resp.status_code == 200
+    text = _deltas(_events(resp))
+    assert "Upstream error (401)" in text          # what a real client renders
+    assert "invalid api key" in text               # ...with the upstream reason
+    assert "<error:upstream error (401)" in text   # event kept: nothing is lost
+    assert _events(resp)[-1] == "[DONE]"
+    assert proxy_gateway._METRICS["primary_errors_total"] == 1
+    assert proxy_gateway._METRICS["diverted_total"] == 0
+
+
+def test_primary_stream_break_in_passthrough_is_disclosed(gw, script):
+    """F13: a primary stream that broke mid-flight used to raise straight out of
+    the generator - the client got a truncated body with no error, no
+    finish_reason and no way to tell it from a complete answer."""
+    events = [chunk(f"tok{i} ") for i in range(30)]  # >= 25 tokens -> PASSTHROUGH
+    events.append(httpx.TransportError("connection reset"))
+    script.script(PRIMARY, [("sse", events)])
+    resp = gw.post("/v1/chat/completions", json=_body())
+    assert resp.status_code == 200
+    text = _deltas(_events(resp))
+    assert "tok0 " in text                      # the committed prefix survives
+    assert "[primary stream broke:" in text     # the truncation is disclosed
+    assert _events(resp)[-1] == "[DONE]"        # ...and the stream still closes
+    assert proxy_gateway._METRICS["primary_errors_total"] == 1
+
+
+def test_primary_stream_break_before_commit_diverts(gw, script):
+    """F13b: the same break with NOTHING committed is a Tier 1 transport
+    failure, so it diverts instead of surfacing a half-answer."""
+    script.script(PRIMARY, [("sse", [chunk("hel"), httpx.TransportError("reset"), DONE])])
+    script.script(WORKER, [("sse", [chunk("worker rescued", finish="stop"), DONE])])
+    resp = gw.post("/v1/chat/completions", json=_body())
+    text = _deltas(_events(resp))
+    assert "worker rescued" in text
+    assert "hel" not in text                    # the buffer is discarded
+    assert proxy_gateway._METRICS["diverted_total"] == 1
+
+
+def test_hedge_uses_per_request_settings_copy(gw, script):
+    """F14: the gateway used to mutate the module-global hedge SETTINGS in
+    place, so two concurrent hedged requests raced on sovereign_model (each
+    request's own model) and could clobber each other's URLs mid-flight."""
+    import speculative_hedge
+
+    script.script(PRIMARY, [("sse", [chunk("sovereign branch", finish="stop"), DONE])])
+    script.script(WORKER, [("sse", [chunk("worker branch", finish="stop"), DONE])])
+    before = speculative_hedge.SETTINGS.sovereign_model
+    resp = gw.post(
+        "/v1/chat/completions",
+        json=_body("anything", model="request-specific-model", hedge=True),
+    )
+    assert "sovereign branch" in _deltas(_events(resp))
+    sent = [c["json"]["model"] for c in script.calls if c["url"] == PRIMARY]
+    assert sent == ["request-specific-model"]              # this request's model
+    assert speculative_hedge.SETTINGS.sovereign_model == before  # global untouched
+
 
 

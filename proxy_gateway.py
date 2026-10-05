@@ -20,6 +20,7 @@ Run:  uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000
 
 import asyncio
 import contextlib
+import copy
 import json
 import os
 import uuid
@@ -122,6 +123,7 @@ _METRICS = {
     "diverted_total": 0,
     "authz_denied_total": 0,
     "fallback_errors_total": 0,
+    "primary_errors_total": 0,
     "assembly_total": 0,
     "in_flight": 0,
     "specialist_warm": 0,
@@ -157,6 +159,7 @@ def render_prometheus() -> str:
             "diverted_total": "requests diverted to the specialist",
             "authz_denied_total": "requests denied by F9 authz",
             "fallback_errors_total": "specialist transport/HTTP failures",
+            "primary_errors_total": "primary transport/HTTP failures (F12/F13)",
             "assembly_total": "/v1/execute attempts",
             "in_flight": "streams currently open",
             "specialist_warm": "keep-alive liveness of the specialist (1/0)",
@@ -629,7 +632,13 @@ async def chat_proxy(request: Request):
                     audit_log=settings.audit_log,
                 )
 
-                h = speculative_hedge.SETTINGS
+                # F14: this used to mutate the module-global SETTINGS in place,
+                # so two concurrent hedged requests raced on sovereign_model
+                # (taken from each request's own body) and could clobber each
+                # other's URLs mid-flight. Copy the module settings - so
+                # monkeypatched knobs still apply - and hand the copy to the
+                # call, which already accepts `settings=`.
+                h = copy.copy(speculative_hedge.SETTINGS)
                 h.sovereign_url = settings.primary_api_url
                 h.sovereign_key = settings.primary_api_key
                 h.sovereign_model = primary_payload["model"]
@@ -637,7 +646,7 @@ async def chat_proxy(request: Request):
                 h.worker_key = settings.fallback_api_key
                 h.worker_model = settings.fallback_model
                 async for chunk in speculative_hedge.hedge_stream(
-                    messages, request_id=request_id, client=app.state.http
+                    messages, request_id=request_id, client=app.state.http, settings=h
                 ):
                     yield chunk
                 return
@@ -658,7 +667,16 @@ async def chat_proxy(request: Request):
                     ):
                         yield chunk
                 else:
+                    # F12: a fail-fast upstream error (400/401/403/404) is not
+                    # routable, but it must not become a silent empty 200 either
+                    # - the same defect class F11 fixed on the specialist path.
+                    # Keep the error event (clients that read it lose nothing)
+                    # AND put the failure in delta.content, which is what every
+                    # standard OpenAI client actually renders.
+                    incr("primary_errors_total")
+                    msg = f"Upstream error ({exc.status}): {exc.detail}"[:300]
                     yield _sse({"error": f"upstream error ({exc.status}): {exc.detail}"})
+                    yield _delta_chunk({"content": msg}, finish=None, model=primary_payload["model"])
                     yield _delta_chunk({}, finish="stop", model=primary_payload["model"])
                     yield b"data: [DONE]\n\n"
                 return
@@ -757,6 +775,25 @@ async def chat_proxy(request: Request):
                             yield f"{p}\n\n".encode()
                         yield b"data: [DONE]\n\n"
                         return
+            except httpx.TransportError as exc:
+                # F13: a primary stream that broke mid-flight used to raise
+                # straight out of the generator, so the client got a truncated
+                # body with no error event, no finish_reason and no way to tell
+                # it apart from a complete answer (same class as F11).
+                incr("primary_errors_total")
+                if state == "BUFFERING":
+                    # Nothing has been committed to the client yet, so this is
+                    # just a Tier 1 transport failure: divert instead of
+                    # surfacing it. Falls through to the divert block below.
+                    # Keep an already-detected reason (e.g. tier3_refusal).
+                    routed_reason = routed_reason or "tier1_stream_broke"
+                else:
+                    yield _sse({"error": f"primary stream broke: {exc}"})
+                    yield _delta_chunk({"content": f"\n\n[primary stream broke: {exc}]"},
+                                       finish=None, model=primary_payload["model"])
+                    yield _delta_chunk({}, finish="stop", model=primary_payload["model"])
+                    yield b"data: [DONE]\n\n"
+                    return
             finally:
                 with contextlib.suppress(Exception):
                     await resp.aclose()
