@@ -189,6 +189,59 @@ def test_oversized_body_is_413(gw, monkeypatch):
     assert "too large" in resp.text
 
 
+def test_chunked_body_without_content_length_is_413(script, monkeypatch):
+    """The cap must not depend on the Content-Length header.
+
+    check_body_size() trusted the header alone, so a chunked body (no
+    Content-Length) was buffered in full and accepted - an unbounded allocation
+    sitting behind a cap that looked enforced.
+    """
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "max_body_bytes", 1024)
+
+    def _chunks():
+        for _ in range(8):  # 4 KiB total, sent chunked (no Content-Length)
+            yield b"x" * 512
+
+    with TestClient(proxy_gateway.app) as tc:
+        resp = tc.post("/v1/chat/completions", content=_chunks(),
+                       headers={"Content-Type": "application/json"})
+    assert resp.status_code == 413
+    assert "too large" in resp.text
+
+
+async def test_read_json_body_counts_streamed_bytes(monkeypatch):
+    """Direct proof, independent of the HTTP client: no Content-Length at all."""
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "max_body_bytes", 1024)
+
+    class _NoHeaderRequest:
+        headers: dict = {}  # nothing to trust
+
+        async def stream(self):
+            for _ in range(4):  # 2 KiB over a 1 KiB cap
+                yield b"x" * 512
+
+    with pytest.raises(proxy_gateway.HTTPException) as err:
+        await proxy_gateway.read_json_body(_NoHeaderRequest())
+    assert err.value.status_code == 413
+
+
+def test_chunked_body_under_the_cap_still_works(script, monkeypatch):
+    """Closing the bypass must not break ordinary chunked clients."""
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "max_body_bytes", 4096)
+    script.script(PRIMARY, [("sse", [chunk("ok", finish="stop"), DONE])])
+    payload = json.dumps(_body()).encode()
+
+    def _chunks():
+        yield payload[:12]
+        yield payload[12:]
+
+    with TestClient(proxy_gateway.app) as tc:
+        resp = tc.post("/v1/chat/completions", content=_chunks(),
+                       headers={"Content-Type": "application/json"})
+    assert resp.status_code == 200
+    assert _deltas(_events(resp)) == "ok"
+
+
 def test_unauthorised_principal_is_refused_before_any_model_call(gw, script, monkeypatch):
     """M5: authz is enforced ahead of routing - the client gets 403 and the
     upstream is never touched."""

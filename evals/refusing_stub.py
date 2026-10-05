@@ -58,12 +58,25 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        try:
+            self._do_post()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # The gateway abandons the primary's stream the moment it detects a
+            # refusal (Tier-3 discard), so the socket is *expected* to die
+            # mid-response. socketserver would otherwise print a scary traceback
+            # for a perfectly normal path (and pytest logs it as an error).
+            pass
+
+    def _do_post(self):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b"{}"
         try:
-            model = str(json.loads(raw).get("model") or "")
+            parsed = json.loads(raw)
+            model = str(parsed.get("model") or "")
+            stream = bool(parsed.get("stream", False))
         except Exception:  # noqa: BLE001
             model = ""
+            stream = False
         # Per-request mode selection. The client controls `model` and the gateway
         # forwards it, so "model": "stub-500" drives an injected failure without
         # restarting anything - that is how the P4 matrix is run.
@@ -100,6 +113,22 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         text = REFUSAL if mode in ("refuse", "") else ANSWER
+        if not stream:
+            # Non-streaming completion: lets the offline stack test assert a real
+            # answer body (the shape live_stack_test asserts with `stream: False`).
+            body = json.dumps({
+                "id": "stub-1",
+                "object": "chat.completion",
+                "model": model or "refusing-stub",
+                "choices": [{"index": 0, "finish_reason": "stop",
+                             "message": {"role": "assistant", "content": text}}],
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Transfer-Encoding", "chunked")

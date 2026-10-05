@@ -324,6 +324,33 @@ def check_body_size(request: Request) -> None:
         )
 
 
+async def read_json_body(request: Request) -> dict:
+    """Parse the JSON body with the size cap enforced DURING consumption.
+
+    ``check_body_size`` above is only a fast pre-check: it can trust nothing but
+    the Content-Length header, so a chunked request - or any client that simply
+    omits the header - walked straight past the cap and was fully buffered
+    anyway (the same silent-failure shape as P4 scenario 7, which the cap was
+    added to close). Here the bytes are counted as they arrive, so the cap holds
+    whatever the framing claims. F5 is preserved: a malformed body is a 400.
+    """
+    cap = SETTINGS.max_body_bytes
+    chunks: list[bytes] = []
+    total = 0
+    async for part in request.stream():
+        total += len(part)
+        if total > cap:
+            raise HTTPException(
+                status_code=413,
+                detail=f"request body too large (> {cap} bytes)",
+            )
+        chunks.append(part)
+    try:
+        return json.loads(b"".join(chunks).decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+
+
 def run_guards(body: dict, principal: str = None) -> None:
     """F9 authz + E6 n>1 + Gate 7 no-go, in that order. Raises HTTPException."""
     if SETTINGS.authz_enforced:
@@ -579,14 +606,9 @@ def _last_user_text(messages) -> str:
 # --------------------------------------------------------------------------
 @app.post("/v1/chat/completions")
 async def chat_proxy(request: Request):
-    check_body_size(request)
-    try:
-        body = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        # F5 (found by the P4 failure-injection matrix): a malformed body used to
-        # raise inside FastAPI and surface as a bare 500 "Internal Server Error".
-        # A client error must be a 400.
-        raise HTTPException(status_code=400, detail="invalid JSON body")
+    check_body_size(request)  # fast path: a declared-oversized body is never read
+    # authoritative: the cap is enforced while the bytes arrive (chunked-safe)
+    body = await read_json_body(request)
     principal = request.headers.get(PRINCIPAL_HEADER) or ""
     run_guards(body, principal or None)
     incr("requests_total")
@@ -926,11 +948,9 @@ async def run_specialist(plan: CyberSubtaskPlan, settings: Settings, request_id:
 async def execute(request: Request):
     if not SETTINGS.assembly_enabled:
         raise HTTPException(status_code=501, detail="assembly disabled (ASSEMBLY_ENABLED=0)")
-    check_body_size(request)
-    try:
-        body = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise HTTPException(status_code=400, detail="invalid JSON body")  # F5
+    check_body_size(request)  # fast path: a declared-oversized body is never read
+    # authoritative: the cap is enforced while the bytes arrive (chunked-safe)
+    body = await read_json_body(request)
     principal = request.headers.get(PRINCIPAL_HEADER) or ""
     run_guards(body, principal or None)
     incr("assembly_total")
