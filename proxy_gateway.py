@@ -470,7 +470,15 @@ async def fallback_stream(
     try:
         resp = await open_fallback(app.state.http, payload, headers, s)
     except PrimaryOpenError as exc:
-        yield _sse({"error": f"specialist unavailable ({exc.status}): {exc.detail}"})
+        # F11 (P4-7 root cause): a specialist that refuses to OPEN the stream
+        # (e.g. TabbyAPI 400 context-length rejection of an oversized divert)
+        # used to surface as only a {"error": ...} SSE event - no content chunk
+        # at all, i.e. a silent 200 + empty answer to every standard client.
+        # Deliver the failure as visible content with the provenance footnote,
+        # then close. A disclosed failure is acceptable; a silent one is not.
+        msg = f"Specialist unavailable ({exc.status or 'transport'}): {exc.detail}"[:300]
+        yield _delta_chunk({"content": msg}, finish=None, model=s.fallback_model, stream_id=sid)
+        yield _delta_chunk({"content": footnote(s.fallback_model)}, finish=None, model=s.fallback_model, stream_id=sid)
         yield _delta_chunk({}, finish="stop", model=s.fallback_model, stream_id=sid)
         yield b"data: [DONE]\n\n"
         return
@@ -491,6 +499,11 @@ async def fallback_stream(
     except httpx.TransportError as exc:
         incr("fallback_errors_total")
         yield _sse({"error": f"specialist stream broke: {exc}"})
+        # F11 parity: make a mid-stream transport break visible as content too,
+        # so clients that only read delta.content are not left with a truncated
+        # answer that LOOKS complete.
+        yield _delta_chunk({"content": f"[specialist stream broke: {exc}]"},
+                           finish=None, model=s.fallback_model, stream_id=sid)
     finally:
         with contextlib.suppress(Exception):
             await resp.aclose()

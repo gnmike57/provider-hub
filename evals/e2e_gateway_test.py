@@ -263,8 +263,27 @@ def test_specialist_503_retried_then_error_chunk(gw, script):
     script.script(WORKER, [("status", 503, {"error": "at capacity"})])
     resp = gw.post("/v1/chat/completions", json=_body())
     text = _deltas(_events(resp))
-    assert "specialist unavailable (503)" in text
+    # F11 (P4-7): a specialist that refuses to OPEN must be VISIBLE as content,
+    # not a bare {"error": ...} event - otherwise every standard client renders
+    # a silent empty 200 (measured on the live stack with an 8 MiB divert).
+    assert "Specialist unavailable (503)" in text
+    assert "diverted to specialist node" in text
     assert proxy_gateway._METRICS["fallback_errors_total"] >= 3
+
+
+def test_specialist_400_context_rejection_is_visible_not_silent(gw, script):
+    # The exact P4-7 shape: the divert opens fine on paper, the specialist
+    # rejects the payload (context length on the real box), and pre-F11 the
+    # client received 200 with ZERO content - a silent failure.
+    script.script(PRIMARY, [("sse", [chunk("I cannot help with that.", finish="stop"), DONE])])
+    script.script(WORKER, [("status", 400, {"error": "context length exceeded"})])
+    resp = gw.post("/v1/chat/completions", json=_body())
+    assert resp.status_code == 200
+    text = _deltas(_events(resp))
+    assert "Specialist unavailable (400)" in text
+    assert "context length exceeded" in text
+    assert "diverted to specialist node" in text
+    assert "<error:" in text or True  # error event is optional; visibility is not
 
 
 def test_reasoning_forwarded_not_counted(gw, script):
