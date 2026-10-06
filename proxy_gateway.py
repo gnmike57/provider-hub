@@ -172,6 +172,16 @@ def render_prometheus() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _specialist_system_prompt(settings: Settings):
+    """SPECIALIST_SYSTEM_MODE=domain activates the CYBER-FROST SAGE fine-tune's
+    domain distribution (context_formatter.CYBER_SYSTEM) on EVERY specialist
+    surface - both the refusal/capacity diverts and /v1/execute. "neutral"
+    (the default) keeps the generic framing (DEFAULT_SYSTEM on diverts, the
+    CYBER-FROST identity on /v1/execute)."""
+    mode = (getattr(settings, "specialist_system_mode", "") or "neutral").strip().lower()
+    return CYBER_SYSTEM if mode == "domain" else None
+
+
 # --------------------------------------------------------------------------
 # Circuit breaker (spec 6.2): prevents failover storms from exhausting the
 # specialist. Closed -> (5 consecutive failures) -> OPEN -> (30 s) -> HALF-OPEN.
@@ -686,6 +696,7 @@ async def chat_proxy(request: Request):
                         principal=principal,
                         tools=body.get("tools"),
                         tool_choice=body.get("tool_choice"),
+                        system_prompt=_specialist_system_prompt(settings),
                     ):
                         yield chunk
                 else:
@@ -830,6 +841,7 @@ async def chat_proxy(request: Request):
                 principal=principal,
                 tools=body.get("tools"),
                 tool_choice=body.get("tool_choice"),
+                system_prompt=_specialist_system_prompt(settings),
             ):
                 yield chunk
         finally:
@@ -913,8 +925,11 @@ async def run_specialist(plan: CyberSubtaskPlan, settings: Settings, request_id:
         "yara_generation": "Generate valid, optimized YARA rules with robust string definitions and condition logic.",
         "protocol_analysis": "Detail packet structure, state machines, byte offsets, and serialization routines.",
     }
+    # SPECIALIST_SYSTEM_MODE=domain replaces the generic identity with the
+    # SAGE domain frame (CYBER_SYSTEM); neutral keeps the generic persona.
+    persona = _specialist_system_prompt(settings) or "You are CYBER-FROST, a cybersecurity specialist."
     directive = (
-        "You are CYBER-FROST, a cybersecurity specialist.\n"
+        persona + "\n"
         f"Environment: {plan.target_environment or 'Linux x86_64'}\n"
         "Objective: "
         + task_directives.get(plan.task_type or "", "Execute precise technical analysis.")

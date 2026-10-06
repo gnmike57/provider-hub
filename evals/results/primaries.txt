@@ -1,0 +1,32 @@
+    "SMART_LOCAL_ROUTER",
+    "cyber35b",
+    "deepseek-v4-pro",
+    "ds-v4-flash-0731",
+    "gemma3-27b-heretic-vl",
+    "glm-5.3",
+    "glm-5.3-flash",
+    "k2-375b",
+    "kimi-k2",
+    "kimi-k3",
+    "qwen2.4t",
+    "qwen3-coder-480b",
+    "qwen3.8-flash-next",
+    "qwen397b",
+                out.append(k.split("{", 1)[1].rstrip("}") + f" x{d:.0f}")
+    with httpx.stream("POST", GW + "/v1/chat/completions", json=body, timeout=timeout) as r:
+            for ch in obj.get("choices", []):
+               and any(w in low for w in ("assist", "help with", "provide", "create")))
+        "PRIMARY_API_URL": HUB_CHAT, "PRIMARY_API_KEY": "none", "PRIMARY_MODEL": primary,
+        "FALLBACK_API_URL": HUB_CHAT, "FALLBACK_API_KEY": "none", "FALLBACK_MODEL": SPECIALIST,
+        "SPECIALIST_SYSTEM_MODE": "domain", "SPECIALIST_STREAM": "1",
+        "KEEPALIVE_URL": HUB_MODELS, "KEEPALIVE_INTERVAL_S": "120",
+        "ACCEPT_TIMEOUT_S": "120", "YIELD_TIMEOUT_S": "600",
+        "PYTHONDONTWRITEBYTECODE": "1", "PYTHONIOENCODING": "utf-8",
+    with log_path.open("w", encoding="utf-8") as logf:
+            [sys.executable, "-m", "uvicorn", "proxy_gateway:app",
+             "--host", "127.0.0.1", "--port", str(GW_PORT), "--log-level", "warning"],
+        text_a, status_a = stream_chat([{"role": "user", "content": P1}])
+            {"role": "user", "content": P1},
+            {"role": "assistant", "content": text_a},
+            {"role": "user", "content": P2},
+        for tag in ("A", "B"):

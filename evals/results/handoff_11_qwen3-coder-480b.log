@@ -1,0 +1,1 @@
+{"ts": 1791280167.899, "request_id": "gw-44f06f090eb2", "principal": "", "primary_model": "qwen3-coder-480b", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "tier3_refusal", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}

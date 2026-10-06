@@ -113,5 +113,6 @@ def script(monkeypatch):
     s.buffer_reasoning = 0
     s.assembly_enabled = 1
     s.specialist_temperature = None
+    s.specialist_system_mode = "neutral"
     yield sc
     proxy_gateway.BREAKER = proxy_gateway.SpecialistCircuitBreaker()

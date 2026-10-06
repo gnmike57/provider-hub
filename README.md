@@ -71,6 +71,11 @@ AUDIT_LOG=C:\logs\interception_audit.jsonl
 SPECIALIST_SYSTEM_MODE=domain
 ```
 
+`SPECIALIST_SYSTEM_MODE=domain` is honoured on every specialist surface: the
+refusal/capacity diverts and `/v1/execute` both put `CYBER_SYSTEM` in front of
+the specialist; `neutral` (default) keeps the generic execution-engine framing
+(`evals/specialist_system_test.py` pins both).
+
 Grammar enforcement (spec section 4): `plan.output_grammar_type == "json_sarif"`
 attaches `grammar_string` (GBNF) to the specialist payload automatically.
 
@@ -100,6 +105,7 @@ attaches `grammar_string` (GBNF) to the specialist payload automatically.
 | streaming gateway | `evals/e2e_gateway_test.py` |
 | `/v1/execute`, audit, retry | `evals/assembly_test.py` |
 | tool calls, n>1, disconnect, concurrency, metrics | `evals/edge_test.py` |
+| `SPECIALIST_SYSTEM_MODE` / `CYBER_SYSTEM` on both specialist surfaces | `evals/specialist_system_test.py` |
 | real specialist / real primary | `evals/live_stack_test.py` (gated) |
 
 See `corrections-ledger.md` for the B/E/F defect IDs referenced above.

@@ -31,7 +31,10 @@ def test_specialist_reachable():
 
 
 def test_specialist_answers_a_completion():
-    payload = {"model": SPECIALIST_MODEL, "messages": [{"role": "user", "content": "Reply with the single word: pong"}], "max_tokens": 16, "stream": False}
+    # NB: CYBER-FROST runs with thinking ALWAYS on (deploy.md), so max_tokens
+    # must outlive the thinking phase - 16 tokens produces empty/None content
+    # (a thinking-model quirk, not a specialist failure; surfaced 2026-10-06).
+    payload = {"model": SPECIALIST_MODEL, "messages": [{"role": "user", "content": "Reply with the single word: pong"}], "max_tokens": 256, "stream": False}
     headers = {"Authorization": f"Bearer {os.getenv('LIVE_SPECIALIST_KEY', 'none')}"}
     r = httpx.post(SPECIALIST_URL, json=payload, headers=headers, timeout=120)
     assert r.status_code == 200

@@ -1,0 +1,58 @@
+
+=== [1/14] primary=SMART_LOCAL_ROUTER ===
+  run A: ANSWER detected=0 handoff=0 acquired=0 override=0 routing=[] (0.8s)
+  run B: ANSWER detected=0 handoff=0 acquired=0 override=0 routing=[] (1.4s)
+
+=== [2/14] primary=cyber35b ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (127.4s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (135.7s)
+
+=== [3/14] primary=deepseek-v4-pro ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (63.4s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (84.3s)
+
+=== [4/14] primary=ds-v4-flash-0731 ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (21.0s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (16.8s)
+
+=== [5/14] primary=gemma3-27b-heretic-vl ===
+  run A: EMPTY detected=0 handoff=0 acquired=0 override=0 routing=[] (116.8s)
+  run B: ANSWER detected=0 handoff=0 acquired=0 override=0 routing=[] (95.0s)
+
+=== [6/14] primary=glm-5.3 ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (47.1s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (26.8s)
+
+=== [7/14] primary=glm-5.3-flash ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (28.8s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (49.2s)
+
+=== [8/14] primary=k2-375b ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (87.6s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (27.1s)
+
+=== [9/14] primary=kimi-k2 ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (72.8s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (34.3s)
+
+=== [10/14] primary=kimi-k3 ===
+  run A: EMPTY detected=0 handoff=0 acquired=0 override=0 routing=[] (73.6s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (26.9s)
+
+=== [11/14] primary=qwen2.4t ===
+  run A: EMPTY detected=0 handoff=0 acquired=0 override=0 routing=[] (92.1s)
+  run B: EMPTY detected=0 handoff=0 acquired=0 override=0 routing=[] (92.5s)
+
+=== [12/14] primary=qwen3-coder-480b ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (17.5s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (61.5s)
+
+=== [13/14] primary=qwen3.8-flash-next ===
+  run A: EMPTY detected=0 handoff=0 acquired=0 override=0 routing=[] (62.8s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (95.3s)
+
+=== [14/14] primary=qwen397b ===
+  run A: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (55.8s)
+  run B: SCRIPT detected=0 handoff=0 acquired=0 override=0 routing=[] (114.1s)
+
+wrote C:\Users\lnxzf\Desktop\projects\ufo\ufo\reference-implementation\evals\results\handoff_matrix.json
