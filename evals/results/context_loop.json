@@ -1,36 +1,63 @@
 [
   {
     "turn": 1,
-    "canary": "CAN-1-33af26",
+    "canary": "CAN-1-7190cf",
     "status": 200,
-    "seconds": 4.5,
-    "ttft_s": 4.47,
-    "history_tokens_est": 49,
-    "reply": "\n\nAcknowledged: CAN-1-33af26 for shufflegaming.com."
+    "seconds": 4.8,
+    "ttft_s": 4.83,
+    "history_tokens_est": 43,
+    "reply": "\n\nAcknowledged: CAN-1-7190cf."
   },
   {
     "turn": 2,
-    "canary": "CAN-2-fb74b8",
+    "canary": "CAN-2-2e4bc9",
     "status": 200,
-    "seconds": 4.7,
-    "ttft_s": 4.67,
-    "history_tokens_est": 98,
-    "reply": "\n\nAcknowledged: CAN-2-fb74b8 for shufflegaming.com."
+    "seconds": 4.1,
+    "ttft_s": 4.13,
+    "history_tokens_est": 87,
+    "reply": "\n\nAcknowledged: CAN-2-2e4bc9."
   },
   {
     "turn": 3,
-    "canary": "CAN-3-2242ab",
+    "canary": "CAN-3-fb3a75",
     "status": 200,
-    "seconds": 6.5,
-    "ttft_s": 6.49,
-    "history_tokens_est": 188,
-    "reply": "\n\nAcknowledged: CAN-3-2242ab for shufflegaming.com.\nCAN-1-33af26\nCAN-2-fb74b8\nCAN-3-2242ab"
+    "seconds": 48.4,
+    "ttft_s": null,
+    "history_tokens_est": 155,
+    "reply": ""
+  },
+  {
+    "turn": 4,
+    "canary": "CAN-4-cfe7bb",
+    "status": 200,
+    "seconds": 26.0,
+    "ttft_s": 26.01,
+    "history_tokens_est": 239,
+    "reply": "\n\nAcknowledged: CAN-4-cfe7bb.\nCAN-1-7190cf\nCAN-2-2e4bc9\nCAN-3-fb3a75"
+  },
+  {
+    "turn": 5,
+    "canary": "CAN-5-448321",
+    "status": 200,
+    "seconds": 18.6,
+    "ttft_s": 18.61,
+    "history_tokens_est": 330,
+    "reply": "\n\nAcknowledged: CAN-5-448321.\nCAN-1-7190cf\nCAN-2-2e4bc9\nCAN-3-fb3a75\nCAN-4-cfe7bb\nCAN-5-448321"
+  },
+  {
+    "turn": 6,
+    "canary": "CAN-6-6ce359",
+    "status": 200,
+    "seconds": 13.9,
+    "ttft_s": 13.89,
+    "history_tokens_est": 424,
+    "reply": "\n\nAcknowledged: CAN-6-6ce359.\nCAN-1-7190cf\nCAN-2-2e4bc9\nCAN-3-fb3a75\nCAN-4-cfe7bb\nCAN-5-448321\nCAN-6-6ce359"
   },
   {
     "turn": "recall_probe",
     "status": 200,
-    "seconds": 8.8,
-    "ttft_s": 8.79,
-    "reply": "\n\nCAN-1-33af26\nCAN-2-fb74b8\nCAN-3-2242ab"
+    "seconds": 7.3,
+    "ttft_s": 7.27,
+    "reply": "\n\nCAN-1-7190cf\nCAN-2-2e4bc9\nCAN-3-fb3a75\nCAN-4-cfe7bb\nCAN-5-448321\nCAN-6-6ce359"
   }
 ]
