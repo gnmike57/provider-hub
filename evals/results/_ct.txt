@@ -1,0 +1,10 @@
+scanned 4 staged file(s): 0 secret hit(s), 0 refused
+[feat/provider-hub 51cf8e1] results: drop scratch commit-capture files; track loki pending event
+ 7 files changed, 110 insertions(+), 20 deletions(-)
+ create mode 100644 ufo/.loki/events/pending/2026-10-06T14-18-51.154361+00-00_3ae69ec6.json
+ create mode 100644 ufo/cline_theinvite.json
+ create mode 100644 ufo/config/ufo/agents_thehive.yaml
+ create mode 100644 ufo/opencode_theinvite.json
+ delete mode 100644 ufo/reference-implementation/evals/results/_c2.txt
+ delete mode 100644 ufo/reference-implementation/evals/results/_c3.txt
+ delete mode 100644 ufo/reference-implementation/evals/results/_c4.txt
