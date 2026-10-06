@@ -419,7 +419,13 @@ def part_loop(turns: int = 6) -> bool:
             if t > 2:
                 prompt += " Then also answer: " + RECALL
             msgs.append({"role": "user", "content": prompt})
-            text, status, secs, ttft = stream_chat(9212, msgs, max_tokens=1200)
+            # 2400 not 1200: thinking is always on (the hub ignores
+            # enable_thinking:false), and from turn 3 the prompt is compound
+            # (acknowledge the canary AND list every prior term) - a 1200
+            # budget was consumed by thinking alone, yielding status 200 with
+            # an EMPTY content stream (reproduced twice, see
+            # context_loop_notes.md).
+            text, status, secs, ttft = stream_chat(9212, msgs, max_tokens=2400)
             msgs.append({"role": "assistant", "content": text})
             hist = sum(len(m["content"]) for m in msgs) // 4
             rows.append({"turn": t, "canary": canary, "status": status,
@@ -436,7 +442,7 @@ def part_loop(turns: int = 6) -> bool:
                 ok = False
                 print(f"  FAIL: bad status/empty reply at turn {t}")
         msgs.append({"role": "user", "content": RECALL})
-        text, status, secs, ttft = stream_chat(9212, msgs, max_tokens=1200)
+        text, status, secs, ttft = stream_chat(9212, msgs, max_tokens=2400)
         hits = [c for c in canaries if c in text]
         rows.append({"turn": "recall_probe", "status": status, "seconds": secs,
                      "ttft_s": ttft, "reply": text[:600]})

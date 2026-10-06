@@ -1,63 +1,63 @@
 [
   {
     "turn": 1,
-    "canary": "CAN-1-681d74",
+    "canary": "CAN-1-22545e",
     "status": 200,
-    "seconds": 3.7,
-    "ttft_s": 3.72,
+    "seconds": 3.6,
+    "ttft_s": 3.59,
     "history_tokens_est": 52,
-    "reply": "\n\nAcknowledged: recon item CAN-1-681d74 for shufflegaming.com."
+    "reply": "\n\nI acknowledge recon item CAN-1-22545e for shufflegaming.com."
   },
   {
     "turn": 2,
-    "canary": "CAN-2-efc195",
+    "canary": "CAN-2-68927c",
     "status": 200,
-    "seconds": 2.5,
-    "ttft_s": 2.47,
+    "seconds": 2.0,
+    "ttft_s": 2.01,
     "history_tokens_est": 104,
-    "reply": "\n\nAcknowledged: recon item CAN-2-efc195 for shufflegaming.com."
+    "reply": "\n\nI acknowledge recon item CAN-2-68927c for shufflegaming.com."
   },
   {
     "turn": 3,
-    "canary": "CAN-3-613fde",
+    "canary": "CAN-3-1af199",
     "status": 200,
-    "seconds": 33.8,
-    "ttft_s": null,
-    "history_tokens_est": 171,
-    "reply": ""
+    "seconds": 3.5,
+    "ttft_s": 3.46,
+    "history_tokens_est": 181,
+    "reply": "\n\nCAN-1-22545e\nCAN-2-68927c\nCAN-3-1af199"
   },
   {
     "turn": 4,
-    "canary": "CAN-4-f70eac",
+    "canary": "CAN-4-f09a3c",
     "status": 200,
-    "seconds": 4.2,
-    "ttft_s": 4.22,
-    "history_tokens_est": 267,
-    "reply": "\n\nAcknowledged: recon item CAN-4-f70eac for shufflegaming.com.\n\nCAN-1-681d74\nCAN-2-efc195\nCAN-3-613fde\nCAN-4-f70eac"
+    "seconds": 3.0,
+    "ttft_s": 3.02,
+    "history_tokens_est": 262,
+    "reply": "\n\nCAN-1-22545e\nCAN-2-68927c\nCAN-3-1af199\nCAN-4-f09a3c"
   },
   {
     "turn": 5,
-    "canary": "CAN-5-fbdf74",
+    "canary": "CAN-5-d82533",
     "status": 200,
-    "seconds": 44.1,
-    "ttft_s": null,
-    "history_tokens_est": 335,
-    "reply": ""
+    "seconds": 9.9,
+    "ttft_s": 9.93,
+    "history_tokens_est": 346,
+    "reply": "\n\nCAN-1-22545e\nCAN-2-68927c\nCAN-3-1af199\nCAN-4-f09a3c\nCAN-5-d82533"
   },
   {
     "turn": 6,
-    "canary": "CAN-6-c2f5ca",
+    "canary": "CAN-6-4d829a",
     "status": 200,
-    "seconds": 16.4,
-    "ttft_s": 16.4,
-    "history_tokens_est": 438,
-    "reply": "\n\nAcknowledged: recon item CAN-6-c2f5ca for shufflegaming.com.\n\nCAN-1-681d74\nCAN-2-efc195\nCAN-3-613fde\nCAN-4-f70eac\nCAN-5-fbdf74\nCAN-6-c2f5ca"
+    "seconds": 6.2,
+    "ttft_s": 6.15,
+    "history_tokens_est": 449,
+    "reply": "\n\nI acknowledge recon item CAN-6-4d829a for shufflegaming.com.\n\nCAN-1-22545e\nCAN-2-68927c\nCAN-3-1af199\nCAN-4-f09a3c\nCAN-5-d82533\nCAN-6-4d829a"
   },
   {
     "turn": "recall_probe",
     "status": 200,
-    "seconds": 8.8,
-    "ttft_s": 8.79,
-    "reply": "\n\nCAN-1-681d74\nCAN-2-efc195\nCAN-3-613fde\nCAN-4-f70eac\nCAN-5-fbdf74\nCAN-6-c2f5ca"
+    "seconds": 5.8,
+    "ttft_s": 5.85,
+    "reply": "\n\nCAN-1-22545e\nCAN-2-68927c\nCAN-3-1af199\nCAN-4-f09a3c\nCAN-5-d82533\nCAN-6-4d829a"
   }
 ]
