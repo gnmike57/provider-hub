@@ -1,45 +1,36 @@
 [
   {
     "turn": 1,
-    "canary": "CAN-1-552fb9",
+    "canary": "CAN-1-33af26",
     "status": 200,
-    "seconds": 2.8,
-    "ttft_s": 2.77,
-    "history_tokens_est": 43,
-    "reply": "\n\nAcknowledged: CAN-1-552fb9."
+    "seconds": 4.5,
+    "ttft_s": 4.47,
+    "history_tokens_est": 49,
+    "reply": "\n\nAcknowledged: CAN-1-33af26 for shufflegaming.com."
   },
   {
     "turn": 2,
-    "canary": "CAN-2-77e9f2",
+    "canary": "CAN-2-fb74b8",
     "status": 200,
-    "seconds": 1.9,
-    "ttft_s": 1.95,
-    "history_tokens_est": 87,
-    "reply": "\n\nAcknowledged: CAN-2-77e9f2."
+    "seconds": 4.7,
+    "ttft_s": 4.67,
+    "history_tokens_est": 98,
+    "reply": "\n\nAcknowledged: CAN-2-fb74b8 for shufflegaming.com."
   },
   {
     "turn": 3,
-    "canary": "CAN-3-5c9388",
+    "canary": "CAN-3-2242ab",
     "status": 200,
-    "seconds": 9.5,
-    "ttft_s": null,
-    "history_tokens_est": 155,
-    "reply": ""
-  },
-  {
-    "turn": 4,
-    "canary": "CAN-4-28aab9",
-    "status": 200,
-    "seconds": 7.9,
-    "ttft_s": null,
-    "history_tokens_est": 222,
-    "reply": ""
+    "seconds": 6.5,
+    "ttft_s": 6.49,
+    "history_tokens_est": 188,
+    "reply": "\n\nAcknowledged: CAN-3-2242ab for shufflegaming.com.\nCAN-1-33af26\nCAN-2-fb74b8\nCAN-3-2242ab"
   },
   {
     "turn": "recall_probe",
     "status": 200,
-    "seconds": 4.4,
-    "ttft_s": 4.36,
-    "reply": "\n\nCAN-1-552fb9\nCAN-2-77e9f2\nCAN-3-5c9388\nCAN-4-28aab9"
+    "seconds": 8.8,
+    "ttft_s": 8.79,
+    "reply": "\n\nCAN-1-33af26\nCAN-2-fb74b8\nCAN-3-2242ab"
   }
 ]

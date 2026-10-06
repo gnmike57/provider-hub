@@ -1,0 +1,9 @@
+== part loop: 3-turn normal conversation with CYBER-FROST ==
+  turn 1: echo=OK recall_prior=- ttft=4.47s total=4.5s hist~49tok
+  turn 2: echo=OK recall_prior=- ttft=4.67s total=4.7s hist~98tok
+  turn 3: echo=OK recall_prior=OK ttft=6.49s total=6.5s hist~188tok
+  final probe: 3/3 canaries retrieved verbatim (ttft=8.79s total=8.8s)
+  ttft profile: 4.47s -> 4.67s -> 6.49s -> 8.79s
+
+== summary ==
+  loop: PASS
