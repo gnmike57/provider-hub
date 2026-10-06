@@ -8,25 +8,24 @@
 | wire   | offline| PASS   | 15/15 assertions (divert, provenance, F6/F7 carry, artefact pruning) - `context_wire.log` |
 | loop   | live   | PASS   | 3-turn run: 3/3 canaries retrieval, ttft 4.47 -> 8.79s - `context_loop.json` |
 
-## Transient empty reply (6-turn run, turn 3)
+## Empty reply on compound turns - root-caused and fixed
 
-The 6-turn default run failed one turn:
+Both 6-turn runs failed early turns with `status 200, ttft null, reply ""`
+(48.4s, then 33.8s + 44.1s on the re-run). Evidence it was **budget
+exhaustion, not context loss or a handoff defect**:
 
-```json
-{"turn": 3, "status": 200, "seconds": 48.4, "ttft_s": null, "reply": ""}
-```
+* turn 3 is the first turn whose prompt is compound (acknowledge the canary
+  AND list every prior term); it failed in both runs;
+* elapsed 34-48s at ~45 tok/s is ~1500-2100 generated tokens - more than the
+  old 1200 budget, and thinking is always-on on CYBER-FROST (the hub ignores
+  `enable_thinking:false`), so the budget was consumed before any content;
+* the NEXT turn rebuilt every missing canary verbatim, and the final probe
+  returned **6/6 canaries** - the conversation was never truncated.
 
-Classification: a **transient empty-answer response**, not a context loss.
-Evidence it is not a handoff/context defect:
-
-* turn 4 (same conversation, sent after the empty turn) echoed CAN-4 and
-  listed CAN-1, CAN-2 **and CAN-3** verbatim - the history was intact;
-* the final recall probe returned **6/6 canaries verbatim** in 7.3s;
-* status was 200 with zero content deltas and no error event.
-
-Known shape from the calibration notes: CYBER-FROST thinks always-on, so a
-turn whose budget is consumed by thinking can emit an empty content stream.
-The 3-turn run had no such turn. Re-run recorded in `loop6_rerun_stdout.txt`.
+Fix: per-turn `max_tokens` 1200 -> 2400 in `part_loop` (both the turn loop and
+the final recall probe). Verified: full 6-turn run now passes every turn with
+echo=OK and recall_prior=OK, final probe 6/6, ttft 3.59 -> 5.85s
+(`loop7_stdout.txt`).
 
 ## Environment note (not test-related)
 

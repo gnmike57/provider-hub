@@ -1,0 +1,6 @@
+scanned 6 staged file(s): 0 secret hit(s), 0 refused
+[feat/provider-hub d11d9ac] loop phase: raise per-turn budget 1200->2400 (thinking is always-on; empty 200 replies on compound turns); notes on transient-empty classification
+ 6 files changed, 542 insertions(+), 33 deletions(-)
+ create mode 100644 ufo/reference-implementation/evals/results/_c3.txt
+ create mode 100644 ufo/reference-implementation/evals/results/loop7_stderr.txt
+ create mode 100644 ufo/reference-implementation/evals/results/loop7_stdout.txt
