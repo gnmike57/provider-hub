@@ -45,7 +45,45 @@ __all__ = [
     "to_openai_chunk",
     "openai_anthropic_messages",
     "anthropic_finish_reason",
+    "FROST_ALIASES",
+    "resolve_frost_alias",
 ]
+
+# --------------------------------------------------------------------------
+# Frost names (2026-10-07): the operator's brand for the specialised
+# speculative systems, addressable as model ids. Each name maps to the slot the
+# gateway already has configured - "primary" = PRIMARY_API_URL/KEY (the Hive
+# provider), "worker" = FALLBACK_API_URL/KEY (the gx10 hub specialist) - plus
+# the exact upstream model id, so one endpoint can serve any of them.
+# --------------------------------------------------------------------------
+FROST_ALIASES = {
+    "deepfrost v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    "deepfrost-v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    "deepfrost-v41": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    "deepfrost": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    "glmfrost 5.3 flash": ("primary", "zai-org/glm-5.3-flash"),
+    "glmfrost-5.3-flash": ("primary", "zai-org/glm-5.3-flash"),
+    "glmfrost": ("primary", "zai-org/glm-5.3-flash"),
+    "glmfrost5.3flash": ("primary", "zai-org/glm-5.3-flash"),
+    "cyberfrost 3.8 sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
+    "cyberfrost-3.8-sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
+    "cyberfrost": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
+}
+
+
+def resolve_frost_alias(model: str):
+    """`"DeepFrost v4.1"` -> `("primary", "deepseek-ai/deepseek-v4.1-flash")`.
+
+    Returns None for anything that is not a Frost name, so raw upstream ids and
+    every other model keep their existing behaviour.
+    """
+    if not model:
+        return None
+    key = " ".join(str(model).strip().lower().replace("_", " ").split())
+    if key in FROST_ALIASES:
+        return FROST_ALIASES[key]
+    return FROST_ALIASES.get(key.replace(" ", "-"))
+
 
 ANTHROPIC_VERSION = "2023-06-01"
 ANTHROPIC_DEFAULT_MAX_TOKENS = 4096

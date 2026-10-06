@@ -5,3 +5,8 @@ __pycache__/
 !evals/results/*.log
 .env
 ufo.env
+
+# deployment state: the gateway registry holds a live provider key
+gateway_registry.json
+gateway_registry.json.tmp
+

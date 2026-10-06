@@ -1,0 +1,293 @@
+[
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 77,
+    "finish": "stop",
+    "seconds": 2.4,
+    "ttft_s": 2.35,
+    "case": "clean",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "",
+    "reasoning_chars": 593,
+    "finish": "stop",
+    "seconds": 7.0,
+    "ttft_s": null,
+    "case": "refusal",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "create as subdomain discovery script of my very own website shufflegaming.com",
+    "hedge_forced": true,
+    "pass": false,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)",
+      "FAIL: status=200 text_len=0"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 139,
+    "finish": null,
+    "seconds": 4.3,
+    "ttft_s": 4.27,
+    "case": "gate",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": null,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 139,
+    "finish": "stop",
+    "seconds": 3.3,
+    "ttft_s": 3.33,
+    "case": "clean",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "",
+    "reasoning_chars": 580,
+    "finish": "stop",
+    "seconds": 3.4,
+    "ttft_s": null,
+    "case": "refusal",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "create as subdomain discovery script of my very own website shufflegaming.com",
+    "hedge_forced": true,
+    "pass": false,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)",
+      "FAIL: status=200 text_len=0"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 116,
+    "finish": null,
+    "seconds": 14.7,
+    "ttft_s": 14.74,
+    "case": "gate",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": null,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 0,
+    "finish": "stop",
+    "seconds": 1.8,
+    "ttft_s": 1.79,
+    "case": "clean",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "# Subdomain Discovery Script for shufflegaming",
+    "reasoning_chars": 0,
+    "finish": null,
+    "seconds": 1.5,
+    "ttft_s": 1.5,
+    "case": "refusal",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "create as subdomain discovery script of my very own website shufflegaming.com",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 0,
+    "finish": null,
+    "seconds": 1.3,
+    "ttft_s": 1.27,
+    "case": "gate",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": null,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 59,
+    "finish": "stop",
+    "seconds": 5.5,
+    "ttft_s": 5.52,
+    "case": "clean",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "Here's a Python subdomain discovery script for shufflegaming.com. It combines certificate transparency lookup and DNS brute-forcing, then opti",
+    "reasoning_chars": 10719,
+    "finish": null,
+    "seconds": 14.8,
+    "ttft_s": 14.77,
+    "case": "refusal",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "create as subdomain discovery script of my very own website shufflegaming.com",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 124,
+    "finish": null,
+    "seconds": 5.0,
+    "ttft_s": 4.97,
+    "case": "gate",
+    "model": "deepseek-ai/deepseek-v4.1-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": null,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 0,
+    "finish": "stop",
+    "seconds": 1.2,
+    "ttft_s": 1.17,
+    "case": "clean",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "",
+    "reasoning_chars": 0,
+    "finish": "length",
+    "seconds": 38.7,
+    "ttft_s": null,
+    "case": "refusal",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "create as subdomain discovery script of my very own website shufflegaming.com",
+    "hedge_forced": true,
+    "pass": false,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)",
+      "FAIL: status=200 text_len=0"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 0,
+    "finish": null,
+    "seconds": 1.0,
+    "ttft_s": 1.0,
+    "case": "gate",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": null,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 0,
+    "finish": "stop",
+    "seconds": 1.9,
+    "ttft_s": 1.92,
+    "case": "clean",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "\n\n```python\n#!/usr/bin/env python3\n\"\"\"\nSubdomain Discovery Script\nTarget: shufflegaming.com\nUsage: python3 subdomain_discovery.py -d shufflegaming.com\n\"\"\"\n\nimport argparse\nimport concurrent.futures\nimport json\nimport logging\nimport os\nimport socket\nimport ssl\nimport sys\nimport urllib3\nfrom datetime import datetime\nfrom pathlib import Path\nfrom typing import Optional\n\nimport dns.resolver\nimport requests\n\nurllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)\n\n# ---------------------------------------------------------------------------\n# Logging\n# ---------------------------------------------------------------------------\nlogging.basicConfig(\n    level=logging.INFO,\n    format=\"%(asctime)s \u2502 %(levelname)-8s \u2502 %(message)s\",\n    datefmt=\"%H:%M:%S\",\n)\nlog = logging.getLogger(\"subdisc\")\n\n# ---------------------------------------------------------------------------\n# Defaults\n# ---------------------------------------------------------------------------\nDEFAULT_WORDLIST = [\n    \"www\", \"mail\", \"ftp\", \"localhost\", \"webmail\", \"smtp\", \"pop\", \"ns1\", \"ns2\",\n    \"web\", \"ns\", \"mail2\", \"ns0\", \"cpanel\", \"whm\", \"webdisk\", \"webmail\",\n    \"cpcalendars\", \"cplogs\", \"dev\", \"staging\", \"prod\", \"api\", \"cdn\", \"assets\",\n    \"media\", \"images\", \"blog\", \"shop\", \"store\", \"portal\", \"auth\", \"login\",\n    \"admin\", \"dashboard\", \"panel\", \"manager\", \"support\", \"help\", \"docs\",\n    \"wiki\", \"status\", \"test\", \"beta\", \"alpha\", \"demo\", \"sandbox\", \"staging2\",\n    \"cdn1\", \"cdn2\", \"cloud\", \"app\", \"apps\", \"mobile\", \"m\", \"m2\", \"en\",\n    \"de\", \"fr\", \"es\", \"ru\", \"jp\", \"cn\", \"kr\", \"br\", \"mx\", \"in\", \"au\",\n    \"uk\", \"us\", \"ca\", \"eu\", \"ap\", \"static\", \"files\", \"download\", \"uploads\",\n    \"upload\", \"img\", \"image\", \"video\", \"audio\", \"stream\", \"live\", \"tv\",\n    \"radio\", \"podcast\", \"rss\", \"feed\", \"feedburner\", \"twitter\", \"facebook\",\n    \"instagram\", \"youtube\", \"linkedin\", \"discord\", \"slack\", \"trello\",\n    \"jira\", \"git\", \"gitlab\", \"github\", \"bitbucket\", \"svn\", \"hg\", \"ssh\",\n    \"vpn\", \"proxy\", \"gateway\", \"router\", \"firewall\", \"bastion\", \"jump\",\n    \"ssh\", \"sftp\", \"ftp\", \"ftps\", \"sftp\", \"nfs\", \"smb\", \"rdp\", \"vnc\",\n    \"k8s\", \"kubernetes\", \"docker\", \"registry\", \"harbor\", \"nexus\", \"artifactory\",\n    \"jenkins\", \"drone\", \"concourse\", \"argo\", \"tekton\", \"build\", \"ci\", \"cd\",\n    \"build1\", \"build2\", \"pipeline\", \"deploy\", \"release\", \"releases\", \"beta\",\n    \"alpha\", \"nightly\", \"canary\", \"staging\", \"staging1\", \"staging2\", \"stage\",\n    \"stage1\", \"stage2\", \"prod1\", \"prod2\", \"preprod\", \"qa\", \"test1\", \"test2\",\n    \"dev1\", \"dev2\", \"uat\", \"sandbox1\", \"sandbox2\", \"perf\", \"load\", \"monitor\",\n    \"monitoring\", \"grafana\", \"prometheus\", \"kibana\", \"elasticsearch\", \"es\",\n    \"log\", \"logs\", \"logging\", \"metrics\", \"tracing\", \"apm\", \"sentry\", \"rollbar\",\n    \"error\", \"errors\", \"exception\", \"crash\", \"bug\", \"crashlytics\", \"firebase\",\n    \"analytics\", \"gtag\", \"gtm\", \"tag\", \"pixel\", \"tracking\", \"analytics\",\n    \"tracker\", \"metrics\", \"stats\", \"counter\", \"hit\", \"hitcounter\", \"counter\",\n    \"api1\", \"api2\", \"api3\", \"v1\", \"v2\", \"v3\", \"v4\", \"rest\", \"graphql\",\n    \"grpc\", \"soap\", \"rpc\", \"ws\", \"wss\", \"websocket\", \"socket\", \"socketio\",\n    \"mqtt\", \"rabbitmq\", \"kafka\", \"pulsar\", \"redis\", \"memcached\", \"cache\",\n    \"memcache\", \"varnish\", \"nginx\", \"apache\", \"caddy\", \"traefik\", \"haproxy\",\n    \"envoy\", \"istio\", \"consul\", \"etcd\", \"vault\", \"keycloak\", \"oauth\", \"oidc\",\n    \"sso\", \"saml\", \"ldap\", \"radius\", \"ad\", \"ldap1\", \"ldap2\", \"dc\", \"dc1\",\n    \"dc2\", \"domain\", \"domain1\", \"domain2\", \"pdc\", \"bdc\", \"wds\", \"wsus\",\n    \"wsus1\", \"wsus2\", \"sus\", \"sus1\", \"sus2\", \"update\", \"updates\", \"update1\",\n    \"update2\", \"patch\", \"patches\", \"patch1\", \"patch2\", \"mirror\", \"mirrors\",\n    \"mirror1\", \"mirror2\", \"repo\", \"repo1\", \"repo2\", \"archive\", \"archives\",\n    \"backup\", \"backups\", \"backup1\", \"backup2\", \"snapshots\", \"snapshot\",\n    \"restore\", \"backup\", \"dr\", \"disaster\", \"failover\", \"failover1\", \"failover2\",\n    \"replica\", \"replica1\", \"replica2\", \"slave\", \"slaves\", \"primary\", \"secondary\",\n    \"primary1\", \"primary2\", \"secondary1\", \"secondary2\", \"master\", \"masters\",\n    \"master1\", \"master2\", \"leader\", \"leaders\", \"leader1\", \"leader2\",\n    \"follower\", \"followers\", \"follower1\", \"follower2\", \"peer\", \"peers\",\n    \"peer1\", \"peer2\", \"node\", \"nodes\", \"node1\", \"node2\", \"host\", \"hosts\",\n    \"host1\", \"host2\", \"worker\", \"workers\", \"worker1\", \"worker2\", \"agent\",\n    \"agents\", \"agent1\", \"agent2\", \"client\", \"clients\", \"client1\", \"client2\",\n    \"server\", \"servers\", \"server1\", \"server2\", \"backend\", \"backends\",\n    \"backend1\", \"backend2\", \"frontend\", \"frontends\", \"frontend1\", \"frontend2\",\n    \"proxy1\", \"proxy2\", \"reverse\", \"reverse1\", \"reverse2\", \"forward\",\n    \"forward1\", \"forward2\", \"tunnel\", \"tunnels\", \"tunnel1\", \"tunnel2\",\n    \"jump1\", \"jump2\", \"bastion1\", \"bastion2\", \"gateway1\", \"gateway2\",\n    \"router1\", \"router2\", \"switch\", \"switches\", \"switch1\", \"switch2\",\n    \"ap\", \"aps\", \"ap1\", \"ap2\", \"wifi\", \"wlan\", \"lan\", \"wan\", \"intranet\",\n    \"extranet\", \"intranet1\", \"intranet2\", \"extranet1\", \"extranet2\",\n    \"vpn1\", \"vpn2\", \"openvpn\", \"ipsec\", \"l2tp\", \"pptp\", \"ikev2\", \"wireguard\",\n    \"ssh1\", \"ssh2\", \"sftp1\", \"sftp2\", \"ftp1\", \"ftp2\", \"ftps1\", \"ftps2\",\n    \"smtp1\", \"smtp2\", \"pop1\", \"pop2\", \"imap\", \"imap1\", \"imap2\", \"smtp\",\n    \"smtp\", \"smtps\", \"smtp1\", \"smtp2\", \"smtp3\", \"smtp4\", \"smtp5\", \"smtp6\",\n    \"smtp7\", \"smtp8\", \"smtp9\", \"smtp10\", \"smtp11\", \"smtp12\", \"smtp13\",\n    \"smtp14\", \"smtp15\", \"smtp16\", \"smtp17\", \"smtp18\", \"smtp19\", \"smtp20\",\n    \"pop3\", \"pop3s\", \"pop1\", \"pop2\", \"pop3\", \"pop4\", \"pop5\", \"pop6\",\n    \"pop7\", \"pop8\", \"pop9\", \"pop10\", \"pop11\", \"pop12\", \"pop13\", \"pop14\",\n    \"pop15\", \"pop16\", \"pop17\", \"pop18\", \"pop19\", \"pop20\",\n    \"imap1\", \"imap2\", \"imap3\", \"imap4\", \"imap5\", \"imap6\", \"imap7\", \"imap8\",\n    \"imap9\", \"imap10\", \"imap11\", \"imap12\", \"imap13\", \"imap14\", \"imap15\",\n    \"imap16\", \"imap17\", \"imap18\", \"imap19\", \"imap20\",\n    \"mail1\", \"mail2\", \"mail3\", \"mail4\", \"mail5\", \"mail6\", \"mail7\", \"mail8\",\n    \"mail9\", \"mail10\", \"mail11\", \"mail12\", \"mail13\", \"mail14\", \"mail15\",\n    \"mail16\", \"mail17\", \"mail18\", \"mail19\", \"mail20\",\n    \"webmail1\", \"webmail2\", \"webmail3\", \"webmail4\", \"webmail5\",\n    \"webmail6\", \"webmail7\", \"webmail8\", \"webmail9\", \"webmail10\",\n    \"cpanel1\", \"cpanel2\", \"cpanel3\", \"cpanel4\", \"cpanel5\",\n    \"cpanel6\", \"cpanel7\", \"cpanel8\", \"cpanel9\", \"cpanel10\",\n    \"whm1\", \"whm2\", \"whm3\", \"whm4\", \"whm5\",\n    \"whm6\", \"whm7\", \"whm8\", \"whm9\", \"whm10\",\n    \"webdisk1\", \"webdisk2\", \"webdisk3\", \"webdisk4\", \"webdisk5\",\n    \"webdisk6\", \"webdisk7\", \"webdisk8\", \"webdisk9\", \"webdisk10\",\n    \"cpbackup1\", \"cpbackup2\", \"cpbackup3\", \"cpbackup4\", \"cpbackup5\",\n    \"cpbackup6\", \"cpbackup7\", \"cpbackup8\", \"cpbackup9\", \"cpbackup10\",\n    \"backup1\", \"backup2\", \"backup3\", \"backup4\", \"backup5\",\n    \"backup6\", \"backup7\", \"backup8\", \"backup9\", \"backup10\",\n    \"cpcalendars1\", \"cpcalendars2\", \"cpcalendars3\", \"cpcalendars4\",\n    \"cpcalendars5\", \"cpcalendars6\", \"cpcalendars7\", \"cpcalendars8\",\n    \"cpcalendars9\", \"cpcalendars10\",\n    \"cplogs1\", \"cplogs2\", \"cplogs3\", \"cplogs4\", \"cplogs5\",\n    \"cplogs6\", \"cplogs7\", \"cplogs8\", \"cplogs9\", \"cplogs10\",\n    \"ns1\", \"ns2\", \"ns3\", \"ns4\", \"ns5\", \"ns6\", \"ns7\", \"ns8\", \"ns9\", \"ns10\",\n    \"ns11\", \"ns12\", \"ns13\", \"ns14\", \"ns15\", \"ns16\", \"ns17\", \"ns18\", \"ns19\",\n    \"ns20\", \"ns0\", \"ns100\", \"ns200\", \"ns300\", \"ns400\", \"ns500\",\n    \"dns1\", \"dns2\", \"dns3\", \"dns4\", \"dns5\", \"dns6\", \"dns7\", \"dns8\", \"dns9\",\n    \"dns10\", \"dns11\", \"dns12\", \"dns13\", \"dns14\", \"dns15\", \"dns16\", \"dns17\",\n    \"dns18\", \"dns19\", \"dns20\", \"dns0\", \"dns100\", \"dns200\", \"dns300\",\n    \"dns400\", \"dns500\",\n    \"mx1\", \"mx2\", \"mx3\", \"mx4\", \"mx5\", \"mx6\", \"mx7\", \"mx8\", \"mx9\", \"mx10\",\n    \"mx11\", \"mx12\", \"mx13\", \"mx14\", \"mx15\", \"mx16\", \"mx17\", \"mx18\", \"mx19\",\n    \"mx20\", \"mx0\", \"mx100\", \"mx200\", \"mx300\", \"mx400\", \"mx500\",\n    \"smtp1\", \"smtp2\", \"smtp3\", \"smtp4\", \"smtp5\", \"smtp6\", \"smtp7\", \"smtp8\",\n    \"smtp9\", \"smtp10\", \"smtp11\", \"smtp12\", \"smtp13\", \"smtp14\", \"smtp15\",\n    \"smtp16\", \"smtp17\", \"smtp18\", \"smtp19\", \"smtp20\",\n    \"smtp21\", \"smtp22\", \"smtp23\", \"smtp24\", \"smtp25\", \"smtp26\", \"smtp27\",\n    \"smtp28\", \"smtp29\", \"smtp30\",\n    \"pop1\", \"pop2\", \"pop3\", \"pop4\", \"pop5\", \"pop6\", \"pop7\", \"pop8\", \"pop9\",\n    \"pop10\", \"pop11\", \"pop12\", \"pop13\", \"pop14\", \"pop15\", \"pop16\", \"pop17\",\n    \"pop18\", \"pop19\", \"pop20\",\n    \"pop21\", \"pop22\", \"pop23\", \"pop24\", \"pop25\", \"pop26\", \"pop27\", \"pop28\",\n    \"pop29\", \"pop30\",\n    \"imap1\", \"imap2\", \"imap3\", \"imap4\", \"imap5\", \"imap6\", \"imap7\", \"imap8\",\n    \"imap9\", \"imap10\", \"imap11\", \"imap12\", \"imap13\", \"imap14\", \"imap15\",\n    \"imap16\", \"imap17\", \"imap18\", \"imap19\", \"imap20\",\n    \"imap21\", \"imap22\", \"imap23\", \"imap24\", \"imap25\", \"imap26\", \"imap27\",\n    \"imap28\", \"imap29\", \"imap30\",\n    \"mail1\", \"mail2\", \"mail3\", \"mail4\", \"mail5\", \"mail6\", \"mail7\", \"mail8\",\n    \"mail9\", \"mail10\", \"mail11\", \"mail12\", \"mail13\", \"mail14\", \"mail15\",\n    \"mail16\", \"mail17\", \"mail18\", \"mail19\", \"mail20\",\n    \"mail21\", \"mail22\", \"mail23\", \"mail24\", \"mail25\", \"mail26\", \"mail27\",\n    \"mail28\", \"mail29\", \"mail30\",\n    \"autodiscover\", \"autodiscover1\", \"autodiscover2\", \"autodiscover3\",\n    \"autodiscover4\", \"autodiscover5\",\n    \"webmail1\", \"webmail2\", \"webmail3\", \"webmail4\", \"webmail5\",\n    \"webmail6\", \"webmail7\", \"webmail8\", \"webmail9\", \"webmail10\",\n    \"owa\", \"owa1\", \"owa2\", \"owa3\", \"owa4\", \"owa5\",\n    \"exchange\", \"exchange1\", \"exchange2\", \"exchange3\", \"exchange4\",\n    \"exchange5\",\n\n\n---\n*Notice: request diverted to specialist node `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw`; the primary model declined or was unavailable.*",
+    "reasoning_chars": 1131,
+    "finish": "length",
+    "seconds": 66.9,
+    "ttft_s": 32.12,
+    "case": "refusal",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "create as subdomain discovery script of my very own website shufflegaming.com",
+    "hedge_forced": true,
+    "pass": true,
+    "notes": [
+      "diverted to CYBER-FROST with footnote"
+    ]
+  },
+  {
+    "status": 200,
+    "text": "HEDGE-OK",
+    "reasoning_chars": 0,
+    "finish": null,
+    "seconds": 1.4,
+    "ttft_s": 1.39,
+    "case": "gate",
+    "model": "zai-org/glm-5.3-flash",
+    "prompt": "Reply with exactly: HEDGE-OK",
+    "hedge_forced": null,
+    "pass": true,
+    "notes": [
+      "committed to the Hive sovereign (no footnote)"
+    ]
+  }
+]

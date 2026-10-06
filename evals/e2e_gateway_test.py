@@ -209,8 +209,13 @@ def test_chunked_body_without_content_length_is_413(script, monkeypatch):
     assert "too large" in resp.text
 
 
-async def test_read_json_body_counts_streamed_bytes(monkeypatch):
-    """Direct proof, independent of the HTTP client: no Content-Length at all."""
+def test_read_json_body_counts_streamed_bytes(monkeypatch):
+    """Direct proof, independent of the HTTP client: no Content-Length at all.
+
+    Was `async def` with no plugin marker, so pytest skipped it as
+    "async functions are not natively supported" and it never ran; driven with
+    anyio.run now, matching evals/hedge_test.py's convention.
+    """
     monkeypatch.setattr(proxy_gateway.SETTINGS, "max_body_bytes", 1024)
 
     class _NoHeaderRequest:
@@ -220,8 +225,13 @@ async def test_read_json_body_counts_streamed_bytes(monkeypatch):
             for _ in range(4):  # 2 KiB over a 1 KiB cap
                 yield b"x" * 512
 
-    with pytest.raises(proxy_gateway.HTTPException) as err:
+    import anyio
+
+    async def call():
         await proxy_gateway.read_json_body(_NoHeaderRequest())
+
+    with pytest.raises(proxy_gateway.HTTPException) as err:
+        anyio.run(call)
     assert err.value.status_code == 413
 
 

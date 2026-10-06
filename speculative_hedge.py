@@ -66,6 +66,14 @@ class HedgeSettings:
         # made the client wait 0.59s for the first visible token instead of
         # 0.24s (measured at 42.3 tok/s on the gx10).
         self.commit_tokens = _int_env("COMMIT_TOKENS", 10)
+        # Output cap, sent as BOTH max_tokens and max_completion_tokens. Hive's
+        # self-hosted models (deepseek-ai/deepseek-v4.1-flash, zai-org/glm-5.3-flash)
+        # honour only max_completion_tokens: given max_tokens alone they spend the
+        # whole budget on hidden reasoning, and glm-5.3-flash returns ZERO content
+        # (measured 2026-10-07: max_tokens=2000 -> 0 chars content, finish=length;
+        # max_completion_tokens=2000 -> 6461 chars). Unknown fields are ignored by
+        # other OpenAI-compatible servers, so sending both is safe.
+        self.max_tokens = _int_env("HEDGE_MAX_TOKENS", 4096)
         # Live thinking (default ON, operator preference 2026-10-05): forward the
         # sovereign's reasoning deltas the moment they arrive instead of holding
         # them until the commit decision. It is still never counted and never
@@ -84,7 +92,7 @@ log = logging.getLogger("speculative_hedge")
 # from here on: `transport_error` = connect/read blew up, `bad_status` = it
 # answered but not with 2xx (the common one being 404 model_not_found while the
 # specialist's weights are still loading after a reboot).
-_FAILURES = {"transport_error": 0, "bad_status": 0}
+_FAILURES = {"transport_error": 0, "bad_status": 0, "empty_sovereign": 0}
 
 
 def hedge_failure_counts() -> dict:
@@ -174,14 +182,18 @@ async def hedge_stream(
                 client,
                 "POST",
                 s.sovereign_url,
-                json={"model": s.sovereign_model, "messages": messages, "stream": True},
+                json={"model": s.sovereign_model, "messages": messages, "stream": True,
+                      "max_tokens": s.max_tokens,
+                      "max_completion_tokens": s.max_tokens},
                 headers={**_auth_header(s.sovereign_key), "Content-Type": "application/json"},
             )
             worker_cm = open_stream(
                 client,
                 "POST",
                 s.worker_url,
-                json={"model": s.worker_model, "messages": worker_msgs, "stream": True},
+                json={"model": s.worker_model, "messages": worker_msgs, "stream": True,
+                      "max_tokens": s.max_tokens,
+                      "max_completion_tokens": s.max_tokens},
                 headers={**_auth_header(s.worker_key), "Content-Type": "application/json"},
             )
             try:
@@ -277,6 +289,21 @@ async def hedge_stream(
                 except httpx.TransportError:
                     use_worker = True  # sovereign died mid-screening
 
+            # Empty-sovereign rule (2026-10-07, found live): a sovereign that
+            # finishes with ZERO content tokens answered nothing. Measured on
+            # zai-org/glm-5.3-flash, whose hidden reasoning can consume the whole
+            # output cap and end with finish_reason=length and an empty content
+            # stream (and on deepseek-ai/deepseek-v4.1-flash before the
+            # max_completion_tokens fix). Committing to that hands the caller a
+            # blank page with HTTP 200, no footnote and no signal. Treat it as a
+            # failed sovereign and divert to the worker.
+            if commit_sovereign and content_tokens == 0 and not use_worker:
+                commit_sovereign = False
+                use_worker = True
+                _FAILURES["empty_sovereign"] += 1
+                log.warning("sovereign %s finished with no content -> worker",
+                            s.sovereign_model)
+
             # F8: a screened-out sovereign is never something we may fall back TO.
             # `use_worker` is True here only because screening caught a refusal, a
             # timeout, or an error event in the sovereign's own output. Replaying
@@ -292,7 +319,7 @@ async def hedge_stream(
                     log.warning("sovereign %s screened out with no specialist "
                                 "available; withholding sovereign output",
                                 s.sovereign_model)
-                    yield f"data: {json.dumps({'error': 'specialist unavailable; sovereign output withheld (refusal/timeout/error detected)'})}\n\n".encode()
+                    yield f"data: {json.dumps({'error': 'specialist unavailable; sovereign output withheld (refusal/timeout/error/empty detected)'})}\n\n".encode()
                     yield b"data: [DONE]\n\n"
                     return
                 use_worker = False  # sovereign is clean and there is nowhere to divert

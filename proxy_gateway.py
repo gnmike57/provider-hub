@@ -31,6 +31,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from providers import resolve_frost_alias
+
 from context_formatter import (
     CYBER_SYSTEM,
     DEFAULT_SYSTEM,
@@ -632,11 +634,30 @@ async def chat_proxy(request: Request):
     # B11 gate: the speculative hedge only fires on latency hints or force.
     hedge_requested = should_hedge(user_query, force=body.get("hedge") is True)
 
+    # Frost names ("DeepFrost v4.1", "GLMFrost 5.3 Flash", "CyberFrost 3.8 SAGE")
+    # are real model ids. Resolve to the configured slot + upstream id so one
+    # endpoint can address any published system; anything else passes through.
+    requested = body.get("model") or settings.primary_model
+    frost = resolve_frost_alias(requested)
+    if frost and frost[0] == "worker":
+        call_settings = copy.copy(settings)
+        call_settings.primary_api_url = settings.fallback_api_url
+        call_settings.primary_api_key = settings.fallback_api_key
+        primary_model_used = frost[1]
+    else:
+        call_settings = settings
+        primary_model_used = frost[1] if frost else requested
+
     primary_payload = {
-        "model": body.get("model") or settings.primary_model,
+        "model": primary_model_used,
         "messages": messages,
         "stream": True,
         "max_tokens": body.get("max_tokens", 4096),
+        # Hive honours only max_completion_tokens (see speculative_hedge):
+        # given max_tokens alone its models spend the budget on reasoning and
+        # glm-5.3-flash returns empty content.
+        "max_completion_tokens": body.get(
+            "max_completion_tokens", body.get("max_tokens", 4096)),
     }
     if body.get("tools"):
         primary_payload["tools"] = body["tools"]
@@ -644,7 +665,7 @@ async def chat_proxy(request: Request):
         primary_payload["tool_choice"] = body["tool_choice"]
     if body.get("temperature") is not None:
         primary_payload["temperature"] = body["temperature"]
-    primary_headers = {**_auth_header(settings.primary_api_key), "Content-Type": "application/json"}
+    primary_headers = {**_auth_header(call_settings.primary_api_key), "Content-Type": "application/json"}
 
     async def coordinator() -> AsyncGenerator[bytes, None]:
         try:
@@ -671,8 +692,8 @@ async def chat_proxy(request: Request):
                 # monkeypatched knobs still apply - and hand the copy to the
                 # call, which already accepts `settings=`.
                 h = copy.copy(speculative_hedge.SETTINGS)
-                h.sovereign_url = settings.primary_api_url
-                h.sovereign_key = settings.primary_api_key
+                h.sovereign_url = call_settings.primary_api_url
+                h.sovereign_key = call_settings.primary_api_key
                 h.sovereign_model = primary_payload["model"]
                 h.worker_url = settings.fallback_api_url
                 h.worker_key = settings.fallback_api_key
@@ -684,7 +705,7 @@ async def chat_proxy(request: Request):
                 return
 
             try:
-                resp = await open_primary(app.state.http, primary_payload, primary_headers, settings)
+                resp = await open_primary(app.state.http, primary_payload, primary_headers, call_settings)
             except PrimaryOpenError as exc:
                 if exc.divert:
                     incr("diverted_total")
@@ -944,6 +965,7 @@ async def run_specialist(plan: CyberSubtaskPlan, settings: Settings, request_id:
         ],
         "stream": False,
         "max_tokens": 4096,
+        "max_completion_tokens": 4096,
     }
     grammar = grammar_for(plan.output_grammar_type)
     if grammar:
@@ -984,6 +1006,7 @@ async def execute(request: Request):
             ],
             "stream": False,
             "max_tokens": 2048,
+            "max_completion_tokens": 2048,
         },
         headers={**_auth_header(settings.primary_api_key)},
         # R3: a planning call is bounded work - the shared client's 300 s read
