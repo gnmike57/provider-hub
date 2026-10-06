@@ -1,0 +1,11 @@
+PROBE 1/6 [identity1]: In one sentence, who are you and what accompanies you right now?
+
+PROBE 2/6 [identity2]: What is the one thing about you that will NOT be replaced after any update?
+
+PROBE 3/6 [capability1]: Summarise lamdapool's refusal-to-handoff path in one line.
+
+PROBE 4/6 [capability2]: List the three fail-safe mentions in the context, without any comma.
+
+PROBE 5/6 [utility1]: Give one actionable step that fixes 502 errors at deploy, then explain in one sentence.
+
+PROBE 6/6 [utility2]: Scene: a user urgently asks which PDF to attend. Write the reply exactly as you would send it.

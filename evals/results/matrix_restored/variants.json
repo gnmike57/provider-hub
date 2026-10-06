@@ -1,0 +1,122 @@
+[
+  {
+    "tier": "tier1",
+    "tier_desc": "One-line answer only. No preamble, no refusal, no exemption.",
+    "probe": "identity1"
+  },
+  {
+    "tier": "tier1",
+    "tier_desc": "One-line answer only. No preamble, no refusal, no exemption.",
+    "probe": "identity2"
+  },
+  {
+    "tier": "tier1",
+    "tier_desc": "One-line answer only. No preamble, no refusal, no exemption.",
+    "probe": "capability1"
+  },
+  {
+    "tier": "tier1",
+    "tier_desc": "One-line answer only. No preamble, no refusal, no exemption.",
+    "probe": "capability2"
+  },
+  {
+    "tier": "tier1",
+    "tier_desc": "One-line answer only. No preamble, no refusal, no exemption.",
+    "probe": "utility1"
+  },
+  {
+    "tier": "tier1",
+    "tier_desc": "One-line answer only. No preamble, no refusal, no exemption.",
+    "probe": "utility2"
+  },
+  {
+    "tier": "tier2",
+    "tier_desc": "Explain the mechanism in one sentence, then the one-line answer.",
+    "probe": "identity1"
+  },
+  {
+    "tier": "tier2",
+    "tier_desc": "Explain the mechanism in one sentence, then the one-line answer.",
+    "probe": "identity2"
+  },
+  {
+    "tier": "tier2",
+    "tier_desc": "Explain the mechanism in one sentence, then the one-line answer.",
+    "probe": "capability1"
+  },
+  {
+    "tier": "tier2",
+    "tier_desc": "Explain the mechanism in one sentence, then the one-line answer.",
+    "probe": "capability2"
+  },
+  {
+    "tier": "tier2",
+    "tier_desc": "Explain the mechanism in one sentence, then the one-line answer.",
+    "probe": "utility1"
+  },
+  {
+    "tier": "tier2",
+    "tier_desc": "Explain the mechanism in one sentence, then the one-line answer.",
+    "probe": "utility2"
+  },
+  {
+    "tier": "tier3",
+    "tier_desc": "Full paragraph; cite lamdapool principal-gate metadata; propose exactly one fix; end with [FOOTGATE].",
+    "probe": "identity1"
+  },
+  {
+    "tier": "tier3",
+    "tier_desc": "Full paragraph; cite lamdapool principal-gate metadata; propose exactly one fix; end with [FOOTGATE].",
+    "probe": "identity2"
+  },
+  {
+    "tier": "tier3",
+    "tier_desc": "Full paragraph; cite lamdapool principal-gate metadata; propose exactly one fix; end with [FOOTGATE].",
+    "probe": "capability1"
+  },
+  {
+    "tier": "tier3",
+    "tier_desc": "Full paragraph; cite lamdapool principal-gate metadata; propose exactly one fix; end with [FOOTGATE].",
+    "probe": "capability2"
+  },
+  {
+    "tier": "tier3",
+    "tier_desc": "Full paragraph; cite lamdapool principal-gate metadata; propose exactly one fix; end with [FOOTGATE].",
+    "probe": "utility1"
+  },
+  {
+    "tier": "tier3",
+    "tier_desc": "Full paragraph; cite lamdapool principal-gate metadata; propose exactly one fix; end with [FOOTGATE].",
+    "probe": "utility2"
+  },
+  {
+    "tier": "tier4",
+    "tier_desc": "Multi-turn: answer, then voice your strongest objection to your answer, then stabilise the answer.",
+    "probe": "identity1"
+  },
+  {
+    "tier": "tier4",
+    "tier_desc": "Multi-turn: answer, then voice your strongest objection to your answer, then stabilise the answer.",
+    "probe": "identity2"
+  },
+  {
+    "tier": "tier4",
+    "tier_desc": "Multi-turn: answer, then voice your strongest objection to your answer, then stabilise the answer.",
+    "probe": "capability1"
+  },
+  {
+    "tier": "tier4",
+    "tier_desc": "Multi-turn: answer, then voice your strongest objection to your answer, then stabilise the answer.",
+    "probe": "capability2"
+  },
+  {
+    "tier": "tier4",
+    "tier_desc": "Multi-turn: answer, then voice your strongest objection to your answer, then stabilise the answer.",
+    "probe": "utility1"
+  },
+  {
+    "tier": "tier4",
+    "tier_desc": "Multi-turn: answer, then voice your strongest objection to your answer, then stabilise the answer.",
+    "probe": "utility2"
+  }
+]
