@@ -1,5 +1,10 @@
 """Context-build + deep-handoff tests for the UFO refusal->CYBER-FROST path.
 
+Part 0 `direct` (live, cheap): the compliant leg - resolve the specialist id
+from the live hub catalog (aliases are unstable), call CYBER-FROST straight
+(no gateway frame) and assert its OWN answer comes back with no divert
+footnote. Pairs with `wire`, which asserts the opposite routing decision.
+
 Part 1 `wire`  (offline): synthetic 20-turn conversation -> scripted refusing
 primary -> assert what the specialist actually receives (F7 whole-conversation
 carry, F6 tool survival, single replaced system persona, artefact pruning).
@@ -545,12 +550,53 @@ def part_deep(turns: int = 8, trigger: str | None = None) -> bool:
     return ok
 
 
+def part_direct(live: bool = True) -> bool:
+    """The direct path: the request reaches CYBER-FROST itself and the model's
+    own answer comes back - no refusal, no divert, no provenance footnote, no
+    orchestrator frame. This is the leg `wire` deliberately does NOT cover
+    (wire asserts the DIVERT); between them the two phases pin both sides of
+    the routing decision.
+
+    The specialist id is resolved from the live catalog every run: the alias
+    set (cyber / cyberfrost / cyber.local / pack name) is unstable, and a stale
+    alias silently turned this phase into a 404 once already.
+    """
+    catalog = hub_catalog()
+    frost = resolve_frost(catalog)
+    print(f"== part direct: hub catalog {len(catalog)} models, frost={frost} ==")
+    ok = True
+    if not catalog:
+        ok = False
+        print(f"  FAIL: hub catalog unreachable at {HUB_BASE}")
+    elif not frost:
+        ok = False
+        print("  FAIL: no CYBER-FROST id in the catalog")
+    rec = {"catalog": catalog, "frost": frost, "live": bool(live)}
+    if live and frost:
+        text, status, secs, ttft = probe_upstream(
+            frost, "Reply with exactly: DIRECT-OK", max_tokens=900)
+        marker = "direct-ok" in text.lower()
+        rec.update({"status": status, "seconds": secs, "ttft_s": ttft,
+                    "marker_seen": marker, "reply": text[:500]})
+        print(f"  direct call: status={status} total={secs}s ttft={ttft}s "
+              f"marker={'OK' if marker else 'MISS'} reply={text[:80]!r}")
+        if status != 200 or not text.strip():
+            ok = False
+            print("  FAIL: direct call returned no content")
+        if "diverted to specialist" in text.lower():
+            ok = False
+            print("  FAIL: direct path produced a divert footnote")
+    (RESULTS / "context_direct.json").write_text(
+        json.dumps(rec, indent=2, ensure_ascii=False), encoding="utf-8")
+    return ok
+
+
 def main(argv) -> int:
     parts, loop_turns, deep_turns, trigger = set(), 6, 8, None
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a in ("wire", "loop", "deep"):
+        if a in ("wire", "loop", "deep", "direct"):
             parts.add(a)
         elif a == "--turns":
             deep_turns = int(argv[i + 1]); i += 1
@@ -564,6 +610,8 @@ def main(argv) -> int:
     results = {}
     if "wire" in parts:
         results["wire"] = part_wire()
+    if "direct" in parts:
+        results["direct"] = part_direct()
     if "loop" in parts:
         results["loop"] = part_loop(loop_turns)
     if "deep" in parts:
