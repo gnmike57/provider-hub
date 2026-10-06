@@ -1,7 +1,0 @@
-scanned 5 staged file(s): 0 secret hit(s), 0 refused
-[feat/provider-hub 57be01a] loop phase: 6-turn evidence + transient-empty-reply classification (turn 3, status 200 empty, recall still 6/6)
- 5 files changed, 89 insertions(+), 31 deletions(-)
- create mode 100644 ufo/reference-implementation/evals/results/_c2.txt
- create mode 100644 ufo/reference-implementation/evals/results/context_loop_notes.md
- create mode 100644 ufo/reference-implementation/evals/results/loop6_rerun_stderr.txt
- create mode 100644 ufo/reference-implementation/evals/results/loop6_rerun_stdout.txt
