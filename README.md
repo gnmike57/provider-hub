@@ -121,7 +121,8 @@ is this folder, which is where `proxy_gateway.py` lives.
 
 Suites added on the provider-hub branch (beyond the table above):
 
-* `evals/context_handoff_test.py`:
+* `evals/results/context_handoff_test.py` (note: `results/`, not `evals/` -
+  `RESULTS = HERE`, so its artifacts land beside it):
   `direct` (live - resolve CYBER-FROST from the hub catalog, then call it
   straight: no divert, no footnote), `wire` (offline, 15 assertions on the
   divert anatomy), `loop` (live - 6-turn context-growth proof: canaries
