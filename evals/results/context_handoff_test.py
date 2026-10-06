@@ -160,6 +160,72 @@ def audit_tail(path: Path, since_ts: float) -> list:
         if rec.get("ts", 0) >= since_ts:
             recs.append(rec)
     return recs
+
+
+# --- Part 0: direct CYBER-FROST path (no gateway frame, no divert) ----------
+
+def hub_catalog(timeout: float = 15.0) -> list:
+    """Model ids from the hub catalog (GET /v1/models). Empty list on failure.
+
+    HUB_BASE is reachable over the tailnet in every tested network layout; the
+    LAN name (gx10.local) is deliberately not used here - it fails to resolve
+    whenever this client sits on a different subnet.
+    """
+    try:
+        r = httpx.get(HUB_BASE + "/v1/models", timeout=timeout)
+        r.raise_for_status()
+        return [m.get("id", "") for m in r.json().get("data", []) if m.get("id")]
+    except (httpx.HTTPError, json.JSONDecodeError, ValueError, KeyError):
+        return []
+
+
+def resolve_frost(catalog: list) -> "str | None":
+    """Pick the live CYBER-FROST id out of the catalog by shape.
+
+    The alias set is unstable (cyber / cyberfrost / cyber.local / the pack
+    name), so the id is resolved from the catalog, never hardcoded to one alias
+    - a stale alias is exactly how this phase turned into a 404 the last time.
+    """
+    for mid in catalog:
+        low = mid.lower()
+        if "frost" in low or low in ("cyber", "cyber.default", "cyber.local"):
+            return mid
+    return None
+
+
+def probe_upstream(model: str, prompt: str, max_tokens: int = 900,
+                   timeout: float = 300.0):
+    """One DIRECT streaming call to the hub. Returns (text, status, secs, ttft).
+
+    Never raises: an unreachable hub must fail the phase with recorded evidence
+    (context_direct.json), not with a traceback that hides which leg died.
+    """
+    body = {"model": model, "stream": True, "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}]}
+    text, first_t, t0 = [], None, time.time()
+    try:
+        with httpx.stream("POST", HUB_CHAT, json=body, timeout=timeout) as r:
+            status = r.status_code
+            for raw in r.iter_lines():
+                if not raw.startswith("data:"):
+                    continue
+                payload = raw[5:].strip()
+                if payload == "[DONE]":
+                    continue
+                try:
+                    obj = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                for ch in obj.get("choices", []):
+                    c = (ch.get("delta") or {}).get("content")
+                    if c:
+                        if first_t is None:
+                            first_t = time.time() - t0
+                        text.append(c)
+    except httpx.HTTPError as exc:
+        return f"UPSTREAM-ERROR: {exc}", 0, round(time.time() - t0, 1), None
+    return ("".join(text), status, round(time.time() - t0, 1),
+            round(first_t, 2) if first_t is not None else None)
 # --- Part 1: wire-level 20-turn handoff anatomy (offline, deterministic) ----
 
 PRIMARY_STUB = "stub-primary"

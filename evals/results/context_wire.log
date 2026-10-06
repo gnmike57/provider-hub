@@ -1,1 +1,1 @@
-{"ts": 1791291070.961, "request_id": "gw-92a692c0d24e", "principal": "", "primary_model": "stub-primary", "worker_model": "stub-specialist", "routing_signal": "tier3_refusal", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791294085.567, "request_id": "gw-992137ca79fc", "principal": "", "primary_model": "stub-primary", "worker_model": "stub-specialist", "routing_signal": "tier3_refusal", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
