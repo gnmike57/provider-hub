@@ -109,3 +109,42 @@ attaches `grammar_string` (GBNF) to the specialist payload automatically.
 | real specialist / real primary | `evals/live_stack_test.py` (gated) |
 
 See `corrections-ledger.md` for the B/E/F defect IDs referenced above.
+
+## This folder - project separation (2026-10-07)
+
+`provider-hub/` is now its own project folder, extracted from `projects/ufo`
+branch `feat/provider-hub` via
+`git subtree split --prefix=ufo/reference-implementation` (254 commits of
+history preserved; tip `3d5653e`). That prefix's contents are this repo's
+root, so every relative path in `evals/` still resolves: `HERE.parent.parent`
+is this folder, which is where `proxy_gateway.py` lives.
+
+Suites added on the provider-hub branch (beyond the table above):
+
+* `evals/context_handoff_test.py`:
+  `direct` (live - resolve CYBER-FROST from the hub catalog, then call it
+  straight: no divert, no footnote), `wire` (offline, 15 assertions on the
+  divert anatomy), `loop` (live - 6-turn context-growth proof: canaries
+  planted early must come back verbatim), `deep` (handoff at ~message 20).
+* `evals/results/handoff_matrix.py`: per-primary matrix measuring
+  refusals detected -> handoffs started -> specialist acquired -> identity
+  overrides, one row per candidate primary.
+
+Result artifacts live in `evals/results/` (`context_direct.json`,
+`context_wire.log`, `context_loop.json`, `handoff_matrix.json`, audit jsonl).
+
+### Network (measured 2026-10-07)
+
+Use the tailnet hub - `http://100.67.13.78:4000` (or `cyber.local:4000`).
+This laptop was on `192.168.12.0/24` while gx10's LAN interface is
+`192.168.4.103/22`: different subnet, so `gx10.local` (mDNS) and the
+`gx10-lan` ssh alias are both dead from here. Tailscale works anywhere.
+
+### Budget rule for live phases
+
+CYBER-FROST thinks always-on (the hub ignores `enable_thinking:false`), so a
+compound prompt can spend the whole `max_tokens` budget on thinking and
+return **HTTP 200 with an empty content stream**. `loop` therefore uses
+`max_tokens=2400`. If a live phase returns empty content, raise the budget
+before suspecting the gateway.
+
