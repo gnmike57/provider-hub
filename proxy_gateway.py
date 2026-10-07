@@ -1093,16 +1093,16 @@ async def execute(request: Request):
 # --------------------------------------------------------------------------
 FROST_REGISTRY = [
     {"id": "deepfrost", "name": "DeepFrost v4.1", "upstream": "deepseek-ai/deepseek-v4.1-flash",
-     "endpoint": "http://lenovo.ayu-sidewinder.ts.net:9311/v1/chat/completions",
+     "endpoint": "http://gx10.ayu-sidewinder.ts.net:9311/v1",
      "type": "primary", "provider": "hive", "hedged": True},
     {"id": "glmfrost", "name": "GLMFrost 5.3 Flash", "upstream": "zai-org/glm-5.3-flash",
-     "endpoint": "http://lenovo.ayu-sidewinder.ts.net:9312/v1/chat/completions",
+     "endpoint": "http://gx10.ayu-sidewinder.ts.net:9312/v1",
      "type": "primary", "provider": "hive", "hedged": True},
     {"id": "cyberfrost", "name": "CyberFrost 3.8 SAGE", "upstream": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw",
-     "endpoint": "http://lenovo.ayu-sidewinder.ts.net:9313/v1/chat/completions",
+     "endpoint": "http://gx10.ayu-sidewinder.ts.net:9313/v1",
      "type": "worker", "provider": "gx10-hub", "hedged": False},
     {"id": "frost-general", "name": "Frost General (any model)", "upstream": "auto",
-     "endpoint": "http://lenovo.ayu-sidewinder.ts.net:9310/v1/chat/completions",
+     "endpoint": "http://gx10.ayu-sidewinder.ts.net:9310/v1",
      "type": "general", "provider": "hive+gx10", "hedged": True},
 ]
 
