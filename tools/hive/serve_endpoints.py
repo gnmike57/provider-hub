@@ -3,10 +3,10 @@
 Any peer on the tailnet can then call a "special endpoint" per model, with the
 model field optional (the port already defaults it):
 
-  9301  deepseek-4.1-flash  -> Hive deepseek-ai/deepseek-v4.1-flash  (worker: CYBER-FROST)
-  9302  glm-5.3-flash       -> Hive zai-org/glm-5.3-flash           (worker: CYBER-FROST)
-  9303  cyberfrost          -> gx10 hub CYBER-FROST-3.8-EXL3-SAGE-3.87bpw (no hedge)
-  9200  (general)           -> any id in the body; hedge worker = CYBER-FROST
+  9311  deepfrost          -> Hive deepseek-ai/deepseek-v4.1-flash  (hedged, worker: CYBER-FROST)
+  9312  glmfrost           -> Hive zai-org/glm-5.3-flash           (hedged, worker: CYBER-FROST)
+  9313  cyberfrost         -> gx10 hub CYBER-FROST-3.8-EXL3-SAGE-3.87bpw (no hedge)
+  9310  (general)          -> any id in the body; hedge worker = CYBER-FROST
 
 All of them accept any model id in the body as an override, and `"hedge": true`
 forces the speculative dual-dispatch. Secrets stay in ufo.env; never printed.
@@ -25,9 +25,9 @@ HUB_URL = "http://100.67.13.78:4000/v1/chat/completions"
 SPECIALIST = "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
 
 INSTANCES = [
-    ("DeepFrost v4.1", 9311, HIVE_URL, "deepseek-ai/deepseek-v4.1-flash", True),
-    ("GLMFrost 5.3 Flash", 9312, HIVE_URL, "zai-org/glm-5.3-flash", True),
-    ("CyberFrost 3.8 SAGE", 9313, HUB_URL, SPECIALIST, False),
+    ("deepfrost", 9311, HIVE_URL, "deepseek-ai/deepseek-v4.1-flash", True),
+    ("glmfrost", 9312, HIVE_URL, "zai-org/glm-5.3-flash", True),
+    ("cyberfrost", 9313, HUB_URL, SPECIALIST, False),
     ("general (any Frost name / raw id)", 9310, HIVE_URL,
      "deepseek-ai/deepseek-v4.1-flash", True),
 ]

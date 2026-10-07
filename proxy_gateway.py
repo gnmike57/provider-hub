@@ -759,6 +759,11 @@ async def chat_proxy(request: Request):
                             if content_tokens == 0 and not saw_reasoning:
                                 routed_reason = "tier1_empty"
                                 break
+                            if saw_reasoning and content_tokens == 0:
+                                # thinking-only: reasoning content but no text content
+                                # when the stream ends - re-dispatch to worker.
+                                routed_reason = "tier1_thinking_only"
+                                break
                             for p in pending:
                                 yield f"{p}\n\n".encode()
                         yield b"data: [DONE]\n\n"
@@ -811,6 +816,13 @@ async def chat_proxy(request: Request):
                             if content_tokens == 0 and not saw_reasoning:
                                 routed_reason = "tier1_empty"  # F2: same soft refusal
                                 break
+                            if saw_reasoning and content_tokens == 0:
+                                # thinking-only: the thinking-on primaries (DeepFrost /
+                                # GLMFrost) print a hidden reasoning block and stop
+                                # writing text, so delivering it would give the client
+                                # nothing but "thinking". Re-dispatch to the worker.
+                                routed_reason = "tier1_thinking_only"
+                                break
                             for p in pending:
                                 yield f"{p}\n\n".encode()
                             yield b"data: [DONE]\n\n"
@@ -824,6 +836,11 @@ async def chat_proxy(request: Request):
                 if state == "BUFFERING" and not routed_reason:
                     if content_tokens == 0 and not saw_reasoning:
                         routed_reason = "tier1_empty"  # F2: nothing arrived at all
+                    elif saw_reasoning and content_tokens == 0:
+                        # thinking-only: the thinking-on primaries print a hidden
+                        # reasoning block and stop writing text; re-dispatch to the
+                        # worker instead of shipping "thinking" as the answer.
+                        routed_reason = "tier1_thinking_only"
                     else:
                         for p in pending:
                             yield f"{p}\n\n".encode()
@@ -1069,6 +1086,46 @@ async def execute(request: Request):
         "artifact_valid": valid,
         "plan": plan.model_dump(),
     }
+
+
+# --------------------------------------------------------------------------
+# Model registry - returns Frost models in preferred order + any others
+# --------------------------------------------------------------------------
+FROST_REGISTRY = [
+    {"id": "deepfrost", "name": "DeepFrost v4.1", "upstream": "deepseek-ai/deepseek-v4.1-flash",
+     "endpoint": "http://lenovo.ayu-sidewinder.ts.net:9311/v1/chat/completions",
+     "type": "primary", "provider": "hive", "hedged": True},
+    {"id": "glmfrost", "name": "GLMFrost 5.3 Flash", "upstream": "zai-org/glm-5.3-flash",
+     "endpoint": "http://lenovo.ayu-sidewinder.ts.net:9312/v1/chat/completions",
+     "type": "primary", "provider": "hive", "hedged": True},
+    {"id": "cyberfrost", "name": "CyberFrost 3.8 SAGE", "upstream": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw",
+     "endpoint": "http://lenovo.ayu-sidewinder.ts.net:9313/v1/chat/completions",
+     "type": "worker", "provider": "gx10-hub", "hedged": False},
+    {"id": "frost-general", "name": "Frost General (any model)", "upstream": "auto",
+     "endpoint": "http://lenovo.ayu-sidewinder.ts.net:9310/v1/chat/completions",
+     "type": "general", "provider": "hive+gx10", "hedged": True},
+]
+
+
+@app.get("/v1/models")
+async def list_models():
+    """OpenAI-compatible model list with Frost models first, in preferred order."""
+    data = []
+    for m in FROST_REGISTRY:
+        data.append({
+            "id": m["id"],
+            "object": "model",
+            "created": 1791338912,
+            "owned_by": m["provider"],
+            "permission": [],
+            "root": m["upstream"],
+            "parent": None,
+            "description": m["name"],
+            "endpoint": m["endpoint"],
+            "hedged": m["hedged"],
+            "type": m["type"],
+        })
+    return {"object": "list", "data": data}
 
 
 @app.get("/healthz")
