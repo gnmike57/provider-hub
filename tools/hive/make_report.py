@@ -115,6 +115,8 @@ def endpoints_section(L):
     L.append("| 9311 | optional | DeepFrost v4.1 | Hive `deepseek-ai/deepseek-v4.1-flash` |")
     L.append("| 9312 | optional | GLMFrost 5.3 Flash | Hive `zai-org/glm-5.3-flash` |")
     L.append("| 9313 | optional | CyberFrost 3.8 SAGE | gx10 hub `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw` |")
+    L.append("| 9314 | optional | DeepFrost Max Think | Hive `deepseek-ai/deepseek-v4.1-flash` (max-think, no hedge) |")
+    L.append("| 9315 | optional | GLMFrost Max Think | Hive `zai-org/glm-5.3-flash` (max-think, no hedge) |")
     L.append("")
     L.append("```bash")
     L.append("# from any tailnet peer (verified from the gx10):")

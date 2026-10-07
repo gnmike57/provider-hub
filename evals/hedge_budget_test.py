@@ -36,13 +36,21 @@ def _capture(seen):
     return handler
 
 
-def test_hedge_sends_max_completion_tokens_to_both_branches():
+def test_hedge_sends_max_completion_tokens_to_both_branches(monkeypatch):
     seen = {}
     client = httpx.AsyncClient(transport=httpx.MockTransport(_capture(seen)))
     s = speculative_hedge.SETTINGS
-    s.sovereign_url, s.sovereign_key, s.sovereign_model = SOV, "", "primary"
-    s.worker_url, s.worker_key, s.worker_model = WRK, "none", "worker"
-    s.max_tokens = 2048
+    # SETTINGS is a module-level singleton shared with the gateway's hedge path,
+    # so mutate it through monkeypatch: a bare assignment leaked the 2048 cap
+    # into every later hedge test (max_think_test asserted the 4096 default and
+    # failed only in the full-suite run).
+    monkeypatch.setattr(s, "sovereign_url", SOV)
+    monkeypatch.setattr(s, "sovereign_key", "")
+    monkeypatch.setattr(s, "sovereign_model", "primary")
+    monkeypatch.setattr(s, "worker_url", WRK)
+    monkeypatch.setattr(s, "worker_key", "none")
+    monkeypatch.setattr(s, "worker_model", "worker")
+    monkeypatch.setattr(s, "max_tokens", 2048)
 
     async def collect():
         async for _ in hedge_stream([{"role": "user", "content": "hi"}], client=client):

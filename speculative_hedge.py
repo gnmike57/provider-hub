@@ -55,7 +55,18 @@ class HedgeSettings:
         self.worker_url = os.getenv("WORKER_API_URL") or os.getenv(
             "FALLBACK_API_URL", "http://127.0.0.1:8000/v1/chat/completions"
         )
-        self.worker_key = os.getenv("WORKER_API_KEY") or os.getenv("FALLBACK_API_KEY", "none")
+        # Worker (hedge) credential. Mirrors proxy_gateway._specialist_key() so
+        # the two slots resolve the SAME way - a hedge branch that is handed
+        # "none" sends no Authorization header and dies with a 401 against any
+        # hosted provider. Order: WORKER_API_KEY -> SPECIALIST_API_KEY ->
+        # FALLBACK_API_KEY -> NANOGPT_API_KEY -> "none" (the local hub's sentinel).
+        self.worker_key = (
+            os.getenv("WORKER_API_KEY")
+            or os.getenv("SPECIALIST_API_KEY")
+            or os.getenv("FALLBACK_API_KEY")
+            or os.getenv("NANOGPT_API_KEY")
+            or "none"
+        )
         self.worker_model = os.getenv("WORKER_MODEL") or os.getenv(
             "FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP"
         )

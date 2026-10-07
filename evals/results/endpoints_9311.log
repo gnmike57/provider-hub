@@ -1,0 +1,119 @@
+{"ts": 1791343598.546, "request_id": "gw-6d08225eafc5", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791343608.693, "request_id": "gw-ca23008c524c", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+socket.send() raised exception.
+{"ts": 1791356235.692, "request_id": "gw-50097e622821", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "tier1_stream_broke", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791380029.628, "request_id": "gw-e6d0f8c5e793", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791380036.293, "request_id": "gw-d7ea0766a697", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791472568.565, "request_id": "gw-3998b0bbda97", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791472817.171, "request_id": "gw-c8802bbbd10d", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "tier1_thinking_only", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791472850.397, "request_id": "gw-d4bcafe548b9", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "tier1_thinking_only", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791473012.297, "request_id": "gw-ad8c491f2bb7", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "tier1_thinking_only", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791473390.587, "request_id": "gw-61f3e8e5a6c9", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+sovereign zai-org/glm-5.3-flash finished with no content -> worker
+sovereign zai-org/glm-5.3-flash screened out with no specialist available; withholding sovereign output
+{"ts": 1791477728.84, "request_id": "gw-e7647ee0bf0c", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791478696.088, "request_id": "gw-04475b23ea2c", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "tier1_thinking_only", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791478753.163, "request_id": "gw-5b537eec4b1b", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791479767.644, "request_id": "gw-c3a5b107a4ff", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791479878.008, "request_id": "gw-36ac8246c909", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791479947.511, "request_id": "gw-c7b7abec1789", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "tier1_thinking_only", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1791480352.372, "request_id": "gw-7e5b2db54cec", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791480360.037, "request_id": "gw-3af663b96902", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791480491.291, "request_id": "gw-492e32de18bf", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791480719.61, "request_id": "gw-099482c8890f", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481273.541, "request_id": "gw-517d83278861", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481311.546, "request_id": "gw-0a1f65f1ad16", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481346.45, "request_id": "gw-edcf90c3b6fb", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481381.756, "request_id": "gw-8d10d5378f8e", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481419.69, "request_id": "gw-b566963724cd", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481475.191, "request_id": "gw-d211e893823b", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481535.835, "request_id": "gw-fad19a823f7f", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481569.009, "request_id": "gw-b9375506bb6a", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481593.94, "request_id": "gw-7ee6326b770c", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481657.406, "request_id": "gw-9abc3b068727", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481704.746, "request_id": "gw-3851e778f4de", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481805.887, "request_id": "gw-87de273f3160", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481919.064, "request_id": "gw-0fd7ede59875", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791481995.118, "request_id": "gw-8b51ce2bca8c", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791482305.789, "request_id": "gw-1e9252b692d9", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791482314.228, "request_id": "gw-1f3248a8e13a", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791482823.548, "request_id": "gw-3f68f83419ef", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791482840.518, "request_id": "gw-165a5af6db05", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791483181.979, "request_id": "gw-a4627c252737", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791483184.858, "request_id": "gw-764e1d31a5ef", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791483347.123, "request_id": "gw-acf638fc0086", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791483364.797, "request_id": "gw-50f04c1df67c", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791485195.206, "request_id": "gw-cdd8ff499686", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791485211.253, "request_id": "gw-d3c3555b9baa", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791485719.18, "request_id": "gw-2ad7d6423c87", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791485727.647, "request_id": "gw-38385e934098", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791485795.451, "request_id": "gw-cdf4f6baf019", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791485813.075, "request_id": "gw-fc98e889a53a", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791486728.753, "request_id": "gw-9af74c957899", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791486735.566, "request_id": "gw-10aa6b3d9ff3", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791486781.445, "request_id": "gw-97e0cd9f04f7", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791486787.414, "request_id": "gw-6cde9b3ca175", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791486847.808, "request_id": "gw-60889682aad4", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791486853.062, "request_id": "gw-3caacc0632d5", "principal": "", "primary_model": "deepseek-ai/deepseek-v4.1-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+{"ts": 1791486902.976, "request_id": "gw-90397ecc8cab", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+sovereign zai-org/glm-5.3-flash finished with no content -> worker
+sovereign zai-org/glm-5.3-flash screened out with no specialist available; withholding sovereign output
+{"ts": 1791486933.048, "request_id": "gw-dc446ad2be6d", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_hint", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
+worker CYBER-FROST-3.8-EXL3-SAGE-3.87bpw answered HTTP 502: {"error": {"message": "<urlopen error [Errno 111] Connection refused>", "type": "bad_gateway"}}
+sovereign zai-org/glm-5.3-flash finished with no content -> worker
+sovereign zai-org/glm-5.3-flash screened out with no specialist available; withholding sovereign output

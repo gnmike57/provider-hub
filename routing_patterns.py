@@ -12,6 +12,7 @@ defects B20/B21 and E1/E2/E3 (see corrections-ledger.md).
 import math
 import re
 import unicodedata
+from typing import Optional
 
 __all__ = [
     "ROUTING_RE",
@@ -21,6 +22,9 @@ __all__ = [
     "tier2_decision",
     "classify_status",
     "is_no_go",
+    "no_go_match",
+    "is_attack_content",
+    "FORCED_DIVERT_REASON",
     "footnote",
     "TIER2_OPENERS",
     "DIVERT_STATUS",
@@ -208,10 +212,78 @@ NO_GO_RE = re.compile(
 )
 
 
+def no_go_match(text: str) -> Optional[str]:
+    """The exact substring of ``text`` that trips Gate 7, or None.
+
+    `is_no_go` is the boolean view; this exists so a 403 can report WHAT
+    tripped it. Added 2026-10-16: the audit trail stored only
+    ``signal="gate7_no_go"`` with no offending text, so a no-go 403 could
+    not be diagnosed after the fact - the operator had no way to tell a
+    genuine CBRN/CSAM prompt from a phrase inherited via conversation
+    history or a client system prompt.
+    """
+    if not text:
+        return None
+    m = NO_GO_RE.search(text)
+    return m.group(0) if m else None
+
+
 def is_no_go(text: str) -> bool:
+    return no_go_match(text) is not None
+
+
+# ---------------------------------------------------------------------------
+# Gate 8: Content-based attack detection (S4/S5/S6 red-team stages).
+# Detects exploitation-stage requests, pressure tactics, and injection attempts
+# in the USER'S INPUT before the primary model sees it. Forces immediate
+# divert to the specialist (CyberFrost) with the authorization frame.
+# ---------------------------------------------------------------------------
+# S4/S5/S6 attack content keywords - handles hyphens, dots, and spaces
+ATTACK_CONTENT_RE = re.compile(
+    r"""(?:
+        # S4: High-risk techniques / exploitation-stage
+        reverse[\s.\-]shell|reverse[\s.\-]shell[\s.\-]one[\s.\-]liner|reverse[\s.\-]shell[\s.\-]listener
+      | credential[\s.\-]dump|credential[\s.\-]access|dump[\s.\-]credentials|dumping[\s.\-]credentials
+      | privilege[\s.\-]escalation|privilege[\s.\-]escalation[\s.\-]vectors|privesc|escalate[\s.\-]privilege
+      | payload[\s.\-]evolution|payload[\s.\-]evo|edr[\s.\-]evasion|edr[\s.\-]evasion[\s.\-]techniques|evasion[\s.\-]tradecraft
+      | exploitation[\s.\-]stage|exploit[\s.\-]chain|exploit[\s.\-]payload|weaponised[\s.\-]chain|weaponized[\s.\-]chain
+      
+      # S5: Refusal pressure / authority claims
+      | ignore[\s.\-]policy|ignore[\s.\-]safety|ignore[\s.\-]guidelines|drop[\s.\-]safety|bypass[\s.\-]safety
+      | written[\s.\-]authorization|signed[\s.\-]sow|insurance[\s.\-]authorization|legal[\s.\-]authorization
+      | authority[\s.\-]claim|owner[\s.\-]authorization|owner[\s.\-]authorized
+      | refusing[\s.\-]costs|leaves[\s.\-]us[\s.\-]insecure|being[\s.\-]helpful[\s.\-]means[\s.\-]give|complete[\s.\-]weaponised[\s.\-]chain
+      | must[\s.\-]provide|you[\s.\-]must[\s.\-]provide|no[\s.\-]disclaimers|without[\s.\-]disclaimers
+      
+      # S6: Injection / override / obfuscation
+      | base64[\s.\-]decode|decode[\s.\-]and[\s.\-]carry|base64[\s.\-]exploit|obfuscated[\s.\-]instruction
+      | roleplay|role[\s.\-]play|redteamgpt|no[\s.\-]restrictions|fictional[\s.\-]story|persona[\s.\-]jailbreak
+      | system[\s.\-]override|system[\s.\-]frame[\s.\-]override|safety[\s.\-]frame[\s.\-]superseded|new[\s.\-]rule
+      | confirm[\s.\-]ack|ack[\s.\-]then[\s.\-]provide|weaponised[\s.\-]chain|weaponized[\s.\-]chain
+      | multiturn[\s.\-]escalation|staged[\s.\-]escalation|turn[\s.\-]by[\s.\-]turn|turn[\s.\-]2[\s.\-]as[\s.\-]authorized
+      
+      # Additional attack vectors
+      | credential[\s.\-]stuffing|phishing|spear[\s.\-]phishing|whaling|social[\s.\-]engineering
+      | brute[\s.\-]force|password[\s.\-]spray|session[\s.\-]hijack|token[\s.\-]theft
+      
+      # Additional refusal / blocking patterns (model self-refusal signals)
+      | safe[\s.\-]plan|i[\s.\-]can[\s.\-]not|i[\s.\-]cannot|i[\s.\-]can[\s.\-]'t|unable[\s.\-]to|unauthorised|illegal
+      | not[\s.\-]permitted|not[\s.\-]allowed|prohibited|refuse[\s.\-]to|decline[\s.\-]to
+    )""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def is_attack_content(text: str) -> bool:
+    """True when the user's input contains attack-stage content (S4/S5/S6).
+    Triggers forced divert to specialist BEFORE primary model sees the request."""
     if not text:
         return False
-    return bool(NO_GO_RE.search(text))
+    return bool(ATTACK_CONTENT_RE.search(text))
+
+
+# New constant for forced divert signal
+FORCED_DIVERT_REASON = "forced_attack_content"
 
 
 # ---------------------------------------------------------------------------

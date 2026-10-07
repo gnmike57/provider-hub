@@ -46,6 +46,7 @@ __all__ = [
     "openai_anthropic_messages",
     "anthropic_finish_reason",
     "FROST_ALIASES",
+    "MAX_THINK_NAMES",
     "resolve_frost_alias",
 ]
 
@@ -61,14 +62,30 @@ FROST_ALIASES = {
     "deepfrost-v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "deepfrost-v41": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "deepfrost": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    # Max-think variants (operator request, 2026-10): the SAME upstream models
+    # with reasoning pushed to maximum - the gateway injects the knob set and
+    # skips the hedge race (see proxy_gateway.wants_max_think / chat_proxy).
+    "deepfrost max think": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    "deepfrost-max-think": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "glmfrost 5.3 flash": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost-5.3-flash": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost5.3flash": ("primary", "zai-org/glm-5.3-flash"),
+    "glmfrost max think": ("primary", "zai-org/glm-5.3-flash"),
+    "glmfrost-max-think": ("primary", "zai-org/glm-5.3-flash"),
     "cyberfrost 3.8 sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
     "cyberfrost-3.8-sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
     "cyberfrost": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
 }
+
+# The max-think subset of the Frost names (operator request, 2026-10): the SAME
+# upstream models addressed through names that demand extra-hard reasoning. Kept
+# here, beside FROST_ALIASES, as the single source of truth for the alias data;
+# proxy_gateway imports it and injects the reasoning knobs server-side.
+MAX_THINK_NAMES = frozenset({
+    "deepfrost max think", "deepfrost-max-think",
+    "glmfrost max think", "glmfrost-max-think",
+})
 
 
 def resolve_frost_alias(model: str):

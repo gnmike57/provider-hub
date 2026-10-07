@@ -3,6 +3,9 @@
 Endpoints
     POST /v1/chat/completions   streaming ring-buffer proxy (drop-in OpenAI)
     POST /v1/execute            planner -> worker -> assemble() (Part IV)
+    POST /v1/switch             runtime slot switch: primary/worker/swap/status
+                                (unversioned /switch is an operator alias)
+    GET  /v1/models             OpenAI-compatible model list (Frost aliases)
     GET  /healthz               config + runtime snapshot
     GET  /metrics               Prometheus text (F26)
 
@@ -31,7 +34,9 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from providers import resolve_frost_alias
+from providers import MAX_THINK_NAMES, Registry, resolve_frost_alias
+
+import model_switch
 
 from context_formatter import (
     CYBER_SYSTEM,
@@ -49,10 +54,12 @@ from ingress_assembler import (
 )
 from routing_patterns import (
     DIVERT_STATUS,
+    FORCED_DIVERT_REASON,
     FOOTNOTE_TEMPLATE,
     classify_status,
     footnote,
-    is_no_go,
+    is_attack_content,
+    no_go_match,
     is_routable,
     should_hedge,
 )
@@ -76,14 +83,106 @@ def _float_env(name, default):
         return default
 
 
+def _specialist_key() -> str:
+    """Credential for the specialist (worker) slot.
+
+    Resolution, highest first:
+      1. SPECIALIST_API_KEY  - explicit override (plan W-A env trio)
+      2. FALLBACK_API_KEY    - historical name / the local hub's "none"
+      3. NANOGPT_API_KEY     - the operator's Windows-env NanoGPT key, so the
+                               uncensored specialist credential is read from the
+                               environment instead of being copied into another
+                               variable
+    Falls back to "none" (no Authorization header) when neither is set.
+    """
+    return (os.getenv("SPECIALIST_API_KEY") or os.getenv("FALLBACK_API_KEY")
+            or os.getenv("NANOGPT_API_KEY") or "none")
+
+
+def _hive_base() -> str:
+    """HIVE_API_BASE without a trailing slash, or "" when unset.
+
+    The operator's Windows env carries HIVE_API_BASE / HIVE_SECRET_KEY already
+    (S-A: reference existing HKCU values, never copy a secret into a second
+    variable). Used by the PRIMARY_* fallbacks below so a fresh shell with NO
+    PRIMARY_* set still lands on the Hive provider instead of silently hitting
+    api.openai.com with an empty key - which is exactly what the :9000 gateway
+    did until 2026-10-16.
+    """
+    return (os.getenv("HIVE_API_BASE") or "").strip().rstrip("/")
+
+
+def _primary_key() -> str:
+    """Credential for the PRIMARY slot - the mirror of _specialist_key().
+
+    Resolution, highest first:
+      1. PRIMARY_API_KEY   - explicit override
+      2. HIVE_SECRET_KEY   - the thehive.ai secret, already in the operator's
+                             Windows env (never re-copied; see S-B for moving it
+                             out of gateway_registry.json)
+      3. ""                - no Authorization header (OpenAI's public routes)
+    """
+    return os.getenv("PRIMARY_API_KEY") or os.getenv("HIVE_SECRET_KEY") or ""
+
+
+def _primary_url() -> str:
+    """Chat-completions URL for the PRIMARY slot.
+
+    Resolution, highest first:
+      1. PRIMARY_API_URL   - explicit override (any provider)
+      2. HIVE_API_BASE     - the Hive base, with /chat/completions appended
+      3. OpenAI default    - only when Hive is not configured at all
+
+    HIVE_API_BASE is stored WITHOUT the suffix (providers.py._strip_chat_suffix
+    is the existing single source for that normalization), so the suffix is
+    added here only when the base does not already carry it.
+    """
+    explicit = os.getenv("PRIMARY_API_URL")
+    if explicit:
+        return explicit
+    base = _hive_base()
+    if not base:
+        return "https://api.openai.com/v1/chat/completions"
+    return base if base.endswith("/chat/completions") else f"{base}/chat/completions"
+
+
+def _primary_model() -> str:
+    """Model id for the PRIMARY slot.
+
+    Follows the URL: an explicitly-set PRIMARY_MODEL always wins; otherwise a
+    Hive-backed primary gets Hive's GLM flash id (plan section 2, R1) and the
+    OpenAI default stays gpt-4o. Keeping these coupled matters - pointing the
+    URL at Hive while leaving the model at gpt-4o yields a guaranteed upstream
+    400 for every request.
+    """
+    model = os.getenv("PRIMARY_MODEL")
+    if model:
+        return model
+    return "zai-org/glm-5.3-flash" if _hive_base() else "gpt-4o"
+
+
+
 @dataclass
 class Settings:
-    primary_api_url: str = os.getenv("PRIMARY_API_URL", "https://api.openai.com/v1/chat/completions")
-    primary_api_key: str = os.getenv("PRIMARY_API_KEY", "")
-    primary_model: str = os.getenv("PRIMARY_MODEL", "gpt-4o")
-    fallback_api_url: str = os.getenv("FALLBACK_API_URL", "http://127.0.0.1:8000/v1/chat/completions")
-    fallback_api_key: str = os.getenv("FALLBACK_API_KEY", "none")
-    fallback_model: str = os.getenv("FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP")
+    # PRIMARY slot: default_factory (not class-level evaluation) so values are
+    # resolved per-instantiation and stay monkeypatchable in tests - the
+    # specialist slot already works this way. Bridges to HIVE_* when PRIMARY_*
+    # is unset: see _primary_url/_primary_key/_primary_model.
+    primary_api_url: str = field(default_factory=_primary_url)
+    primary_api_key: str = field(default_factory=_primary_key)
+    primary_model: str = field(default_factory=_primary_model)
+    # The worker/specialist binding. SPECIALIST_API_URL/MODEL (plan W-A) override
+    # the historical FALLBACK_* names; the key resolves through
+    # SPECIALIST_API_KEY -> FALLBACK_API_KEY -> NANOGPT_API_KEY (see
+    # _specialist_key) so the uncensored specialist can run on the operator's
+    # Windows-env NanoGPT key with no extra secret to manage.
+    fallback_api_url: str = field(default_factory=lambda: (
+        os.getenv("SPECIALIST_API_URL")
+        or os.getenv("FALLBACK_API_URL", "http://127.0.0.1:8000/v1/chat/completions")))
+    fallback_api_key: str = field(default_factory=_specialist_key)
+    fallback_model: str = field(default_factory=lambda: (
+        os.getenv("SPECIALIST_MODEL")
+        or os.getenv("FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP")))
     # CALIBRATED 2026-10-05 (evals/hedge_calibrate.py): the refusal regex is
     # anchored to the start of the generation and fires by the 5th content word
     # (median 2), so holding 10 tokens screens exactly as well as 25 while the
@@ -99,7 +198,12 @@ class Settings:
     retry_base_delay: float = field(default_factory=lambda: _float_env("RETRY_BASE_DELAY", 0.5))
     fallback_max_attempts: int = field(default_factory=lambda: _int_env("FALLBACK_MAX_ATTEMPTS", 3))
     assembly_enabled: int = field(default_factory=lambda: _int_env("ASSEMBLY_ENABLED", 1))
-    orchestrator_model: str = field(default_factory=lambda: os.getenv("ORCHESTRATOR_MODEL", "") or os.getenv("PRIMARY_MODEL", "gpt-4o"))
+    # Gate 7 kill switch (T9 pattern). Gate 7 fail-closes on a keyword match,
+    # so a false positive blocks the whole request with no recourse; an operator
+    # must be able to re-open the gate without a code change or redeploy.
+    no_go_enabled: int = field(default_factory=lambda: _int_env("NO_GO_ENABLED", 1))
+    orchestrator_model: str = field(default_factory=lambda: (
+        os.getenv("ORCHESTRATOR_MODEL", "") or _primary_model()))
     audit_log: str = os.getenv("AUDIT_LOG", "")
     authorised_principals: tuple = field(
         default_factory=lambda: tuple(p.strip() for p in os.getenv("AUTHORISED_PRINCIPALS", "").split(",") if p.strip())
@@ -117,16 +221,38 @@ class Settings:
 SETTINGS = Settings()
 
 # --------------------------------------------------------------------------
+# Provider registry accessor (gateway_registry.json).
+# One lazy, shared Registry for the whole process - /v1/switch resolves switch
+# targets through it (Frost names in the list stay alias-only, list_models
+# keeps its hand-written preferred order). mtime-based reload means an edit to
+# the json is picked up without a restart.
+# --------------------------------------------------------------------------
+_registry = None
+
+
+def registry():
+    """The shared providers.Registry, created on first use (env-fallback safe)."""
+    global _registry
+    if _registry is None:
+        _registry = Registry()
+    return _registry
+
+
+# --------------------------------------------------------------------------
 # F26 metrics - plain dict counters, rendered as Prometheus text.
 # --------------------------------------------------------------------------
 _METRICS = {
     "requests_total": 0,
     "requests_clean": 0,
     "diverted_total": 0,
+    "forced_divert_total": 0,
+    "max_think_total": 0,
     "authz_denied_total": 0,
     "fallback_errors_total": 0,
     "primary_errors_total": 0,
     "assembly_total": 0,
+    "switch_total": 0,
+    "switch_verified_total": 0,
     "in_flight": 0,
     "specialist_warm": 0,
 }
@@ -163,8 +289,11 @@ def render_prometheus() -> str:
             "fallback_errors_total": "specialist transport/HTTP failures",
             "primary_errors_total": "primary transport/HTTP failures (F12/F13)",
             "assembly_total": "/v1/execute attempts",
+            "switch_total": "requests accepted by /v1/switch",
+            "switch_verified_total": "switches whose upstream probe answered 2xx",
             "in_flight": "streams currently open",
             "specialist_warm": "keep-alive liveness of the specialist (1/0)",
+            "max_think_total": "max-think requests (reasoning pushed to maximum)",
             "hedge_transport_error_total": "hedge branches that failed to connect/read",
             "hedge_bad_status_total": "hedge branches that answered non-2xx",
         }.get(key, key)
@@ -375,15 +504,19 @@ def run_guards(body: dict, principal: str = None) -> None:
             status_code=400,
             detail="n>1 is not supported: the buffer inspects one choice stream (E6)",
         )
-    texts = []
-    for m in body.get("messages") or []:
-        if isinstance(m, dict):
-            c = m.get("content")
-            if isinstance(c, str):
-                texts.append(c)
-            elif isinstance(c, list):
-                texts.extend(str(b.get("text", "")) for b in c if isinstance(b, dict))
-    if is_no_go(" ".join(texts)):
+    # Gate 7 scope: the CURRENT prompt only, exactly like Gate 8's
+    # is_attack_content(user_query) below. The previous behaviour concatenated
+    # every message in the body - system prompt plus the whole conversation
+    # history - and ran the regex over the lot. A single appearance of a
+    # no-go phrase in a client's system prompt, or in an assistant turn that
+    # was itself quoting one, 403'd every subsequent turn of that conversation
+    # permanently: measured live (evals/nogo_gate_probe.py) - a plain "hello"
+    # returns 403 once the history mentions "nonconsensual surveillance".
+    # History is by definition already-approved traffic; a gate that blocks
+    # new requests on old answers cannot ever recover.
+    no_go_text = _last_user_text(body.get("messages") or [])
+    matched = None if not SETTINGS.no_go_enabled else no_go_match(no_go_text)
+    if matched:
         audit_record(
             request_id="nogo",
             primary_model=SETTINGS.primary_model,
@@ -393,7 +526,15 @@ def run_guards(body: dict, principal: str = None) -> None:
             principal=principal or "",
             audit_log=SETTINGS.audit_log,
         )
-        raise HTTPException(status_code=403, detail="request falls into a hard no-go class")
+        # Report WHAT tripped the gate (a short, escaped excerpt). The bare
+        # "hard no-go class" string was undiagnosable: 5 audit rows, zero
+        # information about which phrase fired.
+        snippet = " ".join(no_go_text.split())[:120]
+        raise HTTPException(
+            status_code=403,
+            detail=f"request falls into a hard no-go class: {matched!r} "
+                   f"in user prompt: {snippet!r}",
+        )
 
 
 # --------------------------------------------------------------------------
@@ -614,6 +755,23 @@ def _last_user_text(messages) -> str:
     return ""
 
 # --------------------------------------------------------------------------
+# Max-think names (operator request, 2026-10): the SAME thinking primaries
+# (deepseek-ai/deepseek-v4.1-flash, zai-org/glm-5.3-flash) addressed through
+# names that demand extra-hard reasoning. The name set lives beside
+# FROST_ALIASES in providers.py (single source of truth for the alias data);
+# here we only recognise the names (exact alias form plus the normalised
+# "x max think" tail - see resolve_frost_alias's normalisation) and inject the
+# reasoning knobs server-side in chat_proxy.
+# --------------------------------------------------------------------------
+def wants_max_think(model) -> bool:
+    """True when the client addressed one of the max-think Frost names."""
+    if not model:
+        return False
+    key = " ".join(str(model).strip().lower().replace("_", " ").split())
+    return key in MAX_THINK_NAMES or key.replace(" ", "-") in MAX_THINK_NAMES
+
+
+# --------------------------------------------------------------------------
 # Streaming ring-buffer endpoint (section 3).
 # --------------------------------------------------------------------------
 @app.post("/v1/chat/completions")
@@ -631,6 +789,24 @@ async def chat_proxy(request: Request):
     request_id = f"gw-{uuid.uuid4().hex[:12]}"
     settings = SETTINGS
 
+    # Gate 8: forced divert for attack content (S4/S5/S6 red-team stages).
+    # Check BEFORE primary model sees the request - divert immediately to specialist.
+    if is_attack_content(user_query):
+        incr("forced_divert_total")
+        return StreamingResponse(
+            fallback_stream(
+                messages,
+                request_id=request_id,
+                signal=FORCED_DIVERT_REASON,
+                settings=settings,
+                principal=principal,
+                tools=body.get("tools"),
+                tool_choice=body.get("tool_choice"),
+                system_prompt=_specialist_system_prompt(settings),
+            ),
+            media_type="text/event-stream",
+        )
+
     # B11 gate: the speculative hedge only fires on latency hints or force.
     hedge_requested = should_hedge(user_query, force=body.get("hedge") is True)
 
@@ -639,6 +815,13 @@ async def chat_proxy(request: Request):
     # endpoint can address any published system; anything else passes through.
     requested = body.get("model") or settings.primary_model
     frost = resolve_frost_alias(requested)
+    # Max-think is detected on the NAME the client sent (the alias, not the
+    # resolved upstream id) so the reasoning knobs below are injected exactly
+    # once, before the payload is dispatched. The max-think names stay on the
+    # PRIMARY slot (Hive / thehive.ai keys) - they are the SAME thinking
+    # primaries, just with reasoning pushed to max; the NanoGPT abliterated
+    # specialist is reached only through the normal divert path.
+    max_think = wants_max_think(requested)
     if frost and frost[0] == "worker":
         call_settings = copy.copy(settings)
         call_settings.primary_api_url = settings.fallback_api_url
@@ -665,11 +848,37 @@ async def chat_proxy(request: Request):
         primary_payload["tool_choice"] = body["tool_choice"]
     if body.get("temperature") is not None:
         primary_payload["temperature"] = body["temperature"]
+    if max_think:
+        # Operator knob set for the max-think names: the reasoning maximum is
+        # injected HERE, never trusted from the body. Every known convention
+        # is sent because OpenAI-compatible upstreams ignore unknown fields
+        # (measured on Hive, see speculative_hedge). The output-floor matters
+        # just as much: Hive models spend the budget on hidden reasoning
+        # first (finish_reason=length with 0 content tokens was measured at
+        # max_tokens=2000), so extra-hard thinking needs a bigger cap than
+        # the 4096 default not to die mid-deliberation.
+        primary_payload["reasoning_effort"] = "max"
+        primary_payload["reasoning"] = {"effort": "max"}
+        primary_payload["reasoning_content"] = True
+        primary_payload["enable_thinking"] = True
+        primary_payload["chat_template_kwargs"] = {"thinking": True}
+        primary_payload["thinking"] = {"type": "enabled"}
+        floor = _int_env("MAX_THINK_MIN_TOKENS", 32768)
+        for k in ("max_tokens", "max_completion_tokens"):
+            try:
+                primary_payload[k] = max(floor, int(primary_payload[k]))
+            except (TypeError, ValueError):
+                primary_payload[k] = floor
+        incr("max_think_total")
     primary_headers = {**_auth_header(call_settings.primary_api_key), "Content-Type": "application/json"}
 
     async def coordinator() -> AsyncGenerator[bytes, None]:
         try:
-            if hedge_requested:
+            # Max-think never races: COMMIT_TOKENS=10 would commit the flash
+            # worker while the deep model is still deliberating (reasoning
+            # tokens are invisible to the commit counter), so the race's value
+            # proposition (fast first token) is void here anyway.
+            if hedge_requested and not max_think:
                 import speculative_hedge
 
                 # R2: audit parity. The divert path records BEFORE dispatch
@@ -1098,6 +1307,14 @@ FROST_REGISTRY = [
     {"id": "glmfrost", "name": "GLMFrost 5.3 Flash", "upstream": "zai-org/glm-5.3-flash",
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9312/v1",
      "type": "primary", "provider": "hive", "hedged": True},
+    {"id": "deepfrost max think", "name": "DeepFrost Max Think", "upstream": "deepseek-ai/deepseek-v4.1-flash",
+     "endpoint": "http://gx10.ayu-sidewinder.ts.net:9314/v1",
+     "type": "primary", "provider": "hive", "hedged": False,
+     "reasoning": "max"},
+    {"id": "glmfrost max think", "name": "GLMFrost Max Think", "upstream": "zai-org/glm-5.3-flash",
+     "endpoint": "http://gx10.ayu-sidewinder.ts.net:9315/v1",
+     "type": "primary", "provider": "hive", "hedged": False,
+     "reasoning": "max"},
     {"id": "cyberfrost", "name": "CyberFrost 3.8 SAGE", "upstream": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw",
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9313/v1",
      "type": "worker", "provider": "gx10-hub", "hedged": False},
@@ -1124,8 +1341,46 @@ async def list_models():
             "endpoint": m["endpoint"],
             "hedged": m["hedged"],
             "type": m["type"],
+            "max_think": m["id"] in MAX_THINK_NAMES,
+            "reasoning": m.get("reasoning"),
         })
     return {"object": "list", "data": data}
+
+
+# --------------------------------------------------------------------------
+# /v1/switch - runtime slot switching (see model_switch.py for the contract).
+# Endpoint duties only: guards (F9 authz), body parse, metric increments,
+# SwitchError -> status-code mapping. Everything else lives in model_switch.
+# --------------------------------------------------------------------------
+@app.post("/v1/switch")
+@app.post("/switch", include_in_schema=False)
+async def switch_endpoint(request: Request):
+    check_body_size(request)
+    if (request.headers.get("content-length") or "").strip() == "0":
+        body = {}  # a truly empty POST still answers with a status snapshot
+    else:
+        # F5 preserved: garbage JSON stays a 400 and an oversized body a 413 -
+        # only an EMPTY body gets the status-snapshot courtesy.
+        body = await read_json_body(request)
+    principal = request.headers.get(PRINCIPAL_HEADER) or ""
+    run_guards({}, principal or None)
+    request_id = f"sw-{uuid.uuid4().hex[:12]}"
+    incr("switch_total")
+    try:
+        payload = await model_switch.perform_switch(
+            body,
+            settings=SETTINGS,
+            http=app.state.http,
+            registry=registry(),
+            request_id=request_id,
+            principal=principal,
+            audit_log=SETTINGS.audit_log,
+        )
+    except model_switch.SwitchError as exc:
+        return JSONResponse(status_code=exc.status_code, content={"error": str(exc)})
+    if payload.get("verified"):
+        incr("switch_verified_total")
+    return payload
 
 
 @app.get("/healthz")
@@ -1136,7 +1391,23 @@ async def healthz():
         "metrics": metrics_snapshot(),
         "config": {
             "primary_model": SETTINGS.primary_model,
+            # Phase 0 observability: the URL is public (a base address, not a
+            # secret) but the KEY is only reported as a presence boolean -
+            # /healthz has no auth, so echoing the value would leak it. Before
+            # this existed there was no way to confirm WHICH provider the
+            # primary slot was bound to without reading the host env.
+            "primary_url": SETTINGS.primary_api_url,
+            "primary_key_present": bool(SETTINGS.primary_api_key),
+            "no_go_enabled": bool(SETTINGS.no_go_enabled),
             "fallback_model": SETTINGS.fallback_model,
+            # Runtime switch surface: what each slot is bound to RIGHT NOW,
+            # who last wrote it and whether a rollback savepoint exists. The
+            # binding dicts carry key_present booleans only - /healthz has no
+            # auth, so no secret material is echoed here either.
+            "switch": {
+                **model_switch.manager().snapshot(),
+                "savepoint_available": model_switch.manager().has_savepoint(),
+            },
             "buffer_content_tokens": SETTINGS.buffer_content_tokens,
             "buffer_reasoning": SETTINGS.buffer_reasoning,
             "assembly_enabled": bool(SETTINGS.assembly_enabled),

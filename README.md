@@ -9,7 +9,7 @@ hedger, and the deterministic ingress assembler described in
 | Suite | Concern | Status |
 |---|---|---|
 | `evals/routing_probe.py` | detection / formatter / assembler / Tier 2 | 20 passed |
-| `evals/routing_test.py` | authz (F9) / Tier 4 / Gate 7 no-go | 7 passed |
+| `evals/routing_test.py` | authz (F9) / Tier 4 / Gate 7 no-go (scope, diagnostics, kill switch) | 12 passed |
 | `evals/callback_test.py` | LiteLLM callback / single-source invariant | 5 passed |
 | `evals/hedge_test.py` | speculative dual-dispatch (B9/B11/F1) | 4 passed |
 | `evals/e2e_gateway_test.py` | streaming ring buffer (B7/B8/B10) | 11 passed |
@@ -49,6 +49,24 @@ uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000
 python -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000
 ```
 
+## Max-reasoning DeepFrost / GLMFrost (Hive primary)
+
+`deepfrost max think` and `glmfrost max think` are the **max-reasoning**
+versions of `deepfrost` / `glmfrost`. They stay on the **primary slot**
+(thehive.ai keys) with the SAME Hive upstream ids — the gateway just injects
+`reasoning_effort=max` (plus the other thinking-knob conventions) server-side
+and raises the token floor. When the primary refuses, the existing divert
+machinery routes to the **NanoGPT `abliteration-ai/abliterated-model-large-v2`**
+specialist (worker slot), exactly like a plain Frost name.
+
+| Alias | Hive upstream model | Endpoint |
+|---|---|---|
+| `deepfrost max think` | `deepseek-ai/deepseek-v4.1-flash` | `http://gx10.ayu-sidewinder.ts.net:9314/v1` |
+| `glmfrost max think` | `zai-org/glm-5.3-flash` | `http://gx10.ayu-sidewinder.ts.net:9315/v1` |
+
+Max-reasoning requests never race the speculative hedge, get a 32768-token
+floor (`MAX_THINK_MIN_TOKENS`), and are counted in `max_think_total`.
+
 ## Wiring the CYBER-FROST specialist (gx10 / DGX Spark)
 
 CYBER-FROST-3.8-EXL3-SAGE-3.87bpw is served by TabbyAPI on the Spark
@@ -76,8 +94,81 @@ refusal/capacity diverts and `/v1/execute` both put `CYBER_SYSTEM` in front of
 the specialist; `neutral` (default) keeps the generic execution-engine framing
 (`evals/specialist_system_test.py` pins both).
 
+### Specialist on NanoGPT (uncensored fallback)
+
+The refusal-interception specialist can run on the operator's NanoGPT account
+instead of the local gx10 hub. Point the worker slot at NanoGPT and let the
+credential resolve from the Windows environment (`NANOGPT_API_KEY`) - no second
+copy of the secret to manage:
+
+```powershell
+[Environment]::SetEnvironmentVariable('SPECIALIST_API_URL', 'https://nano-gpt.com/api/v1/chat/completions', 'User')
+[Environment]::SetEnvironmentVariable('SPECIALIST_MODEL', 'abliteration-ai/abliterated-model-large-v2', 'User')
+# NANOGPT_API_KEY already holds the key; SPECIALIST_API_KEY overrides it if set.
+```
+
+Resolution: `SPECIALIST_API_URL/MODEL` override `FALLBACK_API_URL/MODEL`; the
+key is `SPECIALIST_API_KEY` -> `FALLBACK_API_KEY` -> `NANOGPT_API_KEY` -> `none`
+(`evals/specialist_config_test.py`). Verify live (forced-divert path, no primary
+spend): `python tools/hive/verify_specialist_live.py`.
+
+#### Two independent NanoGPT slots (2026-10-16)
+
+The **specialist** (divert target, `proxy_gateway.Settings`) and the **worker**
+(speculative hedge branch, `speculative_hedge.HedgeSettings`) can be different
+models on the same NanoGPT endpoint. The gateway reads `SPECIALIST_MODEL`; the
+hedge reads `WORKER_MODEL`, so the two never collapse onto each other:
+
+| Slot | Consumer | Variable | Value |
+|---|---|---|---|
+| Worker (hedge branch) | `speculative_hedge.py` | `WORKER_MODEL` | `xiaomi/mimo-v2.6-flash-abliterated` |
+| Specialist (divert) | `proxy_gateway.py` | `SPECIALIST_MODEL` | `abliteration-ai/abliterated-model-large-v2` |
+
+```powershell
+[Environment]::SetEnvironmentVariable('WORKER_API_URL', 'https://nano-gpt.com/api/v1/chat/completions', 'User')
+[Environment]::SetEnvironmentVariable('WORKER_MODEL', 'xiaomi/mimo-v2.6-flash-abliterated', 'User')
+```
+
+Both keys resolve through the same chain (`WORKER_API_KEY`/`SPECIALIST_API_KEY`
+-> `FALLBACK_API_KEY` -> `NANOGPT_API_KEY` -> `none`), so the single
+`NANOGPT_API_KEY` credential serves both. Verify the split offline and live:
+
+```bash
+python tools/hive/verify_slot_split.py         # resolution: both slots, no network
+python tools/hive/verify_slots_live.py         # live PONG on each slot's own model
+python tools/hive/verify_hedge_worker_live.py  # refusing sovereign -> mimo worker divert
+```
+
 Grammar enforcement (spec section 4): `plan.output_grammar_type == "json_sarif"`
 attaches `grammar_string` (GBNF) to the specialist payload automatically.
+
+## Frost names & max-think
+
+The gateway publishes the operator's specialised systems as **model ids** (the
+Frost names), so one endpoint can address any of them and `GET /v1/models`
+lists them for Cline/OpenCode pickers (`evals/frost_alias_test.py`):
+
+| Name | Slot | Upstream id |
+|---|---|---|
+| `deepfrost` | primary | `deepseek-ai/deepseek-v4.1-flash` |
+| `glmfrost` | primary | `zai-org/glm-5.3-flash` |
+| `cyberfrost` | worker | `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw` |
+
+The **max-think** variants (`deepfrost max think` / `glmfrost max think`, also
+`*-max-think`) are the SAME thinking primaries with reasoning pushed to the
+maximum. The knobs are injected server-side (never trusted from the body):
+`reasoning_effort=max`, `reasoning.effort=max`, `enable_thinking`, plus every
+known convention (unknown fields are ignored by OpenAI-compatible upstreams).
+Two deliberate deviations from the plain names:
+
+* **No speculative race.** `COMMIT_TOKENS=10` would commit the flash worker
+  while the deep model is still deliberating (reasoning tokens are invisible to
+  the commit counter), so a `hedge: true` on a max-think name is ignored.
+* **Raised output floor.** `MAX_THINK_MIN_TOKENS` (default `32768`) raises both
+  `max_tokens` and `max_completion_tokens`; Hive's models spend the budget on
+  hidden reasoning first, so the 4096 default can die mid-deliberation with
+  `finish_reason=length` and zero content. A higher client `max_tokens` still
+  wins (`evals/max_think_test.py`).
 
 ## Configuration surface (env vars)
 
@@ -93,6 +184,9 @@ attaches `grammar_string` (GBNF) to the specialist payload automatically.
 | Shutdown | `SHUTDOWN_GRACE_S` | `10` |
 | Hedge | `SOVEREIGN_*`, `WORKER_*`, `COMMIT_TOKENS` | mirrors primary/fallback, `25` |
 | Specialist | `SPECIALIST_TEMPERATURE`, `SPECIALIST_SYSTEM_MODE` | unset (server defaults), `neutral` |
+| Specialist binding | `SPECIALIST_API_URL/KEY/MODEL` (override `FALLBACK_*`); key falls back to `NANOGPT_API_KEY` | local vLLM `:8000`, Qwen3.6-35B (or NanoGPT specialist) |
+| Max-think | `MAX_THINK_MIN_TOKENS` | `32768` (output floor for the max-think names) |
+| Gate 7 | `NO_GO_ENABLED` | `1` (set `0` to re-open the hard no-go gate without a redeploy) |
 
 ## Where the tests live
 
@@ -106,6 +200,9 @@ attaches `grammar_string` (GBNF) to the specialist payload automatically.
 | `/v1/execute`, audit, retry | `evals/assembly_test.py` |
 | tool calls, n>1, disconnect, concurrency, metrics | `evals/edge_test.py` |
 | `SPECIALIST_SYSTEM_MODE` / `CYBER_SYSTEM` on both specialist surfaces | `evals/specialist_system_test.py` |
+| Frost names as model ids / `/v1/models` | `evals/frost_alias_test.py` |
+| max-think knobs, no-race, token floor | `evals/max_think_test.py` |
+| hedge output cap (`max_completion_tokens`) | `evals/hedge_budget_test.py` |
 | real specialist / real primary | `evals/live_stack_test.py` (gated) |
 
 See `corrections-ledger.md` for the B/E/F defect IDs referenced above.

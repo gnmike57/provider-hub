@@ -6,6 +6,8 @@ model field optional (the port already defaults it):
   9311  deepfrost          -> Hive deepseek-ai/deepseek-v4.1-flash  (hedged, worker: CYBER-FROST)
   9312  glmfrost           -> Hive zai-org/glm-5.3-flash           (hedged, worker: CYBER-FROST)
   9313  cyberfrost         -> gx10 hub CYBER-FROST-3.8-EXL3-SAGE-3.87bpw (no hedge)
+  9314  deepfrost max think -> Hive deepseek-ai/deepseek-v4.1-flash (max-think, no hedge)
+  9315  glmfrost max think  -> Hive zai-org/glm-5.3-flash          (max-think, no hedge)
   9310  (general)          -> any id in the body; hedge worker = CYBER-FROST
 
 All of them accept any model id in the body as an override, and `"hedge": true`
@@ -28,6 +30,13 @@ INSTANCES = [
     ("deepfrost", 9311, HIVE_URL, "deepseek-ai/deepseek-v4.1-flash", True),
     ("glmfrost", 9312, HIVE_URL, "zai-org/glm-5.3-flash", True),
     ("cyberfrost", 9313, HUB_URL, SPECIALIST, False),
+    # Max-think ports default the max-think NAME (not the raw upstream id):
+    # the gateway recognises it and injects the reasoning knobs itself. The
+    # race is disabled at the env layer too (COMMIT_TOKENS=100000) - the
+    # gateway already skips hedging for max-think names, this keeps the
+    # process honest if the name is ever overridden in a request body.
+    ("deepfrost max think", 9314, HIVE_URL, "deepfrost max think", False),
+    ("glmfrost max think", 9315, HIVE_URL, "glmfrost max think", False),
     ("general (any Frost name / raw id)", 9310, HIVE_URL,
      "deepseek-ai/deepseek-v4.1-flash", True),
 ]

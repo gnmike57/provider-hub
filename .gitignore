@@ -10,3 +10,9 @@ ufo.env
 gateway_registry.json
 gateway_registry.json.tmp
 
+# loki runtime state (autonomous session ledger)
+.loki/
+
+# IDE state
+.idea/
+
