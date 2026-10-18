@@ -48,6 +48,10 @@ __all__ = [
     "FROST_ALIASES",
     "MAX_THINK_NAMES",
     "resolve_frost_alias",
+    "HUB_PROVIDERS",
+    "HUB_MODEL_ALIASES",
+    "resolve_hub_alias",
+    "hub_models_for_listing",
 ]
 
 # --------------------------------------------------------------------------
@@ -100,6 +104,101 @@ def resolve_frost_alias(model: str):
     if key in FROST_ALIASES:
         return FROST_ALIASES[key]
     return FROST_ALIASES.get(key.replace(" ", "-"))
+
+
+# --------------------------------------------------------------------------
+# Hub model matrix (2026-10-18): operator-addressable model aliases that select
+# a provider, an upstream model id, and a reasoning mode.
+#
+#   <Provider><Model><Reasoning>
+#   Provider: nano        -> NanoGPT (NANOGPT_API_URL/KEY)
+#             ablit.ai    -> Abliteration.ai (ABLITERATION_API_URL/KEY)
+#   Model:    deep        -> deepseek-ai/deepseek-v4.1-flash
+#             glm         -> zai-org/glm-5.3-flash
+#   Reasoning: max        -> reasoning knobs pushed to maximum
+#                       (absent)  -> normal reasoning
+#
+# Eight aliases: DeepMaxNano, GLMMaxNano, DeepNano, GLMNano,
+#                DeepMaxAblit.ai, GLMMaxAblit.ai, DeepAblit.ai, GLMAblit.ai
+# --------------------------------------------------------------------------
+
+HUB_PROVIDERS = {
+    "nano": {
+        "url": os.getenv("NANOGPT_API_URL", "https://nano-gpt.com/api/v1/chat/completions"),
+        "key": os.getenv("NANOGPT_API_KEY", ""),
+    },
+    "ablit.ai": {
+        "url": os.getenv("ABLITERATION_API_URL", "https://api.abliteration.ai/v1/chat/completions"),
+        "key": os.getenv("ABLITERATION_API_KEY", ""),
+    },
+}
+
+# normalized alias -> (provider_key, upstream_model_id, max_reasoning)
+HUB_MODEL_ALIASES = {
+    "deepmaxnano": ("nano", "deepseek-ai/deepseek-v4.1-flash", True),
+    "glmmaxnano": ("nano", "zai-org/glm-5.3-flash", True),
+    "deepnano": ("nano", "deepseek-ai/deepseek-v4.1-flash", False),
+    "glmnano": ("nano", "zai-org/glm-5.3-flash", False),
+    "deepmaxablit.ai": ("ablit.ai", "deepseek-ai/deepseek-v4.1-flash", True),
+    "glmmaxablit.ai": ("ablit.ai", "zai-org/glm-5.3-flash", True),
+    "deepablit.ai": ("ablit.ai", "deepseek-ai/deepseek-v4.1-flash", False),
+    "glmablit.ai": ("ablit.ai", "zai-org/glm-5.3-flash", False),
+}
+
+_HUB_DISPLAY = {
+    "deepmaxnano": ("DeepMaxNano", "deepseek-ai/deepseek-v4.1-flash", "nano", True),
+    "glmmaxnano": ("GLMMaxNano", "zai-org/glm-5.3-flash", "nano", True),
+    "deepnano": ("DeepNano", "deepseek-ai/deepseek-v4.1-flash", "nano", False),
+    "glmnano": ("GLMNano", "zai-org/glm-5.3-flash", "nano", False),
+    "deepmaxablit.ai": ("DeepMaxAblit.ai", "deepseek-ai/deepseek-v4.1-flash", "ablit.ai", True),
+    "glmmaxablit.ai": ("GLMMaxAblit.ai", "zai-org/glm-5.3-flash", "ablit.ai", True),
+    "deepablit.ai": ("DeepAblit.ai", "deepseek-ai/deepseek-v4.1-flash", "ablit.ai", False),
+    "glmablit.ai": ("GLMAblit.ai", "zai-org/glm-5.3-flash", "ablit.ai", False),
+}
+
+
+def _normalize_model_name(model: str) -> str:
+    """Lowercase, replace hyphens/underscores with spaces, collapse whitespace."""
+    return " ".join(str(model or "").strip().lower().replace("-", " ").replace("_", " ").split())
+
+
+def resolve_hub_alias(model: str):
+    """`"DeepMaxNano"` -> `("nano", "deepseek-ai/deepseek-v4.1-flash", True)`.
+
+    Returns None for anything that is not a hub alias, so raw upstream ids and
+    Frost names keep their existing behaviour.
+    """
+    if not model:
+        return None
+    key = _normalize_model_name(model)
+    if key in HUB_MODEL_ALIASES:
+        return HUB_MODEL_ALIASES[key]
+    compact = key.replace(" ", "")
+    if compact in HUB_MODEL_ALIASES:
+        return HUB_MODEL_ALIASES[compact]
+    return None
+
+
+def hub_models_for_listing():
+    """Hub model entries for the /v1/models endpoint."""
+    out = []
+    for alias, (display, upstream, provider_key, is_max) in _HUB_DISPLAY.items():
+        provider = HUB_PROVIDERS[provider_key]
+        out.append({
+            "id": alias,
+            "object": "model",
+            "created": 1791338912,
+            "owned_by": provider_key,
+            "permission": [],
+            "root": upstream,
+            "endpoint": provider["url"],
+            "provider": provider_key,
+            "hedged": False,
+            "type": "hub",
+            "max_think": is_max,
+            "reasoning": "max" if is_max else None,
+        })
+    return out
 
 
 ANTHROPIC_VERSION = "2023-06-01"

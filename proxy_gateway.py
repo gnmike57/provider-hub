@@ -34,7 +34,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from providers import MAX_THINK_NAMES, Registry, resolve_frost_alias
+from providers import MAX_THINK_NAMES, Registry, resolve_frost_alias, HUB_PROVIDERS, resolve_hub_alias
 
 import model_switch
 
@@ -959,26 +959,40 @@ async def chat_proxy(request: Request):
     # B11 gate: the speculative hedge only fires on latency hints or force.
     hedge_requested = should_hedge(user_query, force=body.get("hedge") is True)
 
-    # Frost names ("DeepFrost v4.1", "GLMFrost 5.3 Flash", "CyberFrost 3.8 SAGE")
-    # are real model ids. Resolve to the configured slot + upstream id so one
-    # endpoint can address any published system; anything else passes through.
+    # Hub model matrix: DeepMaxNano, GLMMaxNano, DeepNano, GLMNano,
+    # DeepMaxAblit.ai, GLMMaxAblit.ai, DeepAblit.ai, GLMAblit.ai.
+    # Selects provider (nano=NanoGPT, ablit.ai=Abliteration.ai), upstream model
+    # id, and reasoning mode directly - bypassing the primary/worker slots.
     requested = body.get("model") or settings.primary_model
-    frost = resolve_frost_alias(requested)
-    # Max-think is detected on the NAME the client sent (the alias, not the
-    # resolved upstream id) so the reasoning knobs below are injected exactly
-    # once, before the payload is dispatched. The max-think names stay on the
-    # PRIMARY slot (Hive / thehive.ai keys) - they are the SAME thinking
-    # primaries, just with reasoning pushed to max; the NanoGPT abliterated
-    # specialist is reached only through the normal divert path.
-    max_think = wants_max_think(requested)
-    if frost and frost[0] == "worker":
+    hub = resolve_hub_alias(requested)
+    if hub:
+        provider_key, upstream_model, is_max = hub
+        provider = HUB_PROVIDERS[provider_key]
         call_settings = copy.copy(settings)
-        call_settings.primary_api_url = settings.fallback_api_url
-        call_settings.primary_api_key = settings.fallback_api_key
-        primary_model_used = frost[1]
+        call_settings.primary_api_url = provider["url"]
+        call_settings.primary_api_key = provider["key"]
+        primary_model_used = upstream_model
+        max_think = is_max
     else:
-        call_settings = settings
-        primary_model_used = frost[1] if frost else requested
+        # Frost names ("DeepFrost v4.1", "GLMFrost 5.3 Flash", "CyberFrost 3.8 SAGE")
+        # are real model ids. Resolve to the configured slot + upstream id so one
+        # endpoint can address any published system; anything else passes through.
+        frost = resolve_frost_alias(requested)
+        # Max-think is detected on the NAME the client sent (the alias, not the
+        # resolved upstream id) so the reasoning knobs below are injected exactly
+        # once, before the payload is dispatched. The max-think names stay on the
+        # PRIMARY slot (Hive / thehive.ai keys) - they are the SAME thinking
+        # primaries, just with reasoning pushed to max; the NanoGPT abliterated
+        # specialist is reached only through the normal divert path.
+        max_think = wants_max_think(requested)
+        if frost and frost[0] == "worker":
+            call_settings = copy.copy(settings)
+            call_settings.primary_api_url = settings.fallback_api_url
+            call_settings.primary_api_key = settings.fallback_api_key
+            primary_model_used = frost[1]
+        else:
+            call_settings = settings
+            primary_model_used = frost[1] if frost else requested
 
     primary_payload = {
         "model": primary_model_used,
