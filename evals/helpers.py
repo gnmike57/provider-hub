@@ -114,5 +114,7 @@ def script(monkeypatch):
     s.assembly_enabled = 1
     s.specialist_temperature = None
     s.specialist_system_mode = "neutral"
+    s.specialist_max_tokens = 4096
+    s.max_concurrent_streams = 64
     yield sc
     proxy_gateway.BREAKER = proxy_gateway.SpecialistCircuitBreaker()

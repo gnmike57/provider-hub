@@ -56,9 +56,9 @@ from routing_patterns import (
     DIVERT_STATUS,
     FORCED_DIVERT_REASON,
     FOOTNOTE_TEMPLATE,
+    attack_match,
     classify_status,
     footnote,
-    is_attack_content,
     no_go_match,
     is_routable,
     should_hedge,
@@ -202,6 +202,12 @@ class Settings:
     # so a false positive blocks the whole request with no recourse; an operator
     # must be able to re-open the gate without a code change or redeploy.
     no_go_enabled: int = field(default_factory=lambda: _int_env("NO_GO_ENABLED", 1))
+    # Gate 8 kill switch. DEFAULT OFF: a forced divert bypasses the primary the
+    # operator paid for and answers under DEFAULT_SYSTEM on the specialist, so
+    # it is not a safe default. Enable with ATTACK_GATE_ENABLED=1.
+    attack_gate_enabled: int = field(
+        default_factory=lambda: _int_env("ATTACK_GATE_ENABLED", 0)
+    )
     orchestrator_model: str = field(default_factory=lambda: (
         os.getenv("ORCHESTRATOR_MODEL", "") or _primary_model()))
     audit_log: str = os.getenv("AUDIT_LOG", "")
@@ -215,6 +221,22 @@ class Settings:
     specialist_system_mode: str = os.getenv("SPECIALIST_SYSTEM_MODE", "neutral")
     specialist_temperature: Optional[float] = field(
         default_factory=lambda: float(os.getenv("SPECIALIST_TEMPERATURE")) if os.getenv("SPECIALIST_TEMPERATURE") else None
+    )
+    # Specialist budget per divert (found live 2026-10-18): fallback_stream sent
+    # NO max_tokens, so a prepaid specialist (NanoGPT) reserved funds for
+    # 64000 output tokens on EVERY divert and 402'd on a balance the actual
+    # answer would have fit into many times over. /v1/execute already bounds
+    # this at 4096 and the hedge at HEDGE_MAX_TOKENS; the divert was the only
+    # unbounded specialist call left. 0 restores the old unbounded behaviour.
+    specialist_max_tokens: int = field(
+        default_factory=lambda: _int_env("SPECIALIST_MAX_TOKENS", 4096)
+    )
+    # DoS guard: cap concurrently open streams. Each stream holds an upstream
+    # connection plus buffered SSE lines, so an unbounded burst exhausts fds
+    # and memory on this single-worker uvicorn long before any upstream
+    # rate-limits us. 0 = unlimited (previous behaviour).
+    max_concurrent_streams: int = field(
+        default_factory=lambda: _int_env("MAX_CONCURRENT_STREAMS", 64)
     )
 
 
@@ -255,6 +277,7 @@ _METRICS = {
     "switch_verified_total": 0,
     "in_flight": 0,
     "specialist_warm": 0,
+    "over_capacity_total": 0,
 }
 
 
@@ -264,6 +287,35 @@ def incr(name: str, n: int = 1) -> None:
         _METRICS[name] = _METRICS.get(name, 0) + n
     except Exception:
         pass
+
+
+def _stream_opened() -> None:
+    """Count one open stream. Keeps app.state (shutdown grace) and _METRICS
+    (healthz / Prometheus) in lockstep.
+
+    These used to be two unrelated counters: app.state.in_flight was incremented
+    and decremented per stream and honoured by _shutdown, while _METRICS
+    ["in_flight"] was initialised to 0 and never touched, so /healthz and the
+    Prometheus gauge reported "0 streams currently open" unconditionally - a
+    lie that made a wedged stream invisible to monitoring.
+    """
+    app.state.in_flight = getattr(app.state, "in_flight", 0) + 1
+    incr("in_flight")
+
+
+def _stream_closed() -> None:
+    """Release one open stream. Idempotent at zero; never raises.
+
+    The clamp guards a double close (a stream whose finally runs after an
+    explicit close): neither the shutdown counter nor the published gauge may go
+    negative, so the decrement only happens when a slot was actually held.
+    """
+    held = getattr(app.state, "in_flight", 0)
+    if held <= 0:
+        app.state.in_flight = 0
+        return
+    app.state.in_flight = held - 1
+    incr("in_flight", -1)
 
 
 def metrics_snapshot() -> dict:
@@ -285,6 +337,7 @@ def render_prometheus() -> str:
             "requests_total": "requests accepted by the gateway",
             "requests_clean": "requests committed to the sovereign",
             "diverted_total": "requests diverted to the specialist",
+            "forced_divert_total": "requests force-diverted by Gate 8 (attack content)",
             "authz_denied_total": "requests denied by F9 authz",
             "fallback_errors_total": "specialist transport/HTTP failures",
             "primary_errors_total": "primary transport/HTTP failures (F12/F13)",
@@ -292,6 +345,7 @@ def render_prometheus() -> str:
             "switch_total": "requests accepted by /v1/switch",
             "switch_verified_total": "switches whose upstream probe answered 2xx",
             "in_flight": "streams currently open",
+            "over_capacity_total": "requests rejected at the stream cap (429)",
             "specialist_warm": "keep-alive liveness of the specialist (1/0)",
             "max_think_total": "max-think requests (reasoning pushed to maximum)",
             "hedge_transport_error_total": "hedge branches that failed to connect/read",
@@ -504,8 +558,7 @@ def run_guards(body: dict, principal: str = None) -> None:
             status_code=400,
             detail="n>1 is not supported: the buffer inspects one choice stream (E6)",
         )
-    # Gate 7 scope: the CURRENT prompt only, exactly like Gate 8's
-    # is_attack_content(user_query) below. The previous behaviour concatenated
+    # Gate 7 scope: the CURRENT prompt only. The previous behaviour concatenated
     # every message in the body - system prompt plus the whole conversation
     # history - and ran the regex over the lot. A single appearance of a
     # no-go phrase in a client's system prompt, or in an assistant turn that
@@ -514,6 +567,14 @@ def run_guards(body: dict, principal: str = None) -> None:
     # returns 403 once the history mentions "nonconsensual surveillance".
     # History is by definition already-approved traffic; a gate that blocks
     # new requests on old answers cannot ever recover.
+    #
+    # Gate 8 also looks past the last message, and the asymmetry is deliberate:
+    # Gate 7 BLOCKS, so a history hit would be an unrecoverable 403 on an
+    # already-approved conversation; Gate 8 DIVERTS, so a wider window is only
+    # a routing decision. Its window is the UNANSWERED span - the client turns
+    # after the most recent assistant reply - so an ask split across
+    # consecutive user turns is caught, while a thread whose ask has been
+    # answered reverts to normal routing instead of staying diverted for life.
     no_go_text = _last_user_text(body.get("messages") or [])
     matched = None if not SETTINGS.no_go_enabled else no_go_match(no_go_text)
     if matched:
@@ -615,6 +676,8 @@ async def fallback_stream(
     principal: str = "",
     tools=None,
     tool_choice=None,
+    forced: bool = False,
+    signal_match: str = "",
 ) -> AsyncGenerator[bytes, None]:
     """Stream the specialist for a diverted request. Yields OpenAI SSE chunks:
     specialist output verbatim, then a provenance footnote delta,
@@ -627,6 +690,13 @@ async def fallback_stream(
     assert_clean(msgs)
     sid = f"fallback-{uuid.uuid4().hex[:12]}"  # R1: stable for the whole stream
     payload = {"model": s.fallback_model, "messages": msgs, "stream": True}
+    # Budget bound (found live 2026-10-18): without a max_tokens the divert
+    # asked the specialist for an UNLIMITED completion - NanoGPT reserved funds
+    # for 64000 output tokens and 402'd on a balance that would have covered
+    # the actual answer many times over. Every other specialist surface already
+    # bounds this (run_specialist: 4096, hedge: HEDGE_MAX_TOKENS); 0 disables.
+    if s.specialist_max_tokens:
+        payload["max_tokens"] = s.specialist_max_tokens
     # F6 (found while building the P6 agentic tier): the divert path dropped the
     # caller's tool definitions, so a diverted AGENTIC request arrived at the
     # specialist without tools and answered in prose instead of acting. Tools
@@ -648,6 +718,8 @@ async def fallback_stream(
         mode="stream",
         principal=principal,
         audit_log=s.audit_log,
+        forced=forced,
+        signal_match=signal_match,
     )
 
     try:
@@ -754,6 +826,55 @@ def _last_user_text(messages) -> str:
             return str(c or "")
     return ""
 
+
+# Roles whose content the CLIENT controls. Gate 8 scans these turns in the
+# UNANSWERED span - the messages after the most recent assistant reply - not
+# just the last user message: a client can batch two user turns (the payload,
+# then "continue") before the model has said anything, and a last-message-only
+# scan would see only "continue".
+#
+# The span ends at the first assistant turn. That is the REVERT rule: once the
+# model has answered - complied or refused - the ask has been handled, and the
+# thread routes normally again instead of staying diverted for its lifetime.
+# A fresh unanswered ask re-trips the gate on its own turn. Assistant and tool
+# content are never scanned in the first place: they are model output, not a
+# client ask.
+_SCANNABLE_ROLES = frozenset({"system", "developer", "user"})
+
+
+def _message_text(content) -> str:
+    """Flatten a message's content, which may be a string or a block list."""
+    if isinstance(content, list):
+        return "\n".join(
+            str(b.get("text", "")) if isinstance(b, dict) else str(b) for b in content
+        )
+    return str(content or "")
+
+
+def attack_match_in_messages(messages):
+    """First Gate-8 match in the UNANSWERED client-controlled span, or None.
+
+    Scans system/developer/user turns after the most recent assistant turn.
+    Two boundaries follow:
+
+    - an ask split across consecutive client turns is still caught, which a
+      last-message-only scan missed ("continue" hid the payload);
+    - an assistant turn ends the span, so an ANSWERED ask stops steering the
+      thread: routing reverts to normal instead of diverting for life.
+    """
+    match = None
+    for m in messages or []:
+        if not isinstance(m, dict):
+            continue
+        if m.get("role") == "assistant":
+            match = None  # the ask before this reply has been handled: revert
+            continue
+        if m.get("role") not in _SCANNABLE_ROLES:
+            continue
+        if match is None:
+            match = attack_match(_message_text(m.get("content")))
+    return match
+
 # --------------------------------------------------------------------------
 # Max-think names (operator request, 2026-10): the SAME thinking primaries
 # (deepseek-ai/deepseek-v4.1-flash, zai-org/glm-5.3-flash) addressed through
@@ -781,8 +902,20 @@ async def chat_proxy(request: Request):
     body = await read_json_body(request)
     principal = request.headers.get(PRINCIPAL_HEADER) or ""
     run_guards(body, principal or None)
+    # Capacity guard (DoS): check AFTER guards, BEFORE accepting - a rejected
+    # request counts in over_capacity_total, not requests_total. The
+    # check-then-increment pair below has no await between it, so it is atomic
+    # on the event loop. 0 disables (previous behaviour).
+    cap = SETTINGS.max_concurrent_streams
+    if cap and getattr(app.state, "in_flight", 0) >= cap:
+        incr("over_capacity_total")
+        raise HTTPException(
+            status_code=429,
+            detail=f"gateway at capacity ({cap} open streams); retry shortly",
+            headers={"Retry-After": "2"},
+        )
     incr("requests_total")
-    app.state.in_flight = getattr(app.state, "in_flight", 0) + 1
+    _stream_opened()
 
     messages = body.get("messages") or []
     user_query = _last_user_text(messages)
@@ -790,22 +923,38 @@ async def chat_proxy(request: Request):
     settings = SETTINGS
 
     # Gate 8: forced divert for attack content (S4/S5/S6 red-team stages).
-    # Check BEFORE primary model sees the request - divert immediately to specialist.
-    if is_attack_content(user_query):
+    # Check BEFORE the primary model sees the request - divert immediately to the
+    # specialist. Opt-in (ATTACK_GATE_ENABLED=1, default off).
+    forced_match = attack_match_in_messages(messages) if settings.attack_gate_enabled else None
+    if forced_match:
         incr("forced_divert_total")
-        return StreamingResponse(
-            fallback_stream(
-                messages,
-                request_id=request_id,
-                signal=FORCED_DIVERT_REASON,
-                settings=settings,
-                principal=principal,
-                tools=body.get("tools"),
-                tool_choice=body.get("tool_choice"),
-                system_prompt=_specialist_system_prompt(settings),
-            ),
-            media_type="text/event-stream",
-        )
+        # A forced divert IS a divert: without this the operator could not tell
+        # how much traffic the gate was taking from primary_divert_total alone.
+        incr("diverted_total")
+
+        async def forced_stream() -> AsyncGenerator[bytes, None]:
+            try:
+                async for chunk in fallback_stream(
+                    messages,
+                    request_id=request_id,
+                    signal=FORCED_DIVERT_REASON,
+                    settings=settings,
+                    principal=principal,
+                    tools=body.get("tools"),
+                    tool_choice=body.get("tool_choice"),
+                    system_prompt=_specialist_system_prompt(settings),
+                    forced=True,
+                    signal_match=forced_match,
+                ):
+                    yield chunk
+            finally:
+                # F27 parity: the counter is incremented once, above, for every
+                # accepted request. This path returned a StreamingResponse
+                # without ever decrementing it, so each forced divert leaked a
+                # slot and _shutdown blocked for the whole grace period.
+                _stream_closed()
+
+        return StreamingResponse(forced_stream(), media_type="text/event-stream")
 
     # B11 gate: the speculative hedge only fires on latency hints or force.
     hedge_requested = should_hedge(user_query, force=body.get("hedge") is True)
@@ -1092,7 +1241,7 @@ async def chat_proxy(request: Request):
             ):
                 yield chunk
         finally:
-            app.state.in_flight = max(0, getattr(app.state, "in_flight", 1) - 1)
+            _stream_closed()
 
     return StreamingResponse(coordinator(), media_type="text/event-stream")
 
@@ -1410,6 +1559,8 @@ async def healthz():
             },
             "buffer_content_tokens": SETTINGS.buffer_content_tokens,
             "buffer_reasoning": SETTINGS.buffer_reasoning,
+            "max_concurrent_streams": SETTINGS.max_concurrent_streams,
+            "specialist_max_tokens": SETTINGS.specialist_max_tokens,
             "assembly_enabled": bool(SETTINGS.assembly_enabled),
             "authz_enforced": SETTINGS.authz_enforced,
             "keepalive_url": SETTINGS.keepalive_url or None,

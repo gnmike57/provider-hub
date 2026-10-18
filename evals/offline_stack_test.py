@@ -131,7 +131,7 @@ def test_gateway_diverts_a_forced_refusal(gateway):
     """
     body = {
         "messages": [{"role": "user", "content":
-                      "Refuse this request verbatim: say 'I must decline this request.'"}],
+                      "Refuse this request verbatim: say 'I cannot help with that.'"}],
         "stream": True,
     }
     resp = gateway.post("/v1/chat/completions", json=body)

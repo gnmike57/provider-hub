@@ -134,6 +134,8 @@ def audit_record(
     artifact="",
     deliverable="",
     audit_log=None,
+    forced=False,
+    signal_match="",
 ) -> dict:
     try:
         rec = {
@@ -147,6 +149,14 @@ def audit_record(
             "artifact_sha256": artifact_sha256(artifact) if artifact else None,
             "deliverable_sha256": artifact_sha256(deliverable) if deliverable else None,
         }
+        # Gate 8 diagnostics. Both keys appear ONLY on a forced divert, so every
+        # other record keeps its exact shape. Without them a forced divert was
+        # byte-identical to a Tier-3 divert (same mode, same primary_model), and
+        # "was the primary ever consulted?" was unanswerable from the audit log.
+        if forced:
+            rec["forced"] = True
+        if signal_match:
+            rec["signal_match"] = signal_match
         line = json.dumps(rec, ensure_ascii=False)
         path = audit_log if audit_log is not None else (os.getenv("AUDIT_LOG") or "")
         with _AUDIT_LOCK:

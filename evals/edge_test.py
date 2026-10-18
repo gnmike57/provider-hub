@@ -49,6 +49,45 @@ def test_metrics_endpoint_is_prometheus_text(gw, script):
     assert "diverted_total 0" in resp.text
 
 
+def test_stream_cap_rejects_at_capacity(gw, script):
+    """DoS guard: a full gateway 429s BEFORE accepting the request.
+
+    A rejected request counts in over_capacity_total only - requests_total
+    stays "accepted by the gateway".
+    """
+    script.script(PRIMARY, [("sse", [chunk("ok", finish="stop"), DONE])])
+    proxy_gateway.SETTINGS.max_concurrent_streams = 1
+    proxy_gateway.app.state.in_flight = 1  # one stream already open
+    try:
+        resp = gw.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "q"}], "stream": True},
+        )
+        assert resp.status_code == 429
+        assert "capacity" in resp.json()["detail"]
+        assert resp.headers["retry-after"] == "2"
+        assert proxy_gateway._METRICS["over_capacity_total"] == 1
+        assert proxy_gateway._METRICS["requests_total"] == 0
+    finally:
+        proxy_gateway.app.state.in_flight = 0
+
+
+def test_stream_cap_zero_is_unlimited(gw, script):
+    """0 restores the previous behaviour: no rejection however full."""
+    script.script(PRIMARY, [("sse", [chunk("ok", finish="stop"), DONE])])
+    proxy_gateway.SETTINGS.max_concurrent_streams = 0
+    proxy_gateway.app.state.in_flight = 64
+    try:
+        resp = gw.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "q"}], "stream": True},
+        )
+        assert resp.status_code == 200
+        assert proxy_gateway._METRICS["over_capacity_total"] == 0
+    finally:
+        proxy_gateway.app.state.in_flight = 0
+
+
 def test_healthz_reports_config_snapshot(gw, script):
     resp = gw.get("/healthz")
     cfg = resp.json()["config"]

@@ -10,11 +10,12 @@ hedger, and the deterministic ingress assembler described in
 |---|---|---|
 | `evals/routing_probe.py` | detection / formatter / assembler / Tier 2 | 20 passed |
 | `evals/routing_test.py` | authz (F9) / Tier 4 / Gate 7 no-go (scope, diagnostics, kill switch) | 12 passed |
+| `evals/attack_gate_test.py` | Gate 8 forced divert (FP/TP corpus, opt-in, in-flight, audit, multi-turn, budget) | 126 passed |
 | `evals/callback_test.py` | LiteLLM callback / single-source invariant | 5 passed |
 | `evals/hedge_test.py` | speculative dual-dispatch (B9/B11/F1) | 4 passed |
 | `evals/e2e_gateway_test.py` | streaming ring buffer (B7/B8/B10) | 11 passed |
 | `evals/assembly_test.py` | `/v1/execute` / audit / retry | 8 passed |
-| `evals/edge_test.py` | tools / n>1 / disconnect / concurrency / metrics | 7 passed |
+| `evals/edge_test.py` | tools / n>1 / disconnect / concurrency / metrics / stream cap | 9 passed |
 | `evals/live_stack_test.py` | real specialist (skipped without `LIVE_STACK=1`) | skipped by design |
 
 Run everything offline:
@@ -187,6 +188,16 @@ Two deliberate deviations from the plain names:
 | Specialist binding | `SPECIALIST_API_URL/KEY/MODEL` (override `FALLBACK_*`); key falls back to `NANOGPT_API_KEY` | local vLLM `:8000`, Qwen3.6-35B (or NanoGPT specialist) |
 | Max-think | `MAX_THINK_MIN_TOKENS` | `32768` (output floor for the max-think names) |
 | Gate 7 | `NO_GO_ENABLED` | `1` (set `0` to re-open the hard no-go gate without a redeploy) |
+| Gate 8 | `ATTACK_GATE_ENABLED` | `0` (opt-in: force-divert S4/S5/S6 attack requests to the specialist) |
+| Divert budget | `SPECIALIST_MAX_TOKENS` | `4096` (bounds every specialist divert; `0` = unbounded) |
+| Stream cap | `MAX_CONCURRENT_STREAMS` | `64` (429 + `Retry-After` when full; `0` = unlimited) |
+
+Gate 8 scans the **unanswered span**: the client-controlled turns
+(`system`, `developer`, `user`) after the most recent assistant reply. An ask
+split across consecutive user turns is still caught, but the divert is not
+sticky — once the model has answered, the thread reverts to normal routing,
+and only a fresh unanswered ask re-trips the gate. `assistant`/`tool` content
+is never scanned: it is model output, not a client ask.
 
 ## Where the tests live
 
@@ -194,6 +205,7 @@ Two deliberate deviations from the plain names:
 |---|---|
 | detection / formatter / assembler / Tier 2 | `evals/routing_probe.py` |
 | authz / Tier 4 | `evals/routing_test.py` |
+| Gate 8 attack-content forced divert | `evals/attack_gate_test.py` |
 | LiteLLM callback | `evals/callback_test.py` |
 | hedging | `evals/hedge_test.py` |
 | streaming gateway | `evals/e2e_gateway_test.py` |
