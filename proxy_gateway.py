@@ -34,7 +34,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from providers import MAX_THINK_NAMES, Registry, resolve_frost_alias, HUB_PROVIDERS, resolve_hub_alias
+from providers import (MAX_THINK_NAMES, Registry, resolve_frost_alias,
+                       HUB_PROVIDERS, resolve_hub_alias, hub_models_for_listing)
 
 import model_switch
 
@@ -183,6 +184,16 @@ class Settings:
     fallback_model: str = field(default_factory=lambda: (
         os.getenv("SPECIALIST_MODEL")
         or os.getenv("FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP")))
+    # Frost worker names (cyberfrost): their own endpoint, which must NOT
+    # collapse onto the specialist binding above. SPECIALIST_API_URL repoints
+    # the DIVERT target at the uncensored specialist (NanoGPT), while the
+    # Frost worker names address the gx10 hub - a CYBER-FROST id on the
+    # specialist URL is a guaranteed 400 (measured live 2026-10-18).
+    # Unset ("") keeps the previous behaviour: the fallback slot's URL.
+    frost_worker_api_url: str = field(default_factory=lambda: (
+        os.getenv("FROST_WORKER_API_URL", "")))
+    frost_worker_api_key: str = field(default_factory=lambda: (
+        os.getenv("FROST_WORKER_API_KEY") or "none"))
     # CALIBRATED 2026-10-05 (evals/hedge_calibrate.py): the refusal regex is
     # anchored to the start of the generation and fires by the 5th content word
     # (median 2), so holding 10 tokens screens exactly as well as 25 while the
@@ -987,12 +998,30 @@ async def chat_proxy(request: Request):
         max_think = wants_max_think(requested)
         if frost and frost[0] == "worker":
             call_settings = copy.copy(settings)
-            call_settings.primary_api_url = settings.fallback_api_url
-            call_settings.primary_api_key = settings.fallback_api_key
+            # The Frost worker names must not collapse onto the specialist
+            # binding: SPECIALIST_API_URL repoints the DIVERT target at the
+            # uncensored specialist (NanoGPT), while cyberfrost addresses the
+            # gx10 hub, so a CYBER-FROST id on the specialist URL is a
+            # guaranteed 400 (measured live). Prefer the dedicated
+            # frost-worker endpoint; unset (local dev, tests) keeps the
+            # previous fallback-slot behaviour.
+            if settings.frost_worker_api_url:
+                call_settings.primary_api_url = settings.frost_worker_api_url
+                call_settings.primary_api_key = settings.frost_worker_api_key
+            else:
+                call_settings.primary_api_url = settings.fallback_api_url
+                call_settings.primary_api_key = settings.fallback_api_key
             primary_model_used = frost[1]
         else:
             call_settings = settings
-            primary_model_used = frost[1] if frost else requested
+            if frost:
+                # frost-general carries no baked-in upstream: it addresses the
+                # primary slot's CURRENT default (follows /v1/switch) - the
+                # literal name is not a real Hive id and 400s upstream
+                # ("Invalid Model Name", measured live).
+                primary_model_used = frost[1] or settings.primary_model
+            else:
+                primary_model_used = requested
 
     primary_payload = {
         "model": primary_model_used,
@@ -1033,6 +1062,22 @@ async def chat_proxy(request: Request):
             except (TypeError, ValueError):
                 primary_payload[k] = floor
         incr("max_think_total")
+    if hub:
+        # Abliteration.ai rejects a payload carrying BOTH token caps ("Use
+        # max_completion_tokens or max_tokens, not both", measured live
+        # 2026-10-18), while Hive needs max_completion_tokens and NanoGPT
+        # accepts either. The hub matrix sends the one field every
+        # OpenAI-compatible upstream accepts: plain max_tokens.
+        primary_payload.pop("max_completion_tokens", None)
+        if max_think and provider_key == "ablit.ai":
+            # Also measured live: Abliteration.ai accepts the OpenAI-style
+            # effort knobs (reasoning_effort / reasoning / reasoning_content)
+            # but reserves runtime controls to itself - enable_thinking and
+            # chat_template_kwargs 400 with provider_control_forbidden, and
+            # `thinking` fails schema validation (422). NanoGPT accepts the
+            # full set, so the trim is per provider.
+            for k in ("enable_thinking", "chat_template_kwargs", "thinking"):
+                primary_payload.pop(k, None)
     primary_headers = {**_auth_header(call_settings.primary_api_key), "Content-Type": "application/json"}
 
     async def coordinator() -> AsyncGenerator[bytes, None]:
@@ -1040,8 +1085,12 @@ async def chat_proxy(request: Request):
             # Max-think never races: COMMIT_TOKENS=10 would commit the flash
             # worker while the deep model is still deliberating (reasoning
             # tokens are invisible to the commit counter), so the race's value
-            # proposition (fast first token) is void here anyway.
-            if hedge_requested and not max_think:
+            # proposition (fast first token) is void here anyway. Hub aliases
+            # do not race either: the alias is an explicit provider selection
+            # (NanoGPT / Abliteration.ai), so a worker commit would answer on
+            # a provider the client did not address - and /v1/models advertises
+            # every hub model as hedged: False.
+            if hedge_requested and not max_think and not hub:
                 import speculative_hedge
 
                 # R2: audit parity. The divert path records BEFORE dispatch
@@ -1507,6 +1556,7 @@ async def list_models():
             "max_think": m["id"] in MAX_THINK_NAMES,
             "reasoning": m.get("reasoning"),
         })
+    data.extend(hub_models_for_listing())
     return {"object": "list", "data": data}
 
 

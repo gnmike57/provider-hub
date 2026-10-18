@@ -80,6 +80,11 @@ FROST_ALIASES = {
     "cyberfrost 3.8 sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
     "cyberfrost-3.8-sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
     "cyberfrost": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
+    # Frost General: the primary slot's CURRENT default, not a baked-in id -
+    # the literal name is not a real upstream id, so passing it through 400s
+    # (measured live on Hive, "Invalid Model Name"). None = follow the slot
+    # (and /v1/switch) at dispatch time.
+    "frost-general": ("primary", None),
 }
 
 # The max-think subset of the Frost names (operator request, 2026-10): the SAME
@@ -113,8 +118,19 @@ def resolve_frost_alias(model: str):
 #   <Provider><Model><Reasoning>
 #   Provider: nano        -> NanoGPT (NANOGPT_API_URL/KEY)
 #             ablit.ai    -> Abliteration.ai (ABLITERATION_API_URL/KEY)
-#   Model:    deep        -> deepseek-ai/deepseek-v4.1-flash
-#             glm         -> zai-org/glm-5.3-flash
+#   Model:    deep/glm name the matrix SLOT, resolved per provider (verified
+#             against each live catalog, 2026-10-18):
+#               nano     deep -> deepseek/deepseek-v4.1-flash (nano's own
+#                                catalog id; Hive's deepseek-ai/ prefix is
+#                                not carried there - measured live; a
+#                                ":thinking" deployment variant also exists)
+#               nano     glm  -> zai-org/glm-5.3-flash
+#               ablit.ai deep -> abliterated-model-large (their catalog has no
+#                                DeepSeek model; this is their other frontier
+#                                reasoning model, prev-gen GLM-4 based)
+#               ablit.ai glm  -> abliterated-model-large-v2 (GLM-5.3 based,
+#                                confirmed by their pricing page and by the
+#                                model's own self-report)
 #   Reasoning: max        -> reasoning knobs pushed to maximum
 #                       (absent)  -> normal reasoning
 #
@@ -135,25 +151,25 @@ HUB_PROVIDERS = {
 
 # normalized alias -> (provider_key, upstream_model_id, max_reasoning)
 HUB_MODEL_ALIASES = {
-    "deepmaxnano": ("nano", "deepseek-ai/deepseek-v4.1-flash", True),
+    "deepmaxnano": ("nano", "deepseek/deepseek-v4.1-flash", True),
     "glmmaxnano": ("nano", "zai-org/glm-5.3-flash", True),
-    "deepnano": ("nano", "deepseek-ai/deepseek-v4.1-flash", False),
+    "deepnano": ("nano", "deepseek/deepseek-v4.1-flash", False),
     "glmnano": ("nano", "zai-org/glm-5.3-flash", False),
-    "deepmaxablit.ai": ("ablit.ai", "deepseek-ai/deepseek-v4.1-flash", True),
-    "glmmaxablit.ai": ("ablit.ai", "zai-org/glm-5.3-flash", True),
-    "deepablit.ai": ("ablit.ai", "deepseek-ai/deepseek-v4.1-flash", False),
-    "glmablit.ai": ("ablit.ai", "zai-org/glm-5.3-flash", False),
+    "deepmaxablit.ai": ("ablit.ai", "abliterated-model-large", True),
+    "glmmaxablit.ai": ("ablit.ai", "abliterated-model-large-v2", True),
+    "deepablit.ai": ("ablit.ai", "abliterated-model-large", False),
+    "glmablit.ai": ("ablit.ai", "abliterated-model-large-v2", False),
 }
 
 _HUB_DISPLAY = {
-    "deepmaxnano": ("DeepMaxNano", "deepseek-ai/deepseek-v4.1-flash", "nano", True),
+    "deepmaxnano": ("DeepMaxNano", "deepseek/deepseek-v4.1-flash", "nano", True),
     "glmmaxnano": ("GLMMaxNano", "zai-org/glm-5.3-flash", "nano", True),
-    "deepnano": ("DeepNano", "deepseek-ai/deepseek-v4.1-flash", "nano", False),
+    "deepnano": ("DeepNano", "deepseek/deepseek-v4.1-flash", "nano", False),
     "glmnano": ("GLMNano", "zai-org/glm-5.3-flash", "nano", False),
-    "deepmaxablit.ai": ("DeepMaxAblit.ai", "deepseek-ai/deepseek-v4.1-flash", "ablit.ai", True),
-    "glmmaxablit.ai": ("GLMMaxAblit.ai", "zai-org/glm-5.3-flash", "ablit.ai", True),
-    "deepablit.ai": ("DeepAblit.ai", "deepseek-ai/deepseek-v4.1-flash", "ablit.ai", False),
-    "glmablit.ai": ("GLMAblit.ai", "zai-org/glm-5.3-flash", "ablit.ai", False),
+    "deepmaxablit.ai": ("DeepMaxAblit.ai", "abliterated-model-large", "ablit.ai", True),
+    "glmmaxablit.ai": ("GLMMaxAblit.ai", "abliterated-model-large-v2", "ablit.ai", True),
+    "deepablit.ai": ("DeepAblit.ai", "abliterated-model-large", "ablit.ai", False),
+    "glmablit.ai": ("GLMAblit.ai", "abliterated-model-large-v2", "ablit.ai", False),
 }
 
 
@@ -191,8 +207,9 @@ def hub_models_for_listing():
             "owned_by": provider_key,
             "permission": [],
             "root": upstream,
+            "parent": None,
+            "description": display,
             "endpoint": provider["url"],
-            "provider": provider_key,
             "hedged": False,
             "type": "hub",
             "max_think": is_max,

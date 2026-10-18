@@ -126,7 +126,7 @@ class SlotBinding:
     url: str = ""
     key_present: bool = False
     provider_id: str = ""
-    updated_ts: float = 0.0
+    updated_ts: Optional[float] = None  # None = never switched since boot
     updated_by: str = ""  # request id of the switch that last wrote it
 
     def as_dict(self) -> dict:
@@ -207,10 +207,27 @@ class SlotManager:
     def _binding_for(self, target: str) -> SlotBinding:
         return self.primary if target == "primary" else self.worker
 
+    def _capture_savepoint(self) -> None:
+        """Snapshot both slots from the live settings (caller holds the lock)."""
+        s = self._settings
+        self._savepoint = {
+            "primary": (s.primary_api_url, s.primary_api_key, s.primary_model),
+            "worker": (s.fallback_api_url, s.fallback_api_key, s.fallback_model),
+        }
+
     def apply(self, *, target, url, key, model, provider_id="",
               request_id="", principal="") -> SlotBinding:
-        """Atomically write one slot (primary or worker) on the live settings."""
+        """Atomically write one slot (primary or worker) on the live settings.
+
+        The FIRST mutation of a session captures the pre-mutation state as the
+        rollback savepoint (an explicit savepoint() may have been called even
+        earlier; whichever comes first wins), so rollback always restores BOTH
+        slots to the last known-good binding - a savepoint taken after a
+        mutation used to bake that mutation in, making it unrollbackable.
+        """
         with self._lock:
+            if self._savepoint is None:
+                self._capture_savepoint()
             s = self._settings
             if target == "primary":
                 s.primary_api_url = url
@@ -230,13 +247,15 @@ class SlotManager:
             return binding
 
     def savepoint(self) -> None:
-        """Snapshot both slots; used by rollback after a bad switch."""
+        """Snapshot both slots; used by rollback after a bad switch.
+
+        Sticky: only the FIRST capture wins (apply() also captures on first
+        mutation), so a savepoint taken after a mutation can no longer bake
+        that mutation into the rollback target.
+        """
         with self._lock:
-            s = self._settings
-            self._savepoint = {
-                "primary": (s.primary_api_url, s.primary_api_key, s.primary_model),
-                "worker": (s.fallback_api_url, s.fallback_api_key, s.fallback_model),
-            }
+            if self._savepoint is None:
+                self._capture_savepoint()
 
     def has_savepoint(self) -> bool:
         with self._lock:
@@ -359,13 +378,24 @@ def resolve_target(req, settings, registry=None) -> dict:
                 return {
                     "url": settings.primary_api_url,
                     "key": settings.primary_api_key,
-                    "model": upstream,
+                    # frost-general carries no baked-in upstream: it IS the
+                    # slot's current default (pure slot-swap semantics).
+                    "model": upstream or settings.primary_model,
                     "provider_id": "frost:primary",
                 }
+            # The Frost worker names address the frost-worker endpoint, not the
+            # specialist binding SPECIALIST_API_URL repoints the divert target
+            # at (a CYBER-FROST id on the specialist URL is a guaranteed 400,
+            # measured live) - fall back to the fallback slot when the
+            # dedicated endpoint is unset (getattr: tests pass namespaces).
+            wurl = getattr(settings, "frost_worker_api_url", "") or settings.fallback_api_url
+            wkey = (getattr(settings, "frost_worker_api_key", "")
+                    if getattr(settings, "frost_worker_api_url", "")
+                    else settings.fallback_api_key)
             return {
-                "url": settings.fallback_api_url,
-                "key": settings.fallback_api_key,
-                "model": upstream,
+                "url": wurl,
+                "key": wkey,
+                "model": upstream or settings.fallback_model,
                 "provider_id": "frost:worker",
             }
     raise SwitchError(

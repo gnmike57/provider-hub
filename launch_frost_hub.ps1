@@ -18,10 +18,13 @@ $env:PRIMARY_MODEL     = "zai-org/glm-5.3-flash"                # default primar
 $env:FALLBACK_API_URL  = "http://100.67.13.78:4000/v1/chat/completions"  # gx10 hub (worker/cyberfrost)
 $env:FALLBACK_API_KEY  = "none"
 $env:FALLBACK_MODEL    = "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
+$env:FROST_WORKER_API_URL = "http://100.67.13.78:4000/v1/chat/completions"  # gx10 hub for the cyberfrost names (NOT the specialist override)
+$env:FROST_WORKER_API_KEY = "none"
 $env:SPECIALIST_API_URL = "https://nano-gpt.com/api/v1/chat/completions"
 $env:SPECIALIST_API_KEY = "sk-nano-5c33cd2e-dfb3-46cd-a068-46bcaee19ef2" # == NANOGPT_API_KEY
 $env:SPECIALIST_MODEL   = "abliteration-ai/abliterated-model-large-v2"
 $env:NANOGPT_API_KEY    = "sk-nano-5c33cd2e-dfb3-46cd-a068-46bcaee19ef2"
+$env:ABLITERATION_API_KEY = "REDACTED_ABLIT_KEY_OLD"  # Abliteration.ai (hub matrix ablit.ai provider)
 $env:AUDIT_LOG          = "$LOG_DIR\boot_audit.jsonl"
 $env:KEEPALIVE_URL      = "http://100.67.13.78:4000/v1/models"
 $env:MAX_THINK_MIN_TOKENS = "32768"

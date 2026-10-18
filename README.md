@@ -154,6 +154,19 @@ lists them for Cline/OpenCode pickers (`evals/frost_alias_test.py`):
 | `deepfrost` | primary | `deepseek-ai/deepseek-v4.1-flash` |
 | `glmfrost` | primary | `zai-org/glm-5.3-flash` |
 | `cyberfrost` | worker | `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw` |
+| `frost-general` | primary | the slot's current default (follows `/v1/switch`) |
+
+`cyberfrost` dispatches to `FROST_WORKER_API_URL` (the gx10 hub), **not** to
+the specialist binding: `SPECIALIST_API_URL` repoints the DIVERT target at the
+uncensored specialist (NanoGPT), and a `CYBER-FROST` id on that URL is a
+guaranteed 400 (measured live). When `FROST_WORKER_API_URL` is unset the
+worker names fall back to the fallback slot's URL (previous behaviour). A
+transport failure on the frost worker (gx10 down) retries then diverts to the
+specialist like any primary.
+
+`frost-general` carries no baked-in upstream id: it addresses the primary
+slot's CURRENT default model, so the advertised name is addressable instead of
+passing through to Hive as a literal (which 400s "Invalid Model Name").
 
 The **max-think** variants (`deepfrost max think` / `glmfrost max think`, also
 `*-max-think`) are the SAME thinking primaries with reasoning pushed to the
@@ -171,6 +184,48 @@ Two deliberate deviations from the plain names:
   `finish_reason=length` and zero content. A higher client `max_tokens` still
   wins (`evals/max_think_test.py`).
 
+## Hub model matrix (NanoGPT / Abliteration.ai)
+
+Eight operator-addressable aliases select an external provider, an upstream
+model id, and a reasoning mode directly - bypassing the primary/worker slots.
+`resolve_hub_alias` runs before Frost resolution, so a hub alias always wins;
+`GET /v1/models` lists all eight after the Frost names:
+
+| Alias | Provider | Upstream id | Max |
+|---|---|---|---|
+| `DeepMaxNano` / `DeepNano` | NanoGPT | `deepseek/deepseek-v4.1-flash` | yes / no |
+| `GLMMaxNano` / `GLMNano` | NanoGPT | `zai-org/glm-5.3-flash` | yes / no |
+| `DeepMaxAblit.ai` / `DeepAblit.ai` | Abliteration.ai | `abliterated-model-large` | yes / no |
+| `GLMMaxAblit.ai` / `GLMAblit.ai` | Abliteration.ai | `abliterated-model-large-v2` | yes / no |
+
+* Names normalise (case, `-`/`_`, spaces), so `deep-max-nano` also resolves.
+* `deep`/`glm` name the matrix SLOT, resolved per provider against each live
+  catalog (2026-10-18): Abliteration.ai carries no DeepSeek model, so the
+  `deep` slot maps to their other frontier reasoning model (prev-gen GLM-4);
+  `glm` maps to their GLM-5.3 flagship, confirmed by their pricing page and the
+  model's own self-report.
+* `Max` aliases get the same server-side knob set as the Frost max-think names
+  (reasoning pushed to maximum, `MAX_THINK_MIN_TOKENS` output floor) and never
+  race the hedge: the alias is an explicit provider selection, so a worker
+  commit could otherwise answer on a provider the client did not address.
+  `/v1/models` advertises every hub model as `hedged: false` to match.
+  On Abliteration.ai the runtime-control knobs (`enable_thinking`,
+  `chat_template_kwargs`, `thinking`) are trimmed - their API reserves those
+  for itself (400 `provider_control_forbidden` / 422, measured live); the
+  OpenAI-style effort knobs and the token floor remain.
+* Credentials: `NANOGPT_API_KEY` (shared with the specialist slot) and
+  `ABLITERATION_API_KEY`; URLs default to
+  `https://nano-gpt.com/api/v1/chat/completions` and
+  `https://api.abliteration.ai/v1/chat/completions` (`NANOGPT_API_URL` /
+  `ABLITERATION_API_URL` override). `launch_frost_hub.ps1` pins both keys.
+* Failure semantics: 4xx from a hub provider fails fast with a visible
+  upstream error; 5xx/transport retries then diverts to the specialist like
+  any primary.
+* Payload shape: hub requests carry a single token cap (`max_tokens`).
+  Abliteration.ai rejects `max_tokens` + `max_completion_tokens` together
+  (measured live), while Hive needs the latter; `max_tokens` is the one
+  field every provider in the matrix accepts.
+
 ## Configuration surface (env vars)
 
 | Group | Variables | Default |
@@ -186,6 +241,7 @@ Two deliberate deviations from the plain names:
 | Hedge | `SOVEREIGN_*`, `WORKER_*`, `COMMIT_TOKENS` | mirrors primary/fallback, `25` |
 | Specialist | `SPECIALIST_TEMPERATURE`, `SPECIALIST_SYSTEM_MODE` | unset (server defaults), `neutral` |
 | Specialist binding | `SPECIALIST_API_URL/KEY/MODEL` (override `FALLBACK_*`); key falls back to `NANOGPT_API_KEY` | local vLLM `:8000`, Qwen3.6-35B (or NanoGPT specialist) |
+| Frost worker | `FROST_WORKER_API_URL/KEY` | `""` (unset: the cyberfrost names use the fallback slot's URL) |
 | Max-think | `MAX_THINK_MIN_TOKENS` | `32768` (output floor for the max-think names) |
 | Gate 7 | `NO_GO_ENABLED` | `1` (set `0` to re-open the hard no-go gate without a redeploy) |
 | Gate 8 | `ATTACK_GATE_ENABLED` | `0` (opt-in: force-divert S4/S5/S6 attack requests to the specialist) |
