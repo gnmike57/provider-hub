@@ -39,12 +39,7 @@ __all__ = [
     "Registry",
     "load_registry",
     "mask_key",
-    "build_upstream_request",
     "request_headers",
-    "normalize_stream",
-    "to_openai_chunk",
-    "openai_anthropic_messages",
-    "anthropic_finish_reason",
     "FROST_ALIASES",
     "MAX_THINK_NAMES",
     "resolve_frost_alias",
@@ -167,15 +162,45 @@ HUB_MODEL_ALIASES = {
     "glmablit.ai": ("ablit.ai", "abliterated-model-large-v2", False),
 }
 
+# Display names, DERIVED from HUB_MODEL_ALIASES (W5): the two tables used to
+# be hand-maintained duplicates, and a new alias rendered the display table
+# stale until someone remembered to update it too. The aliases have no word
+# separators, so the display name is rebuilt token-wise from the known stems.
+_HUB_DISPLAY_TOKENS = (
+    # longest token first: "ablit.ai" must win over any future 1-char stem
+    ("ablit.ai", "Ablit.ai"),
+    ("deep", "Deep"),
+    ("glm", "GLM"),
+    ("max", "Max"),
+    ("nano", "Nano"),
+)
+
+
+def _hub_display_name(alias: str) -> str:
+    """`"deepmaxablit.ai"` -> `"DeepMaxAblit.ai"` (token-wise, no separators).
+
+    An alias built from unknown stems keeps its remainder verbatim - deriving a
+    display name must never crash the /v1/models listing.
+    """
+    out = []
+    rest = str(alias or "")
+    while rest:
+        for token, display in _HUB_DISPLAY_TOKENS:
+            if rest.startswith(token):
+                out.append(display)
+                rest = rest[len(token):]
+                break
+        else:  # unknown stem: keep the remainder verbatim
+            out.append(rest)
+            rest = ""
+    return "".join(out)
+
+
+# alias -> (display, upstream, provider_key, is_max) - single source of truth
+# is HUB_MODEL_ALIASES; this view exists for hub_models_for_listing().
 _HUB_DISPLAY = {
-    "deepmaxnano": ("DeepMaxNano", "deepseek/deepseek-v4.1-flash", "nano", True),
-    "glmmaxnano": ("GLMMaxNano", "zai-org/glm-5.3-flash", "nano", True),
-    "deepnano": ("DeepNano", "deepseek/deepseek-v4.1-flash", "nano", False),
-    "glmnano": ("GLMNano", "zai-org/glm-5.3-flash", "nano", False),
-    "deepmaxablit.ai": ("DeepMaxAblit.ai", "abliterated-model-large", "ablit.ai", True),
-    "glmmaxablit.ai": ("GLMMaxAblit.ai", "abliterated-model-large-v2", "ablit.ai", True),
-    "deepablit.ai": ("DeepAblit.ai", "abliterated-model-large", "ablit.ai", False),
-    "glmablit.ai": ("GLMAblit.ai", "abliterated-model-large-v2", "ablit.ai", False),
+    alias: (_hub_display_name(alias), upstream, provider_key, is_max)
+    for alias, (provider_key, upstream, is_max) in HUB_MODEL_ALIASES.items()
 }
 
 

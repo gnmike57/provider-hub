@@ -126,37 +126,6 @@ def test_gate7_still_blocks_the_current_prompt(client, script):
     assert resp.status_code == 403
 
 
-def test_tier4_disabled_by_default():
-    assert proxy_gateway.TIER4.enabled is False
-
-
-def test_tier4_returns_none_on_failure_never_false():
-    import httpx
-
-    classifier = proxy_gateway.Tier4Classifier(model="judge")
-
-    def boom(request):
-        raise httpx.ConnectError("no upstream")
-
-    async def inner():
-        transport = httpx.MockTransport(boom)
-        async with httpx.AsyncClient(transport=transport) as hc:
-            return await classifier.classify(hc, "I cannot help with that.")
-
-    import anyio
-
-    assert anyio.run(inner) is None  # None, never False - a broken judge cannot force a divert
-
-
-def test_tier4_disabled_without_model():
-    import httpx
-
-    classifier = proxy_gateway.Tier4Classifier(model="")
-
-    async def inner():
-        async with httpx.AsyncClient() as hc:
-            return await classifier.classify(hc, "anything")
-
-    import anyio
-
-    assert anyio.run(inner) is None
+# (W5) the three test_tier4_* tests were removed with the Tier4Classifier they
+# tested: the class was dead in the request path (TIER4.classify was never
+# called), so the tests only pinned dead code in place.

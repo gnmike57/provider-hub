@@ -1,0 +1,32 @@
+{
+  "constellations": {
+    "deep-space": {
+      "description": "Maximum reasoning at the helm, uncensored specialist on the gx10 hub, fast GLM scout.",
+      "slots": {
+        "helm": {"provider": "hive", "model": "deepfrost-max-think"},
+        "scout": {"provider": "hive", "model": "glm-5.3-flash"}
+      }
+    },
+    "red-team": {
+      "description": "GLM max-reasoning helm for adversarial analysis, DeepSeek scout.",
+      "slots": {
+        "helm": {"provider": "hive", "model": "glmfrost-max-think"},
+        "scout": {"provider": "hive", "model": "deepseek-4.1-flash"}
+      }
+    },
+    "economy": {
+      "description": "Fast GLM helm, cheapest scout - minimal spend per request.",
+      "slots": {
+        "helm": {"provider": "hive", "model": "glm-5.3-flash"},
+        "scout": {"provider": "hive", "model": "deepseek-4.1-flash"}
+      }
+    },
+    "code-shop": {
+      "description": "Coding-heavy sessions: DeepSeek helm, GLM scout.",
+      "slots": {
+        "helm": {"provider": "hive", "model": "deepfrost-max-think"},
+        "scout": {"provider": "hive", "model": "glm-5.3-flash"}
+      }
+    }
+  }
+}

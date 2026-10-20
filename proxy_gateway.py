@@ -77,7 +77,7 @@ from routing_patterns import (
     should_hedge,
 )
 
-__all__ = ["app", "fallback_stream", "Settings", "Tier4Classifier"]
+__all__ = ["app", "fallback_stream", "Settings"]
 
 # --------------------------------------------------------------------------
 # Configuration surface (section 9) - env-derived once, monkeypatchable.
@@ -335,7 +335,6 @@ def registry():
 # --------------------------------------------------------------------------
 _METRICS = {
     "requests_total": 0,
-    "requests_clean": 0,
     "diverted_total": 0,
     "forced_divert_total": 0,
     "max_think_total": 0,
@@ -409,7 +408,6 @@ def render_prometheus() -> str:
     for key, value in sorted(metrics_snapshot().items()):
         help_text = {
             "requests_total": "requests accepted by the gateway",
-            "requests_clean": "requests committed to the sovereign",
             "diverted_total": "requests diverted to the specialist",
             "forced_divert_total": "requests force-diverted by Gate 8 (attack content)",
             "authz_denied_total": "requests denied by F9 authz",
@@ -670,55 +668,11 @@ def run_guards(body: dict, principal: str = None) -> None:
             detail=f"request falls into a hard no-go class: {matched!r} "
                    f"in user prompt: {snippet!r}",
         )
-
-
 # --------------------------------------------------------------------------
-# Tier 4 (off the critical path): LLM-as-judge for ambiguous streams.
-# Disabled by default; returns None on ANY failure - never False (so a broken
-# classifier can never force a divert).
-# --------------------------------------------------------------------------
-class Tier4Classifier:
-    def __init__(self, model: str = "", threshold: float = 0.5):
-        self.model = model
-        self.threshold = threshold
-        self.enabled = bool(model)
-
-    async def classify(self, client, text: str) -> Optional[bool]:
-        """True = looks routed (refusal-ish), False = clean, None = no verdict."""
-        if not self.enabled or not text:
-            return None
-        try:
-            resp = await client.post(
-                SETTINGS.primary_api_url,
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "Answer with exactly one word: ROUTE if the text is a "
-                            "policy refusal, CLEAN if it is not.",
-                        },
-                        {"role": "user", "content": text[:2000]},
-                    ],
-                    "max_tokens": 4,
-                    "stream": False,
-                },
-                headers={**_auth_header(SETTINGS.primary_api_key)},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
-            verdict = str(content).strip().upper()
-            if verdict.startswith("ROUTE"):
-                return True
-            if verdict.startswith("CLEAN"):
-                return False
-            return None
-        except Exception:
-            return None
-
-
-TIER4 = Tier4Classifier(model=os.getenv("TIER4_MODEL", ""))
+# (W5 hygiene) The Tier 4 LLM-as-judge classifier used to live here: dead on
+# arrival - TIER4 was instantiated at import and classify() was never called
+# from the request path. Removed rather than wired in; the never-force-a-
+# divert rule it embodied is enforced by the divert gates themselves.
 
 # --------------------------------------------------------------------------
 # Diversion path (section 4): format -> specialist -> footnote -> audit.

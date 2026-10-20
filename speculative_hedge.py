@@ -430,24 +430,6 @@ async def hedge_stream(
         if own_client:
             await client.aclose()
 
-
-def buffered_text(lines) -> str:
-    """Concatenate delta.content across held lines (refusal screening)."""
-    out = []
-    for line in lines:
-        body = line[5:].strip() if line.startswith("data:") else line
-        if body == "[DONE]":
-            continue
-        try:
-            ev = json.loads(body)
-            delta = (ev.get("choices") or [{}])[0].get("delta") or {}
-            if delta.get("content"):
-                out.append(delta["content"])
-        except (json.JSONDecodeError, AttributeError, IndexError):
-            continue
-    return "".join(out)
-
-
 async def _replay_sovereign(sovereign, buffered, *, exhausted: bool = False) -> AsyncGenerator[bytes, None]:
     for line in buffered:
         yield f"{line}\n\n".encode()
