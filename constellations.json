@@ -1,30 +1,26 @@
 {
   "constellations": {
-    "deep-space": {
-      "description": "Maximum reasoning at the helm, uncensored specialist on the gx10 hub, fast GLM scout.",
+    "GLMMAX>DEEP>ABLITV2L": {
+      "description": "GLM-5.3 max-reasoning helm; DeepSeek blind sub-agent; Abliterated V2 Large terminal (REDHANDS on offense).",
+      "slots": {
+        "helm": {"provider": "hive", "model": "glmfrost-max-think"},
+        "specialist": {"provider": "ablit", "model": "abliterated-model-large-v2"},
+        "scout": {"provider": "hive", "model": "deepseek-4.1-flash"}
+      }
+    },
+    "DEEPMAX>GLM>ABLITV2L": {
+      "description": "DeepSeek max-reasoning helm; GLM blind sub-agent; Abliterated V2 Large terminal (REDHANDS on offense).",
       "slots": {
         "helm": {"provider": "hive", "model": "deepfrost-max-think"},
+        "specialist": {"provider": "ablit", "model": "abliterated-model-large-v2"},
         "scout": {"provider": "hive", "model": "glm-5.3-flash"}
       }
     },
-    "red-team": {
-      "description": "GLM max-reasoning helm for adversarial analysis, DeepSeek scout.",
+    "ABLITV2L>SUB-GLM/DEEP": {
+      "description": "Abliterated V2 Large brain under the REDHANDS laws; GLM blind sub-agent raced, DeepSeek secondary worker.",
       "slots": {
-        "helm": {"provider": "hive", "model": "glmfrost-max-think"},
-        "scout": {"provider": "hive", "model": "deepseek-4.1-flash"}
-      }
-    },
-    "economy": {
-      "description": "Fast GLM helm, cheapest scout - minimal spend per request.",
-      "slots": {
-        "helm": {"provider": "hive", "model": "glm-5.3-flash"},
-        "scout": {"provider": "hive", "model": "deepseek-4.1-flash"}
-      }
-    },
-    "code-shop": {
-      "description": "Coding-heavy sessions: DeepSeek helm, GLM scout.",
-      "slots": {
-        "helm": {"provider": "hive", "model": "deepfrost-max-think"},
+        "helm": {"provider": "ablit", "model": "abliterated-model-large-v2"},
+        "specialist": {"provider": "ablit", "model": "abliterated-model-large-v2"},
         "scout": {"provider": "hive", "model": "glm-5.3-flash"}
       }
     }

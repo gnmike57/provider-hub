@@ -1,0 +1,22 @@
+[Unit]
+Description=LiteLLM TARS Hybrid Modality Router Proxy - abliterated-model-large-v2 for all TARS surfaces
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/nick/tars-litellm-router
+EnvironmentFile=/home/nick/tars-litellm-router/router.env
+Environment="PYTHONPATH=/home/nick/tars-litellm-router"
+# venv litellm (system python3 has no litellm). Port 4001: port 4000 is the
+# existing local model hub (llm-hub.service) and stays untouched.
+ExecStart=/home/nick/tars-litellm-router/.venv/bin/litellm --config /home/nick/tars-litellm-router/litellm_config.yaml --host 0.0.0.0 --port 4001
+Restart=always
+RestartSec=10
+# Security sandboxing for user space (matches the operator runbook).
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-write
+
+[Install]
+WantedBy=default.target

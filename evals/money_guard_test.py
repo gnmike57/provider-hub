@@ -278,7 +278,12 @@ def test_audit_respects_amount_cap(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------
 # 7. audit_cards.py: __main__ guard + --dry-run never charge
 # --------------------------------------------------------------------------
-def test_audit_cards_cli_guarded_and_dry_run(tmp_path):
+def test_audit_cards_cli_guarded_and_dry_run(tmp_path, monkeypatch):
+    # Keys are env-sourced since 2026-10-21 (no secrets in source). Dummies
+    # suffice: --dry-run never calls the API, and the module-level guard only
+    # requires them to be present.
+    monkeypatch.setenv("ABLITERATION_API_KEY", "ak-test")
+    monkeypatch.setenv("ABLITERATION_ADMIN_KEY", "sk-test")
     env = dict(os.environ)
     env.update(
         {

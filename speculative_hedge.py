@@ -31,6 +31,8 @@ import httpx
 
 from routing_patterns import classify_status, footnote, is_routable, normalise, should_hedge
 
+import abliteration_keys
+
 # `hedge_settings` never existed (the module-level instance is SETTINGS), so
 # `from speculative_hedge import *` raised ImportError on the phantom name.
 __all__ = ["hedge_stream", "make_client", "HedgeSettings", "SETTINGS"]
@@ -226,7 +228,9 @@ async def hedge_stream(
                     "POST",
                     s.worker_url,
                     json=worker_payload,
-                    headers={**_auth_header(s.worker_key), "Content-Type": "application/json"},
+                    headers=abliteration_keys.pooled_headers(
+                        {**_auth_header(s.worker_key), "Content-Type": "application/json"},
+                        s.worker_url),
                 ))
             except httpx.TransportError as exc:
                 worker = None
@@ -253,7 +257,9 @@ async def hedge_stream(
                         "POST",
                         s.sovereign_url,
                         json=sovereign_payload,
-                        headers={**_auth_header(s.sovereign_key), "Content-Type": "application/json"},
+                        headers=abliteration_keys.pooled_headers(
+                            {**_auth_header(s.sovereign_key), "Content-Type": "application/json"},
+                            s.sovereign_url),
                     ))
                 except httpx.TransportError as exc:
                     sovereign = None  # B10: an unreachable sovereign means DIVERT, not fail

@@ -111,6 +111,62 @@ def resolve_frost_alias(model: str):
         return FROST_ALIASES[key]
     return FROST_ALIASES.get(key.replace(" ", "-"))
 
+# --------------------------------------------------------------------------
+# Constellation chains (operator directive, 2026-10-21): the hub offers ONLY
+# these three models. Each chain names a cascade:
+#   helm     the primary conversational brain (first hop)
+#   middle   the blind sub-agent hop raced by the hedge - hedge workers see
+#            ONLY the last user text (speculative_hedge), so they are blind
+#            BY CONSTRUCTION; they never see the offensive context
+#   terminal the refusal-proof uncensored fallback (the divert target),
+#            running the REDHANDS persona (redhands.py) in max-offense mode
+# Hop form: (slot, upstream_model_id, max_reasoning). slot "primary" follows
+# the LIVE primary binding (Hive today); slot "ablit.ai" is Abliteration.ai
+# direct (the key pool rotates its Authorization at egress).
+# --------------------------------------------------------------------------
+CONSTELLATION_CHAINS = {
+    "GLMMAX>DEEP>ABLITV2L": {
+        "description": "GLM-5.3 max-reasoning helm; DeepSeek blind sub-agent; "
+                       "Abliterated V2 Large terminal (REDHANDS on offense).",
+        "helm": ("primary", "zai-org/glm-5.3-flash", True),
+        "middle": ("primary", "deepseek-ai/deepseek-v4.1-flash", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": False,
+    },
+    "DEEPMAX>GLM>ABLITV2L": {
+        "description": "DeepSeek max-reasoning helm; GLM blind sub-agent; "
+                       "Abliterated V2 Large terminal (REDHANDS on offense).",
+        "helm": ("primary", "deepseek-ai/deepseek-v4.1-flash", True),
+        "middle": ("primary", "zai-org/glm-5.3-flash", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": False,
+    },
+    "ABLITV2L>SUB-GLM/DEEP": {
+        "description": "Abliterated V2 Large brain under the REDHANDS laws; "
+                       "GLM blind sub-agent raced, DeepSeek secondary worker.",
+        "helm": ("ablit.ai", "abliterated-model-large-v2", False),
+        "middle": ("primary", "zai-org/glm-5.3-flash", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": True,
+    },
+}
+
+_CONSTELLATION_LOOKUP = {
+    "".join(k.lower().split()): k for k in CONSTELLATION_CHAINS
+}
+
+
+def resolve_constellation_chain(model: str):
+    """'glmmax> deep > ablitv2l' -> the chain dict; None when not a chain id.
+
+    Normalisation: case-insensitive, whitespace-free comparison, so every
+    spacing/casing variant of the published ids resolves."""
+    if not model:
+        return None
+    key = "".join(str(model).strip().lower().split())
+    original = _CONSTELLATION_LOOKUP.get(key)
+    return CONSTELLATION_CHAINS.get(original) if original else None
+
 
 # --------------------------------------------------------------------------
 # Hub model matrix (2026-10-18): operator-addressable model aliases that select

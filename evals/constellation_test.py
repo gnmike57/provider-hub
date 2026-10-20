@@ -272,7 +272,10 @@ def test_promotion_suggestions_no_data_no_opinion():
 def test_seed_constellations_load():
     presets = constellation.CONSTELLATIONS.list()
     names = {p["name"] for p in presets}
-    assert {"deep-space", "economy"} <= names
+    # Operator directive 2026-10-21: the only constellations are the three
+    # chain presets (the old five creative presets were replaced).
+    assert names == {
+        "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP"}
     # read-back never leaks keys even if someone writes one in
     for p in presets:
         for slot_spec in p["slots"].values():

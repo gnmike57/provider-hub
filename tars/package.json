@@ -1,0 +1,17 @@
+{
+  "name": "tars-login-task",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent TARS login task runner - V2 large model (abliterated-model-large-v2) via gx10 tars-hybrid-router",
+  "scripts": {
+    "login": "node login-task.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@agent-tars/core": "^0.3.1",
+    "@agent-tars/interface": "^0.3.1"
+  }
+}

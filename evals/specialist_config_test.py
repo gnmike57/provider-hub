@@ -98,6 +98,10 @@ def test_fallback_names_still_win_when_specialist_unset(monkeypatch):
 def test_divert_calls_the_resolved_specialist_with_the_env_key(script, monkeypatch):
     """A refusal diverts to the specialist slot, carrying the NanoGPT bearer."""
     spec = "http://nano.test/v1/chat/completions"
+    # hermetic (2026-10-21): the operator's User-scope env carries
+    # SPECIALIST_API_KEY; NANOGPT_API_KEY only wins when it is absent.
+    monkeypatch.delenv("SPECIALIST_API_KEY", raising=False)
+    monkeypatch.delenv("FALLBACK_API_KEY", raising=False)
     monkeypatch.setenv("NANOGPT_API_KEY", "sk-nano-test")
     s = proxy_gateway.SETTINGS
     monkeypatch.setattr(s, "fallback_api_url", spec)

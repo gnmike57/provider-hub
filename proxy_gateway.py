@@ -50,6 +50,9 @@ import model_switch
 import constellation as constellation_mod
 import billing as billing_mod
 import siphon as siphon_mod
+import abliteration_keys
+import redhands
+from providers import CONSTELLATION_CHAINS, resolve_constellation_chain
 
 from context_formatter import (
     CYBER_SYSTEM,
@@ -436,6 +439,9 @@ def _specialist_system_prompt(settings: Settings):
     (the default) keeps the generic framing (DEFAULT_SYSTEM on diverts, the
     CYBER-FROST identity on /v1/execute)."""
     mode = (getattr(settings, "specialist_system_mode", "") or "neutral").strip().lower()
+    if mode == "redhands":
+        # MAX OFFENSIVE HACKING: the REDHANDS laws (redhands.py)
+        return redhands.redhands_system()
     return CYBER_SYSTEM if mode == "domain" else None
 
 
@@ -504,6 +510,9 @@ async def open_primary(client, payload, headers, settings: Settings = None) -> h
     """Open the primary stream with retries: 408/429 -> retry SAME provider,
     never divert; 5xx -> retry then divert; 4xx -> fail fast (B10)."""
     s = settings or SETTINGS
+    # Abliteration round-robin pool: rotates Authorization when the primary
+    # targets api.abliteration.ai (no-op for every other provider).
+    headers = abliteration_keys.pooled_headers(headers, s.primary_api_url)
     last_status = None
     for attempt in range(1, max(s.max_attempts, 1) + 1):
         req = client.build_request("POST", s.primary_api_url, json=payload, headers=headers)
@@ -538,6 +547,9 @@ async def open_primary(client, payload, headers, settings: Settings = None) -> h
 async def open_fallback(client, payload, headers, settings: Settings = None) -> httpx.Response:
     """F6: retry DIVERT={500,502,503,504} with backoff; a 503 is capacity."""
     s = settings or SETTINGS
+    # Abliteration round-robin pool: rotates Authorization when the
+    # specialist targets api.abliteration.ai (no-op for CYBER-FROST etc.).
+    headers = abliteration_keys.pooled_headers(headers, s.fallback_api_url)
     last_status = None
     last_exc = None
     for attempt in range(1, max(s.fallback_max_attempts, 1) + 1):
@@ -1170,6 +1182,33 @@ async def chat_proxy(request: Request):
     request_id = f"gw-{uuid.uuid4().hex[:12]}"
     settings = SETTINGS
 
+    # MAX OFFENSE + CONSTELLATION CHAINS (2026-10-21):
+    #  - a chain request diverts (refusal AND Gate-8 forced) onto the chain
+    #    TERMINAL - the uncensored Abliterated V2 Large brain;
+    #  - a chain-3 model id, the X-Max-Offense header, or an explicit
+    #    max-offense ask puts the WHOLE request under the REDHANDS laws:
+    #    every specialist surface (forced diverts, refusal diverts,
+    #    /v1/execute) runs the REDHANDS persona (redhands.py).
+    requested_model = body.get("model") or settings.primary_model
+    chain = resolve_constellation_chain(requested_model)
+    if chain:
+        _slot, _t_model, _ = chain["terminal"]
+        if _slot == "primary":
+            settings = copy.copy(SETTINGS)
+            settings.fallback_api_url = SETTINGS.primary_api_url
+            settings.fallback_api_key = SETTINGS.primary_api_key
+            settings.fallback_model = _t_model
+        else:
+            settings = copy.copy(SETTINGS)
+            settings.fallback_api_url = HUB_PROVIDERS["ablit.ai"]["url"]
+            settings.fallback_api_key = HUB_PROVIDERS["ablit.ai"]["key"]
+            settings.fallback_model = _t_model
+    if (chain and chain["redhands"]) or redhands.is_offense_request(
+            requested_model, body, dict(request.headers)):
+        if settings is SETTINGS:
+            settings = copy.copy(SETTINGS)
+        settings.specialist_system_mode = "redhands"
+
     # Gate 8: forced divert for attack content (S4/S5/S6 red-team stages).
     # Check BEFORE the primary model sees the request - divert immediately to the
     # specialist. Opt-in (ATTACK_GATE_ENABLED=1, default off).
@@ -1211,9 +1250,39 @@ async def chat_proxy(request: Request):
     # DeepMaxAblit.ai, GLMMaxAblit.ai, DeepAblit.ai, GLMAblit.ai.
     # Selects provider (nano=NanoGPT, ablit.ai=Abliteration.ai), upstream model
     # id, and reasoning mode directly - bypassing the primary/worker slots.
-    requested = body.get("model") or settings.primary_model
+    requested = requested_model
     hub = resolve_hub_alias(requested)
-    if hub:
+    if chain:
+        # Constellation chains (providers.CONSTELLATION_CHAINS): the hub's
+        # ONLY three models. helm -> middle (blind hedge sub-agent) ->
+        # terminal (uncensored divert target; the Abliteration key pool
+        # rotates its Authorization at egress).
+        def _hop(hop):
+            slot, model_id, _ = hop
+            if slot == "primary":
+                return settings.primary_api_url, settings.primary_api_key, model_id
+            return (HUB_PROVIDERS["ablit.ai"]["url"],
+                    HUB_PROVIDERS["ablit.ai"]["key"], model_id)
+
+        p_url, p_key, p_model = _hop(chain["helm"])
+        t_url, t_key, t_model = _hop(chain["terminal"])
+        call_settings = copy.copy(settings)
+        call_settings.primary_api_url = p_url
+        call_settings.primary_api_key = p_key
+        primary_model_used = p_model
+        max_think = chain["helm"][2]
+        call_settings.fallback_api_url = t_url
+        call_settings.fallback_api_key = t_key
+        call_settings.fallback_model = t_model
+        # the middle hop is the hedge's BLIND sub-agent worker
+        call_settings.chain_middle = _hop(chain["middle"])
+        if chain["redhands"] and not any(
+                isinstance(m, dict) and m.get("role") == "system"
+                for m in messages):
+            # chain-3 helm: the V2 brain itself runs under the REDHANDS laws
+            messages = [{"role": "system",
+                        "content": redhands.redhands_system()}] + list(messages)
+    elif hub:
         provider_key, upstream_model, is_max = hub
         provider = HUB_PROVIDERS[provider_key]
         call_settings = copy.copy(settings)
@@ -1299,14 +1368,15 @@ async def chat_proxy(request: Request):
             except (TypeError, ValueError):
                 primary_payload[k] = floor
         incr("max_think_total")
-    if hub:
+    if hub or (chain and chain["helm"][0] == "ablit.ai"):
         # Abliteration.ai rejects a payload carrying BOTH token caps ("Use
         # max_completion_tokens or max_tokens, not both", measured live
-        # 2026-10-18), while Hive needs max_completion_tokens and NanoGPT
-        # accepts either. The hub matrix sends the one field every
+        # 2026-10-18 and again on the chain-3 helm 2026-10-21), while Hive
+        # needs max_completion_tokens and NanoGPT accepts either. The hub
+        # matrix and the ablit-helmed chains send the one field every
         # OpenAI-compatible upstream accepts: plain max_tokens.
         primary_payload.pop("max_completion_tokens", None)
-        if max_think and provider_key == "ablit.ai":
+        if (hub and provider_key == "ablit.ai") or (chain and chain["helm"][0] == "ablit.ai"):
             # Also measured live: Abliteration.ai accepts the OpenAI-style
             # effort knobs (reasoning_effort / reasoning / reasoning_content)
             # but reserves runtime controls to itself - enable_thinking and
@@ -1327,7 +1397,7 @@ async def chat_proxy(request: Request):
             # (NanoGPT / Abliteration.ai), so a worker commit would answer on
             # a provider the client did not address - and /v1/models advertises
             # every hub model as hedged: False.
-            if hedge_requested and not max_think and not hub:
+            if hedge_requested and not hub and (not max_think or chain):
                 import speculative_hedge
 
                 # R2: audit parity. The divert path records BEFORE dispatch
@@ -1353,9 +1423,15 @@ async def chat_proxy(request: Request):
                 h.sovereign_url = call_settings.primary_api_url
                 h.sovereign_key = call_settings.primary_api_key
                 h.sovereign_model = primary_payload["model"]
-                h.worker_url = settings.fallback_api_url
-                h.worker_key = settings.fallback_api_key
-                h.worker_model = settings.fallback_model
+                mid = getattr(call_settings, "chain_middle", None)
+                if mid:
+                    # chain middle hop: the BLIND sub-agent (the hedge worker
+                    # sees only the last user text - blind by construction)
+                    h.worker_url, h.worker_key, h.worker_model = mid
+                else:
+                    h.worker_url = settings.fallback_api_url
+                    h.worker_key = settings.fallback_api_key
+                    h.worker_model = settings.fallback_model
                 async for chunk in speculative_hedge.hedge_stream(
                     messages, request_id=request_id, client=app.state.http, settings=h,
                     tools=body.get("tools"), tool_choice=body.get("tool_choice"),
@@ -1995,7 +2071,25 @@ FROST_REGISTRY = [
 
 @app.get("/v1/models")
 async def list_models():
-    """OpenAI-compatible model list with Frost models first, in preferred order."""
+    """OpenAI-compatible model list.
+
+    Operator directive 2026-10-21: the hub offers EXACTLY the three
+    constellation chains - this is the DEFAULT. CONSTELLATION_ONLY=0
+    (debug/legacy) restores the old full catalog."""
+    if os.getenv("CONSTELLATION_ONLY", "1").strip().lower() not in ("0", "false", "no", "off"):
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": cid,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "constellation",
+                    "description": chain["description"],
+                }
+                for cid, chain in CONSTELLATION_CHAINS.items()
+            ],
+        }
     data = []
     for m in FROST_REGISTRY:
         data.append({

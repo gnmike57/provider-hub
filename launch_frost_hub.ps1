@@ -151,20 +151,37 @@ try {
     }
 
     # --- Frost system environment (single source for the boot task) ---------
-    $env:PRIMARY_API_URL   = "https://api-cdn.thehive.ai/api/v3/chat/completions"
-    $env:HIVE_SECRET_KEY   = "REDACTED_HIVE_KEY"        # Hive self-hosted LLMs primary
-    $env:PRIMARY_MODEL     = "zai-org/glm-5.3-flash"                # default primary id
+    # V2 brain (staged 2026-10-20; activate via activate_v2_primary.ps1 once the
+    # Abliteration org is out of payment_required). While slot_bindings.json still
+    # ends on the Hive/CYBER-FROST snapshot, the hub's boot-restore keeps the LIVE
+    # slots on Hive - these env pins only win if that file is missing/unreadable.
+    # Abliteration keys come from Windows user-scope env (installed 2026-10-21):
+    # process env wins, then persistent User scope. No secrets in source.
+    #   ABLITERATION_API_KEY   = ak_... chat/inference key
+    #   ABLITERATION_ADMIN_KEY  = sk_... admin key (the ONLY admin key alive)
+    $ablAk = $env:ABLITERATION_API_KEY
+    if (-not $ablAk) { $ablAk = [Environment]::GetEnvironmentVariable('ABLITERATION_API_KEY', 'User') }
+    $ablSk = $env:ABLITERATION_ADMIN_KEY
+    if (-not $ablSk) { $ablSk = [Environment]::GetEnvironmentVariable('ABLITERATION_ADMIN_KEY', 'User') }
+    if (-not $ablAk) { Write-Warning "ABLITERATION_API_KEY not set (process or User scope) - Abliteration calls will fail" }
+    if (-not $ablSk) { Write-Warning "ABLITERATION_ADMIN_KEY not set (process or User scope) - SIPHON card charging will fail" }
+    $env:PRIMARY_API_URL   = "https://api.abliteration.ai/v1/chat/completions"
+    $env:PRIMARY_API_KEY    = $ablAk  # Abliteration chat key (explicit; wins over HIVE_SECRET_KEY)
+    $env:PRIMARY_MODEL     = "abliterated-model-large-v2"                # default primary id
+    $env:HIVE_SECRET_KEY   = "REDACTED_HIVE_KEY"        # Hive self-hosted LLMs (legacy primary, kept for rollback)
     $env:FALLBACK_API_URL  = "http://100.67.13.78:4000/v1/chat/completions"  # gx10 hub (worker/cyberfrost)
     $env:FALLBACK_API_KEY  = "none"
     $env:FALLBACK_MODEL    = "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
     $env:FROST_WORKER_API_URL = "http://100.67.13.78:4000/v1/chat/completions"  # gx10 hub for the cyberfrost names (NOT the specialist override)
     $env:FROST_WORKER_API_KEY = "none"
-    $env:SPECIALIST_API_URL = "https://nano-gpt.com/api/v1/chat/completions"
-    $env:SPECIALIST_API_KEY = "sk-nano-5c33cd2e-dfb3-46cd-a068-46bcaee19ef2" # == NANOGPT_API_KEY
-    $env:SPECIALIST_MODEL   = "abliteration-ai/abliterated-model-large-v2"
-    $env:NANOGPT_API_KEY    = "sk-nano-5c33cd2e-dfb3-46cd-a068-46bcaee19ef2"
-    $env:ABLITERATION_API_KEY = "REDACTED_ABLIT_KEY"  # Abliteration.ai (hub matrix ablit.ai provider; SIPHON brain chat key)
-    $env:ABLITERATION_ADMIN_KEY = "REDACTED_ADMIN_KEY"  # Abliteration.ai admin (org balance + SIPHON card charging)
+    $env:SPECIALIST_API_URL = "https://api.abliteration.ai/v1/chat/completions"
+    $env:SPECIALIST_API_KEY = $ablAk # Abliteration direct (NanoGPT hop dropped 2026-10-20)
+    $env:SPECIALIST_MODEL   = "abliterated-model-large-v2"
+    $env:ABLITERATION_API_KEY = $ablAk  # Abliteration.ai (hub matrix ablit.ai provider; SIPHON brain chat key)
+    $env:ABLITERATION_ADMIN_KEY = $ablSk  # Abliteration.ai admin (org balance + SIPHON card charging)
+    # Operator directive 2026-10-21: the hub offers ONLY the three
+    # constellation chains (see providers.CONSTELLATION_CHAINS).
+    $env:CONSTELLATION_ONLY = "1"
     # Money safety (W2): billing refuses plaintext API-key writes without a
     # Fernet ENCRYPTION_KEY, and the money/card endpoints (/v1/user/*,
     # /v1/siphon/*, /v1/admin/*) require the admin key below via X-Admin-Key.
@@ -174,8 +191,8 @@ try {
     $env:KEEPALIVE_URL      = "http://100.67.13.78:4000/v1/models"
     $env:MAX_THINK_MIN_TOKENS = "32768"
     $env:NO_GO_ENABLED        = "1"
-    $env:HEDGE_MAX_TOKENS     = "4000"
-    $env:SPECIALIST_MAX_TOKENS = "4096"   # divert budget: NanoGPT reserved 64k tokens otherwise
+    $env:HEDGE_MAX_TOKENS     = "8192"    # raised for V2-large hedge capacity (was 4000)
+    $env:SPECIALIST_MAX_TOKENS = "16384"  # V2-large divert budget (was 4096 NanoGPT reserve)
     $env:MAX_CONCURRENT_STREAMS = "64"    # DoS guard on open streams (0 = unlimited)
     $env:COMMIT_TOKENS        = "10"
     $env:PYTHONUNBUFFERED     = "1"

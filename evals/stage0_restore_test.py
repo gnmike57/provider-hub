@@ -109,7 +109,9 @@ def test_continue_disabled_diverts_inline_without_grace(gw, script, monkeypatch)
 
 
 # --- 3. plain Frost names: alias table + /v1/models -------------------------
-def test_plain_frost_names_resolve_and_are_published(gw, script):
+def test_plain_frost_names_resolve_and_are_published(gw, script, monkeypatch):
+    # legacy catalog view: the 3-chain-only default is explicitly opted out
+    monkeypatch.setenv("CONSTELLATION_ONLY", "0")
     assert providers.resolve_frost_alias("DeepFrost v4.1") == (
         "primary", "deepseek-ai/deepseek-v4.1-flash")
     assert providers.resolve_frost_alias("GLMFrost 5.3 Flash") == (

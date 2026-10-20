@@ -14,7 +14,7 @@ Two-key architecture (verified live against api.abliteration.ai):
     ABLITERATION_API_KEY  (ak_...)  = user/chat key: /v1/chat/completions,
                                       /v1/credits — the SAME key+model the
                                       user works with.
-    ABLITERATION_ADMIN_KEY(sk_YIH7..)= admin key: /v1/organization/balance
+    ABLITERATION_ADMIN_KEY(sk_...)= admin key: /v1/organization/balance
                                       (real money) and /v1/admin/charge
                                       (card charging per spec).
 

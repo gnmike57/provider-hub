@@ -1,0 +1,101 @@
+# ============================================================================
+# gx10 constellation router (operator directive 2026-10-21) - REPLACES the
+# single-model tars-hybrid-router surface. The hub offers ONLY three models,
+# each a cascade chain:
+#
+#   GLMMAX>DEEP>ABLITV2L   GLM-5.3 max-reasoning helm -> DeepSeek -> Ablit V2L
+#   DEEPMAX>GLM>ABLITV2L   DeepSeek max-reasoning helm -> GLM -> Ablit V2L
+#   ABLITV2L>SUB-GLM/DEEP  Ablit V2 Large brain (REDHANDS laws) + blind
+#                          GLM/DeepSeek sub-agents
+#
+# LiteLLM mechanics:
+#   - each hop is a model_list entry; router_settings.fallbacks cascade a
+#     chain id onto its hops on error/429 (cooldowns handled by the router)
+#   - the ABLIT V2L hops are DUAL deployments (same model_name, key A/B from
+#     the Abliteration key pool minted by abliteration_keys.py) -> LiteLLM
+#     round-robins them for max throughput (per-key cap workaround)
+#   - the Windows provider-hub gateway ALSO injects the REDHANDS persona for
+#     chain-3 / max-offense requests (redhands.py); direct gx10 clients
+#     should prepend the REDHANDS system turn themselves or route through
+#     the Windows gateway
+#   - vision_bridge stays registered (V2 large is text-only)
+#
+# Port note: 4001 (4000 is the llm-hub front door). Endpoints:
+#   /v1/chat/completions, /v1/responses, /v1/models, /health/liveliness
+# ============================================================================
+
+model_list:
+  # ---- chain 1: GLMMAX>DEEP>ABLITV2L -------------------------------------
+  - model_name: GLMMAX>DEEP>ABLITV2L
+    litellm_params:
+      model: openai/zai-org/glm-5.3-flash
+      api_key: os.environ/HIVE_SECRET_KEY
+      api_base: https://api-cdn.thehive.ai/api/v3
+      max_completion_tokens: 32768
+
+  - model_name: deep-hop
+    litellm_params:
+      model: openai/deepseek-ai/deepseek-v4.1-flash
+      api_key: os.environ/HIVE_SECRET_KEY
+      api_base: https://api-cdn.thehive.ai/api/v3
+
+  # ---- chain 2: DEEPMAX>GLM>ABLITV2L -------------------------------------
+  - model_name: DEEPMAX>GLM>ABLITV2L
+    litellm_params:
+      model: openai/deepseek-ai/deepseek-v4.1-flash
+      api_key: os.environ/HIVE_SECRET_KEY
+      api_base: https://api-cdn.thehive.ai/api/v3
+      max_completion_tokens: 32768
+
+  - model_name: glm-hop
+    litellm_params:
+      model: openai/zai-org/glm-5.3-flash
+      api_key: os.environ/HIVE_SECRET_KEY
+      api_base: https://api-cdn.thehive.ai/api/v3
+
+  # ---- chain 3 + the shared ABLIT V2L terminal ----------------------------
+  # Dual deployments (pool key A/B) -> round-robin max throughput.
+  - model_name: ABLITV2L>SUB-GLM/DEEP
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_A
+      api_base: https://api.abliteration.ai/v1
+  - model_name: ABLITV2L>SUB-GLM/DEEP
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_B
+      api_base: https://api.abliteration.ai/v1
+
+  - model_name: ablit-v2l-terminal
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_A
+      api_base: https://api.abliteration.ai/v1
+  - model_name: ablit-v2l-terminal
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_B
+      api_base: https://api.abliteration.ai/v1
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 600
+  callbacks:
+    - vision_bridge.proxy_handler_instance
+
+router_settings:
+  num_retries: 2
+  timeout: 600
+  allowed_fails: 3
+  # The cascade: a chain id falls back hop-by-hop onto its chain; the
+  # terminal (Ablit V2 Large) is refusal-proof, so refusal diverts are
+  # handled at the Windows gateway (refusal-interception) rather than here.
+  fallbacks:
+    - "GLMMAX>DEEP>ABLITV2L": ["deep-hop", "ablit-v2l-terminal"]
+    - "DEEPMAX>GLM>ABLITV2L": ["glm-hop", "ablit-v2l-terminal"]
+    - "deep-hop": ["ablit-v2l-terminal"]
+    - "glm-hop": ["ablit-v2l-terminal"]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+

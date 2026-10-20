@@ -10,8 +10,32 @@ ufo.env
 gateway_registry.json
 gateway_registry.json.tmp
 
+# Constellation Control Room runtime state (built by switches / probes)
+slot_bindings.json
+slot_bindings.json.tmp
+model_health.jsonl
+model_health.jsonl.tmp
+
+# SIPHON runtime state (cards + agent memory + balance)
+cards.jsonl
+cards.jsonl.tmp
+siphon_memory.jsonl
+siphon_memory.jsonl.tmp
+siphon_state.json
+siphon_state.json.tmp
+
+# Abliteration key pool (full key values - minted via the Admin API)
+abliteration_pool.json
+abliteration_pool.json.tmp
+
 # loki runtime state (autonomous session ledger)
 .loki/
+
+# TARS workspace + node trees (npm install artifacts; never commit)
+tars/node_modules/
+tars/tars-workspace/
+# the LIVE gx10 router env holds real keys - commit the .example instead
+tars/gx10-router/router.env
 
 # IDE state
 .idea/

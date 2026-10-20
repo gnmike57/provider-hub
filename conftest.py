@@ -60,6 +60,7 @@ _STATE_ENV = {
     "SIPHON_INTENTS_FILE": "charge_intents.jsonl",
     "USERS_FILE": "users.jsonl",
     "USAGE_FILE": "usage_events.jsonl",
+    "ABLITERATION_POOL_FILE": "abliteration_pool.json",
 }
 
 # Per-session quarantine directory (pytest's tmp_path is a fixture and cannot

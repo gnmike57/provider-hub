@@ -159,7 +159,9 @@ def test_max_think_requests_are_counted(script):
     assert proxy_gateway._METRICS["max_think_total"] == before + 1
 
 
-def test_model_list_publishes_both_max_think_endpoints():
+def test_model_list_publishes_both_max_think_endpoints(monkeypatch):
+    # legacy catalog view: the 3-chain-only default is explicitly opted out
+    monkeypatch.setenv("CONSTELLATION_ONLY", "0")
     with TestClient(proxy_gateway.app) as tc:
         data = tc.get("/v1/models").json()["data"]
     ids = [m["id"] for m in data]
