@@ -29,6 +29,11 @@ CREDIT_COST_PER_TOKEN = float(os.getenv("CREDIT_COST_PER_TOKEN", "0.002"))
 CREDIT_TOPUP_AMOUNT = float(os.getenv("CREDIT_TOPUP_AMOUNT", "10.00"))
 CREDIT_LOW_THRESHOLD = float(os.getenv("CREDIT_LOW_THRESHOLD", "2.00"))
 CREDIT_FREE_TIER = float(os.getenv("CREDIT_FREE_TIER", "1.00"))
+# Cap on how many users may receive the signup free tier.  get_or_create()
+# mints CREDIT_FREE_TIER for every NEW user id, and user ids arrive from an
+# unauthenticated X-User-Id header - without a cap every unique header value
+# would mint free credits forever.  Users created past the cap start at $0.
+FREE_TIER_MAX_USERS = int(os.getenv("FREE_TIER_MAX_USERS", "100"))
 
 # --------------------------------------------------------------------------
 # Adaptive auto top-up (investigative tuning).
@@ -75,26 +80,48 @@ ABLITERATION_ADMIN_BASE = os.getenv(
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 
 _ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
-if _ENCRYPTION_KEY:
-    _FERNET = Fernet(_ENCRYPTION_KEY.encode() if isinstance(_ENCRYPTION_KEY, str) else _ENCRYPTION_KEY)
-else:
-    _FERNET = None
+_FERNET = Fernet(_ENCRYPTION_KEY.encode()) if _ENCRYPTION_KEY else None
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _encrypt(plaintext: str) -> str:
+def _fernet():
+    """The module Fernet, lazily (re)initialized from ENCRYPTION_KEY.
+
+    Lazy resolution lets tests and embedders configure the key after import
+    without re-importing billing.  When no key is configured this returns
+    None: plaintext WRITES are then refused (fail closed), while READS of
+    legacy plaintext rows stay lenient.
+    """
+    global _FERNET
     if _FERNET is None:
-        return plaintext
-    return _FERNET.encrypt(plaintext.encode()).decode()
+        key = os.getenv("ENCRYPTION_KEY", "").strip()
+        if key:
+            _FERNET = Fernet(key.encode())
+    return _FERNET
+
+
+def _encrypt(plaintext: str) -> str:
+    f = _fernet()
+    if f is None:
+        # Refuse the previously SILENT plaintext write: without this the key
+        # material hit user_keys.jsonl unencrypted whenever ENCRYPTION_KEY
+        # was not configured.
+        raise RuntimeError(
+            "ENCRYPTION_KEY not configured; refusing to store API key in plaintext"
+        )
+    return f.encrypt(plaintext.encode()).decode()
 
 
 def _decrypt(ciphertext: str) -> str:
-    if _FERNET is None:
+    # Lenient on purpose: rows written before a key was pinned (plaintext
+    # legacy) stay readable; encrypted rows decrypt normally.
+    f = _fernet()
+    if f is None:
         return ciphertext
-    return _FERNET.decrypt(ciphertext.encode()).decode()
+    return f.decrypt(ciphertext.encode()).decode()
 
 
 def _atomic_write_jsonl(path: str, rows: List[dict]) -> None:
@@ -218,9 +245,14 @@ class UserBilling:
         with self._lock:
             row = self._find(user_id)
             if row is None:
+                # Bounded free-credit minting: the signup free tier is only
+                # granted while the registry is under FREE_TIER_MAX_USERS.
+                # Past the cap a new (possibly spoofed X-User-Id) user starts
+                # at $0 instead of minting CREDIT_FREE_TIER forever.
+                grant_free_tier = len(self._rows) < FREE_TIER_MAX_USERS
                 row = {
                     "user_id": user_id,
-                    "credits_usd": CREDIT_FREE_TIER,
+                    "credits_usd": CREDIT_FREE_TIER if grant_free_tier else 0.0,
                     "total_tokens": 0,
                     "total_requests": 0,
                     "total_cost_usd": 0.0,
@@ -452,13 +484,21 @@ class UsageTracker:
             rows = _load_jsonl(self.path)
         except OSError:
             rows = []
+        kept: List[dict] = []
+        for r in rows:
+            if not isinstance(r, dict) or not isinstance(r.get("timestamp"), str):
+                continue
+            try:
+                ts = datetime.fromisoformat(r["timestamp"]).timestamp()
+            except (ValueError, TypeError):
+                # Malformed timestamp: skip the row instead of raising.  This
+                # runs at import time (USAGE singleton), so one corrupt line
+                # used to mean the whole hub would not boot.
+                continue
+            if ts > cutoff:
+                kept.append(r)
         with self._lock:
-            self._events = [
-                r for r in rows
-                if isinstance(r, dict)
-                and isinstance(r.get("timestamp"), str)
-                and datetime.fromisoformat(r["timestamp"]).timestamp() > cutoff
-            ]
+            self._events = kept
 
     def record(self, user_id: str, model: str, tokens_in: int,
                tokens_out: int, cost_usd: float, provider: str,

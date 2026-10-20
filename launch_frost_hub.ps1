@@ -165,6 +165,11 @@ try {
     $env:NANOGPT_API_KEY    = "sk-nano-5c33cd2e-dfb3-46cd-a068-46bcaee19ef2"
     $env:ABLITERATION_API_KEY = "REDACTED_ABLIT_KEY"  # Abliteration.ai (hub matrix ablit.ai provider; SIPHON brain chat key)
     $env:ABLITERATION_ADMIN_KEY = "REDACTED_ADMIN_KEY"  # Abliteration.ai admin (org balance + SIPHON card charging)
+    # Money safety (W2): billing refuses plaintext API-key writes without a
+    # Fernet ENCRYPTION_KEY, and the money/card endpoints (/v1/user/*,
+    # /v1/siphon/*, /v1/admin/*) require the admin key below via X-Admin-Key.
+    $env:ENCRYPTION_KEY     = "ER9W35oE9l3Hm3V9dEBdeOCht4R5DPiaQJ6BmfFDjiE="  # Fernet key for user_keys.jsonl at rest
+    $env:ADMIN_API_KEY      = "tYcVcsF7RmF7Ozwqph0GC_-UBXiBDy68MsjMSUR0yWg"    # X-Admin-Key for money/card endpoints
     $env:AUDIT_LOG          = "$LOG_DIR\boot_audit.jsonl"
     $env:KEEPALIVE_URL      = "http://100.67.13.78:4000/v1/models"
     $env:MAX_THINK_MIN_TOKENS = "32768"

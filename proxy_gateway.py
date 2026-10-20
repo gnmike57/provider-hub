@@ -2258,7 +2258,14 @@ def _get_user_id(request: Request) -> str:
 
 @app.post("/v1/user/keys")
 async def user_keys_set(request: Request):
-    """Store user's Hive + Abliteration API keys encrypted at rest."""
+    """Store user's Hive + Abliteration API keys encrypted at rest.
+
+    Money safety (W2): requires the admin key, and storing is refused with
+    503 when no ENCRYPTION_KEY is configured (billing refuses plaintext
+    writes, so keys can never silently land unencrypted in user_keys.jsonl).
+    """
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     user_id = _get_user_id(request)
     try:
         body = await read_json_body(request)
@@ -2268,10 +2275,16 @@ async def user_keys_set(request: Request):
     hive_key = body.get("hive_api_key", "")
     abliteration_key = body.get("abliteration_api_key", "")
 
-    if hive_key:
-        billing_mod.KEY_VAULT.store_key(user_id, "hive", hive_key)
-    if abliteration_key:
-        billing_mod.KEY_VAULT.store_key(user_id, "abliteration", abliteration_key)
+    try:
+        if hive_key:
+            billing_mod.KEY_VAULT.store_key(user_id, "hive", hive_key)
+        if abliteration_key:
+            billing_mod.KEY_VAULT.store_key(user_id, "abliteration", abliteration_key)
+    except RuntimeError as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"error": str(exc)},
+        )
 
     return {
         "user_id": user_id,
@@ -2285,7 +2298,9 @@ async def user_keys_set(request: Request):
 
 @app.get("/v1/user/keys")
 async def user_keys_get(request: Request):
-    """Return masked key status for the current user."""
+    """Return masked key status for the current user (admin key required)."""
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     user_id = _get_user_id(request)
     return {
         "user_id": user_id,
@@ -2333,13 +2348,36 @@ async def user_balance(request: Request):
 
 @app.post("/v1/user/topup")
 async def user_topup(request: Request):
-    """Trigger an Abliteration.ai admin charge to add credits to the user's balance."""
+    """Trigger an Abliteration.ai admin charge to add credits to the user's balance.
+
+    Money safety (W2): requires the admin key, and the amount must be a
+    number in (0, SETTINGS.credit_topup_amount] - previously this endpoint
+    was unauthenticated, unbounded, and a non-numeric amount crashed it.
+    """
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     user_id = _get_user_id(request)
     try:
         body = await read_json_body(request)
     except Exception:
         body = {}
-    amount = float(body.get("amount_usd", SETTINGS.credit_topup_amount))
+    raw_amount = body.get("amount_usd", SETTINGS.credit_topup_amount)
+    try:
+        amount = float(raw_amount)
+    except (TypeError, ValueError):
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"amount_usd must be numeric, got {raw_amount!r}"},
+        )
+    if not (0 < amount <= SETTINGS.credit_topup_amount):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": (
+                    f"amount_usd must be in (0, {SETTINGS.credit_topup_amount}]"
+                )
+            },
+        )
 
     if not SETTINGS.abliteration_admin_key:
         return JSONResponse(
@@ -2423,7 +2461,23 @@ async def admin_charge(request: Request):
         return JSONResponse(status_code=400, content={"error": "invalid JSON body"})
 
     target_user = body.get("user_id", "")
-    amount = float(body.get("amount_usd", SETTINGS.credit_topup_amount))
+    raw_amount = body.get("amount_usd", SETTINGS.credit_topup_amount)
+    try:
+        amount = float(raw_amount)
+    except (TypeError, ValueError):
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"amount_usd must be numeric, got {raw_amount!r}"},
+        )
+    if not (0 < amount <= SETTINGS.credit_topup_amount):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": (
+                    f"amount_usd must be in (0, {SETTINGS.credit_topup_amount}]"
+                )
+            },
+        )
 
     if not target_user:
         return JSONResponse(status_code=400, content={"error": "user_id required"})
@@ -2479,15 +2533,21 @@ async def admin_charge(request: Request):
 # ============================================================================
 # SIPHON endpoints
 # ============================================================================
+# Money safety (W2): every SIPHON endpoint can spend real money (evaluate
+# charges cards) or add card numbers, so they all require the admin key.
 @app.get("/v1/siphon/status")
-async def siphon_status():
-    """Current SIPHON agent status."""
+async def siphon_status(request: Request):
+    """Current SIPHON agent status (admin key required)."""
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     return siphon_mod.SIPHON.status()
 
 
 @app.post("/v1/siphon/card")
-async def siphon_add_card(body: dict):
-    """Give SIPHON a card to manage."""
+async def siphon_add_card(request: Request, body: dict):
+    """Give SIPHON a card to manage (admin key required)."""
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     number = str(body.get("number", "")).strip()
     exp_month = body.get("exp_month")
     exp_year = body.get("exp_year")
@@ -2505,21 +2565,27 @@ async def siphon_add_card(body: dict):
 
 
 @app.get("/v1/siphon/cards")
-async def siphon_cards():
-    """List cards managed by SIPHON (masked)."""
+async def siphon_cards(request: Request):
+    """List cards managed by SIPHON, masked (admin key required)."""
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     return {"cards": siphon_mod.SIPHON.cards.summary()}
 
 
 @app.post("/v1/siphon/evaluate")
-async def siphon_evaluate():
-    """Force one evaluation cycle now."""
+async def siphon_evaluate(request: Request):
+    """Force one evaluation cycle now (admin key required: charges cards)."""
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     result = await siphon_mod.SIPHON.evaluate()
     return result
 
 
 @app.post("/v1/siphon/toggle")
-async def siphon_toggle(body: dict):
-    """Enable/disable SIPHON."""
+async def siphon_toggle(request: Request, body: dict):
+    """Enable/disable SIPHON (admin key required)."""
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     enabled = bool(body.get("enabled", True))
     siphon_mod.SIPHON.state["enabled"] = enabled
     siphon_mod.SIPHON._save_state()
@@ -2527,8 +2593,10 @@ async def siphon_toggle(body: dict):
 
 
 @app.get("/v1/siphon/memory")
-async def siphon_memory(limit: int = 10):
-    """Recent SIPHON decisions."""
+async def siphon_memory(request: Request, limit: int = 10):
+    """Recent SIPHON decisions (admin key required)."""
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
     return {"events": siphon_mod.SIPHON.memory.recent(min(limit, 100))}
 
 
