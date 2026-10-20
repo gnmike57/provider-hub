@@ -164,6 +164,13 @@ def test_disconnect_drains_in_flight():
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+        # isolation (2026-10-21): this test swaps app.state.http for a private
+        # client; once closed, later suites inherited "Cannot send a request,
+        # as the client has been closed" (frost_alias flake in the full run).
+        # Restore a fresh mock-backed client for whoever runs next.
+        proxy_gateway.app.state.http = httpx.AsyncClient(
+            transport=httpx.MockTransport(script_upstream())
+        )
 
 
 def script_upstream():
