@@ -62,24 +62,30 @@ __all__ = [
 # the exact upstream model id, so one endpoint can serve any of them.
 # --------------------------------------------------------------------------
 FROST_ALIASES = {
+    # Plain Frost names (restored 2026-10-20): DeepFrost / GLMFrost live on
+    # the PRIMARY slot (the Hive provider) with the exact upstream ids;
+    # CyberFrost lives on the WORKER slot (the gx10 hub specialist). They were
+    # dropped from the table when the max-think names were added, but the
+    # published contract pins them: chat_proxy model addressing, /v1/models
+    # discovery and /v1/switch slot-swaps all resolve through this table.
     "deepfrost v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "deepfrost-v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "deepfrost-v41": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "deepfrost": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    "glmfrost 5.3 flash": ("primary", "zai-org/glm-5.3-flash"),
+    "glmfrost-5.3-flash": ("primary", "zai-org/glm-5.3-flash"),
+    "glmfrost": ("primary", "zai-org/glm-5.3-flash"),
+    "glmfrost5.3flash": ("primary", "zai-org/glm-5.3-flash"),
+    "cyberfrost 3.8 sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
+    "cyberfrost-3.8-sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
+    "cyberfrost": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
     # Max-think variants (operator request, 2026-10): the SAME upstream models
     # with reasoning pushed to maximum - the gateway injects the knob set and
     # skips the hedge race (see proxy_gateway.wants_max_think / chat_proxy).
     "deepfrost max think": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "deepfrost-max-think": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
-    "glmfrost 5.3 flash": ("primary", "zai-org/glm-5.3-flash"),
-    "glmfrost-5.3-flash": ("primary", "zai-org/glm-5.3-flash"),
-    "glmfrost": ("primary", "zai-org/glm-5.3-flash"),
-    "glmfrost5.3flash": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost max think": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost-max-think": ("primary", "zai-org/glm-5.3-flash"),
-    "cyberfrost 3.8 sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
-    "cyberfrost-3.8-sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
-    "cyberfrost": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
     # Frost General: the primary slot's CURRENT default, not a baked-in id -
     # the literal name is not a real upstream id, so passing it through 400s
     # (measured live on Hive, "Invalid Model Name"). None = follow the slot
@@ -403,3 +409,116 @@ class Registry:
                 json.dump(data, fh, indent=2)
             os.replace(tmp, self.path)
             self._mtime = os.path.getmtime(self.path)
+
+    # ---- provider management ----------------------------------------------
+    def upsert_provider(
+        self,
+        pid: str,
+        api: str,
+        base_url: str,
+        key: Optional[str] = None,
+        models: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Create or replace provider `pid`; `key=None` keeps the stored key.
+
+        When `pid` already exists and `models` is provided, the new model
+        mappings are merged into the existing set (new keys overwrite old).
+        Omitting `models` entirely leaves the existing model map untouched.
+        """
+        with self._lock:
+            if pid in self.providers:
+                existing = self.providers[pid]
+                if key is None or key == "":
+                    key = existing.key
+                merged_models = dict(existing.models)
+                if models:
+                    merged_models.update(models)
+            else:
+                key = key or ""
+                merged_models = dict(models or {})
+            self.providers[pid] = Provider(
+                id=pid,
+                api=api,
+                base_url=base_url,
+                key=key,
+                models=merged_models,
+            )
+        self.save()
+
+    def delete_provider(self, pid: str) -> None:
+        """Remove provider `pid` and prune any defaults pointing at it."""
+        with self._lock:
+            if pid not in self.providers:
+                raise KeyError(f"provider {pid!r} not in registry")
+            del self.providers[pid]
+            # prune defaults that reference the removed provider
+            for role in list(self.defaults):
+                if self.defaults[role] == pid:
+                    del self.defaults[role]
+        self.save()
+
+    def set_default(self, role: str, pid: str) -> None:
+        """Set default provider for role (primary|worker); KeyError on unknown provider."""
+        if role not in ("primary", "worker"):
+            raise ValueError(f"invalid role {role!r}")
+        with self._lock:
+            if pid not in self.providers:
+                raise KeyError(f"provider {pid!r} not in registry")
+            self.defaults[role] = pid
+        self.save()
+
+    def catalog(self) -> List[Dict[str, object]]:
+        """OpenAI-shaped model list entries from all registered providers.
+
+        Includes `tier` (primary/worker) and `handles` (prompt class) fields
+        per three-tier-routing-plan §64 for routing-topology discovery.
+        """
+        out = []
+        for pid, p in self.providers.items():
+            # Determine tier from the defaults mapping.
+            tier = next(
+                (role for role, default_pid in self.defaults.items() if default_pid == pid),
+                "secondary",
+            )
+            for exposed, upstream in p.models.items():
+                # Prompt-class hint based on model name patterns.
+                if "max-think" in exposed.lower().replace(" ", "-"):
+                    handles = "max-reasoning"
+                elif "frost" in exposed.lower():
+                    handles = "speculative"
+                else:
+                    handles = "general"
+                out.append(
+                    {
+                        "id": exposed,
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": pid,
+                        "tier": tier,
+                        "handles": handles,
+                    }
+                )
+        return out
+
+    def masked(self) -> Dict[str, object]:
+        """Return a serialization-safe view: keys masked, no raw secrets."""
+        with self._lock:
+            return {
+                "providers": {
+                    pid: {
+                        "api": p.api,
+                        "base_url": p.base_url,
+                        "has_key": bool(p.key),
+                        "models": dict(p.models),
+                        "chat_url": p.base_url,
+                    }
+                    for pid, p in self.providers.items()
+                },
+                "defaults": dict(self.defaults),
+                "from_env": self._mtime == 0.0,
+            }
+
+
+def load_registry(path: str = "") -> Registry:
+    """Factory: build a Registry instance (default path = gateway_registry.json)."""
+    return Registry(path or DEFAULT_PATH)
