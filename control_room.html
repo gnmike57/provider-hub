@@ -1,0 +1,527 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model Constellation Control Room</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:9000 http://localhost:9000">
+<style>
+  :root {
+    --bg: #05070f;
+    --panel: rgba(13, 18, 34, 0.82);
+    --panel-edge: rgba(120, 160, 255, 0.14);
+    --ink: #dfe7ff;
+    --dim: #8fa0c8;
+    --helm: #7fb0ff;
+    --specialist: #ffb37f;
+    --scout: #7fffbf;
+    --danger: #ff7f9f;
+    --ok: #7fffbf;
+    --warn: #ffd27f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* star field: layered radial-gradient skies, no CDN, no images */
+  .sky {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(1.6px 1.6px at 12% 22%, #fff8 50%, transparent 51%),
+      radial-gradient(1.2px 1.2px at 68% 12%, #fff6 50%, transparent 51%),
+      radial-gradient(1.8px 1.8px at 84% 58%, #9fd7 50%, transparent 51%),
+      radial-gradient(1.4px 1.4px at 34% 74%, #fff5 50%, transparent 51%),
+      radial-gradient(2.2px 2.2px at 55% 38%, #cdf8 50%, transparent 51%),
+      radial-gradient(1.1px 1.1px at 90% 82%, #fff4 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 22% 92%, #ffd6 50%, transparent 51%),
+      radial-gradient(1.3px 1.3px at 45% 8%, #fff7 50%, transparent 51%),
+      radial-gradient(1.7px 1.7px at 8% 55%, #9f96 50%, transparent 51%),
+      radial-gradient(1.2px 1.2px at 77% 88%, #fff5 50%, transparent 51%),
+      linear-gradient(180deg, #05070f 0%, #070b18 55%, #04060e 100%);
+    animation: drift 90s linear infinite alternate;
+  }
+  @keyframes drift { from { filter: brightness(1); } to { filter: brightness(1.25); } }
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline;
+    padding: 18px 26px 10px;
+  }
+  header h1 {
+    margin: 0; font-size: 21px; letter-spacing: 2px; font-weight: 600;
+    background: linear-gradient(90deg, #9fc3ff, #dfe7ff, #9fc3ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .sub { color: var(--dim); font-size: 12.5px; }
+  #conn { margin-left: auto; font-size: 12px; color: var(--dim); }
+  #conn .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.bad { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  main { padding: 0 26px 60px; max-width: 1400px; margin: 0 auto; }
+  .section-title {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--dim); font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase;
+    margin: 26px 0 12px;
+  }
+  .section-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--panel-edge), transparent); }
+  /* ---- slot cards ---- */
+  .slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .slot {
+    position: relative; background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 14px; padding: 16px 18px; overflow: hidden;
+    backdrop-filter: blur(6px);
+  }
+  .slot::before {
+    content: ""; position: absolute; inset: -40% -20% auto; height: 130%;
+    background: radial-gradient(closest-side, var(--accent, #7fb0ff) 0%, transparent 70%);
+    opacity: 0.10; pointer-events: none;
+  }
+  .slot[data-slot="helm"] { --accent: var(--helm); }
+  .slot[data-slot="specialist"] { --accent: var(--specialist); }
+  .slot[data-slot="scout"] { --accent: var(--scout); }
+  .slot .role { display: flex; align-items: center; gap: 10px; }
+  .slot .role .name { font-size: 15px; letter-spacing: 3px; text-transform: uppercase; color: var(--accent); }
+  .slot .role .alias { font-size: 11px; color: var(--dim); }
+  .slot .model { font-size: 18px; font-weight: 600; margin: 10px 0 2px; word-break: break-all; }
+  .slot .meta { font-size: 12px; color: var(--dim); word-break: break-all; }
+  .slot .row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  /* ---- health gauge ---- */
+  .gauge {
+    --pct: 0; --col: var(--dim);
+    width: 86px; height: 86px; border-radius: 50%; flex: none;
+    background: conic-gradient(var(--col) calc(var(--pct) * 1%), rgba(120,160,255,0.12) 0);
+    display: grid; place-items: center; position: relative;
+  }
+  .gauge::before { content: ""; position: absolute; inset: 8px; border-radius: 50%; background: #0a0f1e; }
+  .gauge .val { position: relative; font-size: 16px; font-weight: 700; }
+  .gauge .lbl { position: relative; font-size: 9.5px; color: var(--dim); letter-spacing: 1px; }
+  /* ---- chips + buttons ---- */
+  .chip {
+    display: inline-block; padding: 2px 9px; margin: 2px 3px 2px 0; border-radius: 10px;
+    font-size: 11px; border: 1px solid var(--panel-edge); color: var(--dim);
+    background: rgba(127, 176, 255, 0.06);
+  }
+  .chip.t-max-reasoning, .chip.t-reasoning { color: #b7a4ff; border-color: #b7a4ff5c; }
+  .chip.t-uncensored { color: var(--specialist); border-color: #ffb37f5c; }
+  .chip.t-fast { color: var(--scout); border-color: #7fffbf5c; }
+  .chip.t-coding { color: #7fd4ff; border-color: #7fd4ff5c; }
+  button {
+    font: inherit; color: var(--ink); cursor: pointer; border-radius: 8px;
+    background: rgba(127, 176, 255, 0.10); border: 1px solid var(--panel-edge);
+    padding: 6px 13px; transition: all .15s ease;
+  }
+  button:hover { background: rgba(127, 176, 255, 0.22); border-color: rgba(127,176,255,.5); }
+  button:disabled { opacity: .45; cursor: wait; }
+  button.primary { background: rgba(127, 176, 255, 0.2); border-color: rgba(127,176,255,.55); }
+  button.danger { background: rgba(255, 127, 159, 0.12); border-color: rgba(255,127,159,.4); }
+  button.danger:hover { background: rgba(255, 127, 159, 0.25); }
+  .banner {
+    display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 10px;
+    border: 1px solid rgba(127,255,191,.35); background: rgba(127,255,191,.07);
+    color: var(--ok); font-size: 13px;
+  }
+  .banner.err { border-color: rgba(255,127,159,.4); background: rgba(255,127,159,.08); color: var(--danger); }
+  /* ---- grids ---- */
+  .twocol { display: grid; grid-template-columns: minmax(320px, 2fr) minmax(340px, 3fr); gap: 16px; align-items: start; }
+  @media (max-width: 980px) { .twocol { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 14px; padding: 16px 18px; backdrop-filter: blur(6px); }
+  .preset { border: 1px solid var(--panel-edge); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .preset .pname { font-weight: 600; letter-spacing: 1px; }
+  .preset .pdesc { color: var(--dim); font-size: 12px; margin: 4px 0 8px; }
+  .preset .pslots { font-size: 12px; color: var(--dim); display: grid; gap: 2px; margin-bottom: 10px; }
+  .preset .pslots b { color: var(--ink); font-weight: 500; }
+  .preset.active { border-color: rgba(127,255,191,.5); box-shadow: 0 0 14px rgba(127,255,191,.08) inset; }
+  .mrow { display: flex; gap: 12px; align-items: center; border: 1px solid var(--panel-edge); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .mrow .mid { flex: 1 1 260px; min-width: 220px; }
+  .mrow .mname { font-weight: 600; word-break: break-all; }
+  .mrow .msub { font-size: 11.5px; color: var(--dim); }
+  .hbar { height: 6px; border-radius: 3px; background: rgba(120,160,255,0.12); overflow: hidden; margin-top: 6px; }
+  .hbar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--helm), var(--scout)); transition: width .4s ease; }
+  .mrow .assign { display: flex; gap: 6px; flex: none; }
+  .assign button { padding: 4px 10px; font-size: 12px; }
+  /* ---- timeline ---- */
+  .tl { position: relative; margin-left: 8px; padding-left: 22px; }
+  .tl::before { content: ""; position: absolute; left: 6px; top: 4px; bottom: 4px; width: 2px; background: linear-gradient(180deg, var(--panel-edge), transparent); }
+  .tl .ev { position: relative; padding: 8px 0 10px; border-bottom: 1px dashed rgba(120,160,255,0.08); }
+  .tl .ev::before { content: ""; position: absolute; left: -21px; top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--helm); box-shadow: 0 0 8px var(--helm); }
+  .tl .ev .ets { font-size: 11.5px; color: var(--dim); }
+  .tl .ev .ewhat { font-size: 13px; margin: 2px 0; }
+  .tl .ev .ewhat b { color: var(--scout); font-weight: 600; }
+  footer { color: var(--dim); font-size: 11.5px; padding: 18px 26px 30px; text-align: center; }
+  kbd { background: rgba(127,176,255,.08); border: 1px solid var(--panel-edge); border-radius: 4px; padding: 0 5px; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="sky"></div>
+<header>
+  <h1>MODEL CONSTELLATION CONTROL ROOM</h1>
+  <span class="sub">Frost hub &middot; 127.0.0.1:9000</span>
+  <span id="conn"><span class="dot ok"></span><span id="conn-text">connecting...</span></span>
+</header>
+<main>
+  <div id="banner" class="banner"></div>
+
+  <div class="section-title">Slots</div>
+  <div class="slots">
+    <div class="slot" data-slot="helm">
+      <div class="role"><span class="name">&#9878; Helm</span><span class="alias">primary &middot; the conversational model</span></div>
+      <div class="model" id="helm-model">&mdash;</div>
+      <div class="meta" id="helm-meta"></div>
+      <div class="row">
+        <div class="gauge" id="helm-gauge"><span class="val">&mdash;</span><span class="lbl">HEALTH</span></div>
+        <div style="flex:1; min-width: 130px;">
+          <div id="helm-chips"></div>
+          <div class="row" style="margin-top:8px;">
+            <button onclick="doSwap()" title="Exchange helm and specialist bindings">&harr; Swap w/ specialist</button>
+            <button class="danger" onclick="doRollback()" title="Undo the last switch (savepoint rollback)">&olarr; Rollback</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slot" data-slot="specialist">
+      <div class="role"><span class="name">&#128295; Specialist</span><span class="alias">worker &middot; refusal / divert fallback</span></div>
+      <div class="model" id="specialist-model">&mdash;</div>
+      <div class="meta" id="specialist-meta"></div>
+      <div class="row">
+        <div class="gauge" id="specialist-gauge"><span class="val">&mdash;</span><span class="lbl">HEALTH</span></div>
+        <div style="flex:1; min-width: 130px;"><div id="specialist-chips"></div></div>
+      </div>
+    </div>
+    <div class="slot" data-slot="scout">
+      <div class="role"><span class="name">&#128269; Scout</span><span class="alias">secondary &middot; probes / healthz</span></div>
+      <div class="model" id="scout-model">&mdash;</div>
+      <div class="meta" id="scout-meta"></div>
+      <div class="row">
+        <div class="gauge" id="scout-gauge"><span class="val">&mdash;</span><span class="lbl">HEALTH</span></div>
+        <div style="flex:1; min-width: 130px;"><div id="scout-chips"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Constellations &amp; Model Market</div>
+  <div class="twocol">
+    <div class="panel">
+      <div style="font-size:12px;color:var(--dim);margin-bottom:10px;">
+        Named 3-slot presets &mdash; one click re-binds helm + specialist + scout.
+      </div>
+      <div id="presets"></div>
+    </div>
+    <div class="panel">
+      <div style="font-size:12px;color:var(--dim);margin-bottom:10px;">
+        Every registered model with its DNA &amp; provider health. Assign it to a slot:
+        <kbd>H</kbd> helm &middot; <kbd>S</kbd> specialist &middot; <kbd>C</kbd> scout
+      </div>
+      <div id="market"></div>
+    </div>
+  </div>
+
+  <div class="section-title">Time Travel &mdash; binding history (restore any moment)</div>
+  <div class="panel">
+    <div class="tl" id="timeline"><div style="color:var(--dim)">no history yet</div></div>
+  </div>
+</main>
+<footer>
+  Frost hub Control Room &middot; POST /v1/switch &middot; POST /v1/constellations/apply &middot;
+  auto-refresh 10s &middot; history retained 7 days
+</footer>
+<script>
+"use strict";
+// ---- helpers ---------------------------------------------------------------
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+function fmtTs(ts) {
+  if (!ts) return "-";
+  var d = new Date(ts * 1000);
+  return d.toLocaleString();
+}
+function banner(msg, isErr) {
+  var b = $("banner");
+  b.className = "banner" + (isErr ? " err" : "");
+  b.textContent = msg;
+  b.style.display = "block";
+  clearTimeout(banner._t);
+  banner._t = setTimeout(function () { b.style.display = "none"; }, 6000);
+}
+function setConn(ok, text) {
+  document.querySelector("#conn .dot").className = "dot " + (ok ? "ok" : "bad");
+  $("conn-text").textContent = text;
+}
+function healthColor(score) {
+  if (score == null) return "var(--dim)";
+  if (score >= 80) return "var(--ok)";
+  if (score >= 50) return "var(--warn)";
+  return "var(--danger)";
+}
+async function api(path, opts) {
+  var r = await fetch(path, opts);
+  var body = {};
+  try { body = await r.json(); } catch (e) { /* non-JSON error page */ }
+  if (!r.ok) throw new Error(body.error || ("HTTP " + r.status));
+  return body;
+}
+</script>
+<script>
+// ---- renderers --------------------------------------------------------------
+function renderSlots(res) {
+  if (!res.ok) {
+    ["helm", "specialist", "scout"].forEach(function (slot) {
+      $(slot + "-model").textContent = "(unavailable)";
+      $(slot + "-meta").textContent = "endpoint down: " + res.error;
+      var g = $(slot + "-gauge");
+      g.style.setProperty("--pct", 0);
+      g.style.setProperty("--col", "var(--danger)");
+      g.querySelector(".val").textContent = "!";
+      $(slot + "-chips").innerHTML = "";
+    });
+    return;
+  }
+  var dna = res.value;
+  var slotMap = { helm: "primary", specialist: "worker", scout: "scout" };
+  Object.keys(slotMap).forEach(function (slot) {
+    var b = (dna.slots || {})[slotMap[slot]] || {};
+    $(slot + "-model").textContent = b.model || "(unset)";
+    $(slot + "-meta").textContent =
+      (b.provider_id ? b.provider_id : "env/default") +
+      (b.url ? " \u00b7 " + b.url : "") +
+      (b.key_present ? " \u00b7 key\u2713" : " \u00b7 no key");
+    var entry = (dna.models || []).filter(function (m) { return m.id === b.model; })[0];
+    var score = entry && entry.health ? entry.health.score : null;
+    var g = $(slot + "-gauge");
+    g.style.setProperty("--pct", score == null ? 0 : score);
+    g.style.setProperty("--col", healthColor(score));
+    g.querySelector(".val").textContent = score == null ? "?" : Math.round(score);
+    var chips = "";
+    if (entry && entry.dna) {
+      (entry.dna.tags || []).forEach(function (t) { chips += chip(t); });
+      chips += chip("cost: " + entry.dna.cost_tier);
+      chips += chip(entry.dna.latency_tier);
+    } else {
+      chips = chip("? unknown DNA");
+    }
+    $(slot + "-chips").innerHTML = chips;
+  });
+  if (dna.suggestions && dna.suggestions.length) {
+    var s = dna.suggestions[0];
+    banner("\u26a0 " + s.reason + (s.suggested ? " \u2014 suggested: " + s.suggested : ""), true);
+  }
+}
+function chip(text) {
+  var m = /^[a-z-]+$/.test(text) ? " chip t-" + esc(text) : "";
+  return '<span class="chip' + m + '">' + esc(text) + "</span>";
+}
+function renderMarket(res) {
+  if (!res.ok) {
+    $("market").innerHTML = '<div style="color:var(--danger)">model registry unavailable: ' + esc(res.error) + "</div>";
+    return;
+  }
+  var dna = res.value;
+  var html = "";
+  (dna.models || []).forEach(function (m) {
+    var score = m.health ? m.health.score : null;
+    var lat = m.health && m.health.avg_latency_ms != null ? m.health.avg_latency_ms + "ms" : "";
+    var chips = "";
+    (m.dna && m.dna.tags || []).forEach(function (t) { chips += chip(t); });
+    html +=
+      '<div class="mrow">' +
+      '<div class="mid">' +
+      '<div class="mname">' + esc(m.id) + "</div>" +
+      '<div class="msub">' + esc(m.owned_by) + " \u00b7 " + esc(m.tier) +
+      " \u00b7 " + esc(m.handles) + (lat ? " \u00b7 " + lat : "") + "</div>" +
+      '<div class="hbar"><i style="width:' + (score == null ? 0 : score) + '%"></i></div>' +
+      "</div>" +
+      '<div class="chips">' + chips + "</div>" +
+      '<div class="assign">' +
+      '<button title="Bind to helm (primary)">H</button>' +
+      '<button title="Bind to specialist (worker)">S</button>' +
+      '<button title="Bind to scout (secondary)">C</button>' +
+      "</div></div>";
+  });
+  if (!html) html = '<div style="color:var(--dim)">registry is empty (env fallback?)</div>';
+  $("market").innerHTML = html;
+  var rows = document.querySelectorAll("#market .mrow");
+  var models = dna.models || [];
+  rows.forEach(function (row, i) {
+    var btns = row.querySelectorAll(".assign button");
+    ["helm", "specialist", "scout"].forEach(function (slot, j) {
+      btns[j].onclick = function () { switchSlot(slot, models[i]); };
+    });
+  });
+}
+function renderPresets(resDna, resPresets) {
+  if (!resDna.ok || !resPresets.ok) {
+    $("presets").innerHTML = '<div style="color:var(--danger)">constellations unavailable: ' +
+      esc(!resDna.ok ? resDna.error : resPresets.error) + "</div>";
+    return;
+  }
+  var dna = resDna.value;
+  var presets = resPresets.value.constellations;
+  var slotModels = dna.slot_models || {};
+  var html = "";
+  (presets || []).forEach(function (p) {
+    var parts = "";
+    // A preset only lights its ACTIVE badge when ALL THREE slots are defined
+    // AND match the live bindings. The old `if (!spec) return;` skipped
+    // undefined slots entirely, so a 2-slot preset glowed "active" whenever
+    // its two defined slots happened to match.
+    var isActive = true;
+    ["helm", "specialist", "scout"].forEach(function (slot) {
+      var spec = (p.slots || {})[slot];
+      var cur = !!spec && spec.model === slotModels[slot];
+      if (!cur) isActive = false;
+      parts += "<div>" + slot + ": " +
+        (spec ? "<b>" + esc(spec.model) + "</b>" : "<i>unset</i>") +
+        (spec && spec.provider ? ' <span style="opacity:.6">(' + esc(spec.provider) + ")</span>" : "") +
+        (cur ? " \u2713" : "") + "</div>";
+    });
+    html +=
+      '<div class="preset' + (isActive ? " active" : "") + '">' +
+      '<div class="pname">\u2b50 ' + esc(p.name) + "</div>" +
+      '<div class="pdesc">' + esc(p.description || "") + "</div>" +
+      '<div class="pslots">' + parts + "</div>" +
+      '<button class="primary" data-preset="' + esc(p.name) + '">Apply constellation</button>' +
+      "</div>";
+  });
+  if (!html) html = '<div style="color:var(--dim)">no presets in constellations.json yet</div>';
+  $("presets").innerHTML = html;
+  document.querySelectorAll("#presets .preset button").forEach(function (btn) {
+    btn.onclick = function () { applyPreset(btn.getAttribute("data-preset")); };
+  });
+}
+function renderHistory(res) {
+  if (!res.ok) {
+    $("timeline").innerHTML = '<div style="color:var(--danger)">history unavailable: ' + esc(res.error) + "</div>";
+    return;
+  }
+  var entries = res.value.entries;
+  var html = "";
+  (entries || []).forEach(function (e) {
+    var slots = "";
+    ["helm", "specialist", "scout"].forEach(function (slot) {
+      var b = (e.slots || {})[slot];
+      if (b && b.model) slots += slot + ":<b>" + esc(b.model) + "</b> ";
+    });
+    html +=
+      '<div class="ev">' +
+      '<div class="ets">' + fmtTs(e.ts) + " \u00b7 " + esc(e.action) +
+      " \u00b7 " + esc(e.principal || e.request_id || "") + "</div>" +
+      '<div class="ewhat">' + slots + "</div>" +
+      '<button data-ts="' + e.ts + '">Restore this moment</button>' +
+      "</div>";
+  });
+  if (!html) html = '<div style="color:var(--dim)">no binding history yet - switch something first</div>';
+  $("timeline").innerHTML = html;
+  document.querySelectorAll("#timeline .ev button").forEach(function (btn) {
+    btn.onclick = function () { rollbackTo(parseFloat(btn.getAttribute("data-ts"))); };
+  });
+}
+</script>
+<script>
+// ---- actions ----------------------------------------------------------------
+async function switchSlot(slot, model) {
+  // slot: helm|specialist|scout (creative names pass straight through -
+  // /v1/switch normalizes them onto primary/worker/scout)
+  try {
+    var r = await api("/v1/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: slot, model: model.id, provider: m_owned(model), verify: true })
+    });
+    banner("\u2714 " + slot + " \u2192 " + (r.model || model.id) +
+      (r.verified ? " (verified)" : " (unverified: " + (r.verify_detail || "?") + ")"));
+    refresh();
+  } catch (err) {
+    banner("switch failed: " + err.message, true);
+  }
+}
+function m_owned(m) { return m.owned_by || ""; }
+async function applyPreset(name) {
+  try {
+    var r = await api("/v1/constellations/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name })
+    });
+    banner("\u2b50 constellation '" + name + "' applied" +
+      (r.verified ? " (helm verified)" : " (helm unverified)"));
+    refresh();
+  } catch (err) {
+    banner("apply failed: " + err.message, true);
+  }
+}
+async function doSwap() {
+  try {
+    await api("/v1/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: "swap" })
+    });
+    banner("\u21c4 helm and specialist exchanged");
+    refresh();
+  } catch (err) { banner("swap failed: " + err.message, true); }
+}
+async function doRollback() {
+  try {
+    await api("/v1/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: "status", rollback: true })
+    });
+    banner("\u21a9\u2191 rolled back to the pre-switch bindings");
+    refresh();
+  } catch (err) { banner("rollback failed: " + err.message, true); }
+}
+async function rollbackTo(ts) {
+  try {
+    var r = await api("/v1/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rollback_to: String(ts) })
+    });
+    banner("\u23f3 time-travelled to " + fmtTs(r.restored_from_ts));
+    refresh();
+  } catch (err) { banner("time travel failed: " + err.message, true); }
+}
+// ---- refresh loop ------------------------------------------------------------
+// Promise.allSettled + per-pane rendering: one dead endpoint must degrade ONLY
+// its own pane. The old Promise.all froze the WHOLE dashboard whenever any
+// single call failed, even while the other two endpoints were fine.
+async function refresh() {
+  var results = await Promise.allSettled([
+    api("/v1/models/dna"),
+    api("/v1/constellations"),
+    api("/v1/constellations/history")
+  ]);
+  var panes = results.map(function (r) {
+    return r.status === "fulfilled"
+      ? { ok: true, value: r.value }
+      : { ok: false, error: (r.reason && r.reason.message) || "unreachable" };
+  });
+  renderSlots(panes[0]);
+  renderMarket(panes[0]);
+  renderPresets(panes[0], panes[1]);
+  renderHistory(panes[2]);
+  var up = panes.filter(function (p) { return p.ok; }).length;
+  if (up === panes.length) {
+    setConn(true, "live \u00b7 " + new Date().toLocaleTimeString() +
+      (panes[0].value.auto_promote ? " \u00b7 auto-promote ON" : ""));
+  } else {
+    setConn(false, "degraded \u00b7 " + up + "/" + panes.length + " panes live \u00b7 " + new Date().toLocaleTimeString());
+  }
+}
+refresh();
+// Pause polling while the tab is hidden (no point burning requests nobody
+// watches); resume instantly when it becomes visible again.
+setInterval(function () { if (!document.hidden) refresh(); }, 10000);
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) refresh();
+});
+</script>
+</body>
+</html>
