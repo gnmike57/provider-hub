@@ -19,6 +19,7 @@ Yields OpenAI-format SSE chunks ("data: {...}\n\n") so the streaming endpoint
 can forward them verbatim.
 """
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -30,7 +31,9 @@ import httpx
 
 from routing_patterns import classify_status, footnote, is_routable, normalise, should_hedge
 
-__all__ = ["hedge_stream", "hedge_settings", "make_client", "HedgeSettings"]
+# `hedge_settings` never existed (the module-level instance is SETTINGS), so
+# `from speculative_hedge import *` raised ImportError on the phantom name.
+__all__ = ["hedge_stream", "make_client", "HedgeSettings", "SETTINGS"]
 
 
 def _int_env(name, default):
@@ -85,6 +88,12 @@ class HedgeSettings:
         # max_completion_tokens=2000 -> 6461 chars). Unknown fields are ignored by
         # other OpenAI-compatible servers, so sending both is safe.
         self.max_tokens = _int_env("HEDGE_MAX_TOKENS", 4096)
+        # Sovereign-open retries, branched on the classify_status taxonomy
+        # (B10): 408/429 retry the SAME provider, 5xx retry then divert,
+        # 4xx fail fast. Mirrors MAX_ATTEMPTS / RETRY_BASE_DELAY on the
+        # gateway's Settings so both surfaces behave the same way.
+        self.max_attempts = _int_env("HEDGE_MAX_ATTEMPTS", 3)
+        self.retry_base_delay = _int_env("HEDGE_RETRY_BASE_DELAY_MS", 250) / 1000.0
         # Live thinking (default ON, operator preference 2026-10-05): forward the
         # sovereign's reasoning deltas the moment they arrive instead of holding
         # them until the commit decision. It is still never counted and never
@@ -169,10 +178,15 @@ async def hedge_stream(
     request_id=None,
     settings: HedgeSettings = None,
     client: httpx.AsyncClient = None,
+    tools=None,
+    tool_choice=None,
 ) -> AsyncGenerator[bytes, None]:
     """Dual-dispatch. Caller MUST gate on should_hedge() first (B11).
     An injected client (same host as the gateway, e.g. app.state.http) is
-    reused; otherwise a dedicated client is created and closed here."""
+    reused; otherwise a dedicated client is created and closed here.
+    tools/tool_choice are forwarded to BOTH branches (F6 parity: the
+    primary and divert paths forward them, so a hedged agentic request
+    must not lose them either)."""
     s = settings or SETTINGS
     from context_formatter import DEFAULT_SYSTEM
 
@@ -189,42 +203,93 @@ async def hedge_stream(
     try:
         async with contextlib.AsyncExitStack() as stack:
 
-            sovereign_cm = open_stream(
-                client,
-                "POST",
-                s.sovereign_url,
-                json={"model": s.sovereign_model, "messages": messages, "stream": True,
-                      "max_tokens": s.max_tokens,
-                      "max_completion_tokens": s.max_tokens},
-                headers={**_auth_header(s.sovereign_key), "Content-Type": "application/json"},
-            )
-            worker_cm = open_stream(
-                client,
-                "POST",
-                s.worker_url,
-                json={"model": s.worker_model, "messages": worker_msgs, "stream": True,
-                      "max_tokens": s.max_tokens,
-                      "max_completion_tokens": s.max_tokens},
-                headers={**_auth_header(s.worker_key), "Content-Type": "application/json"},
-            )
+            # F6 parity for the hedge: the primary and the divert path forward
+            # the caller's tool definitions, so a hedged agentic request must
+            # not lose them either - the sovereign races the worker and either
+            # branch may need to act, not just answer in prose.
+            sovereign_payload = {"model": s.sovereign_model, "messages": messages, "stream": True,
+                                 "max_tokens": s.max_tokens,
+                                 "max_completion_tokens": s.max_tokens}
+            worker_payload = {"model": s.worker_model, "messages": worker_msgs, "stream": True,
+                              "max_tokens": s.max_tokens,
+                              "max_completion_tokens": s.max_tokens}
+            for _payload in (sovereign_payload, worker_payload):
+                if tools:
+                    _payload["tools"] = tools
+                if tool_choice:
+                    _payload["tool_choice"] = tool_choice
+
+            worker = None
             try:
-                sovereign = await stack.enter_async_context(sovereign_cm)
-            except httpx.TransportError as exc:
-                sovereign = None  # B10: an unreachable sovereign means DIVERT, not fail
-                _FAILURES["transport_error"] += 1
-                log.warning("sovereign %s unreachable: %s", s.sovereign_model, type(exc).__name__)
-            try:
-                worker = await stack.enter_async_context(worker_cm)
+                worker = await stack.enter_async_context(open_stream(
+                    client,
+                    "POST",
+                    s.worker_url,
+                    json=worker_payload,
+                    headers={**_auth_header(s.worker_key), "Content-Type": "application/json"},
+                ))
             except httpx.TransportError as exc:
                 worker = None
                 _FAILURES["transport_error"] += 1
                 log.warning("worker %s unreachable: %s", s.worker_model, type(exc).__name__)
+
+            # B10 taxonomy on the sovereign OPEN, not a blanket `not ok ->
+            # divert`: the old rule collapsed every non-2xx (and 408/429 in
+            # particular, where the provider explicitly asked for a retry of
+            # the SAME model) into a worker divert.
+            #   ok                  -> screen the race below
+            #   retry_same (408/429) -> retry the SAME provider; exhausted
+            #                           means DISCLOSE, never a worker divert
+            #   retry_then_divert    -> retry, then divert to the worker
+            #   fail_fast (4xx)      -> disclose, no retry, no divert
+            #   divert (transport)   -> worker, as before (Tier 1)
+            sovereign = None
+            sovereign_class = "divert"  # classify_status(None): transport failure
+            attempts = max(1, int(s.max_attempts or 1))
+            for attempt in range(1, attempts + 1):
+                try:
+                    resp = await stack.enter_async_context(open_stream(
+                        client,
+                        "POST",
+                        s.sovereign_url,
+                        json=sovereign_payload,
+                        headers={**_auth_header(s.sovereign_key), "Content-Type": "application/json"},
+                    ))
+                except httpx.TransportError as exc:
+                    sovereign = None  # B10: an unreachable sovereign means DIVERT, not fail
+                    _FAILURES["transport_error"] += 1
+                    log.warning("sovereign %s unreachable: %s", s.sovereign_model, type(exc).__name__)
+                    break
+                sovereign_class = classify_status(resp.status_code)
+                if sovereign_class == "ok":
+                    sovereign = resp
+                    break
+                # Non-2xx: observe (F8) and release the connection now; the
+                # AsyncExitStack close on an already-closed response is a no-op.
+                snippet = await _body_snippet(resp)
+                with contextlib.suppress(Exception):
+                    await resp.aclose()
+                _FAILURES["bad_status"] += 1
+                log.warning("sovereign %s answered HTTP %d: %s",
+                            s.sovereign_model, resp.status_code, snippet)
+                if attempt < attempts:
+                    await asyncio.sleep(min(s.retry_base_delay * 2 ** (attempt - 1), 4.0))
+                    continue
+                break
+
             if sovereign is None and worker is None:
                 yield f"data: {json.dumps({'error': 'speculative dispatch failed: both branches unreachable'})}\n\n".encode()
                 yield b"data: [DONE]\n\n"
                 return
 
-            sovereign_ok = sovereign is not None and classify_status(sovereign.status_code) == "ok"
+            if sovereign is None and sovereign_class in ("retry_same", "fail_fast"):
+                # Exhausted retry_same / fail_fast: exactly like open_primary's
+                # PrimaryOpenError(status, divert=False) on the coordinator
+                # path - disclosed, never silently diverted to the worker.
+                yield f"data: {json.dumps({'error': f'sovereign {s.sovereign_model} unavailable ({sovereign_class}); no divert (B10)'})}\n\n".encode()
+                yield b"data: [DONE]\n\n"
+                return
+
             worker_ok = worker is not None and classify_status(worker.status_code) == "ok"
 
             if worker is not None and not worker_ok:
@@ -232,14 +297,14 @@ async def hedge_stream(
                 log.warning("worker %s answered HTTP %d: %s",
                             s.worker_model, worker.status_code, await _body_snippet(worker))
 
-            use_worker = not sovereign_ok
+            use_worker = sovereign is None and sovereign_class in ("divert", "retry_then_divert")
             commit_sovereign = False
             buffered = []  # held lines, replayed verbatim on sovereign commit
             screen_text = ""  # delta.content ONLY - reasoning never screens (F1/B21)
             content_tokens = 0
             exhausted = False  # sovereign body fully read ([DONE] seen)
 
-            if sovereign_ok:
+            if sovereign is not None:
                 try:
                     async for raw in sovereign.aiter_lines():
                         line = raw.strip()
@@ -255,9 +320,23 @@ async def hedge_stream(
                             ev = json.loads(body)
                         except json.JSONDecodeError:
                             continue
-                        choices = ev.get("choices") or [{}]
-                        delta = (choices[0].get("delta") or {}) if isinstance(ev, dict) else {}
-                        finish = choices[0].get("finish_reason") if isinstance(ev, dict) else None
+                        if not isinstance(ev, dict):
+                            # Non-dict SSE payload (a bare list/string/number):
+                            # the old isinstance guards ran AFTER ev.get("choices")
+                            # and were dead code - one such event killed the whole
+                            # hedge stream with AttributeError. Unscreenable, so
+                            # skip it (same as an unparseable line).
+                            continue
+                        raw_choices = ev.get("choices")
+                        choice = (
+                            raw_choices[0]
+                            if isinstance(raw_choices, list)
+                            and raw_choices
+                            and isinstance(raw_choices[0], dict)
+                            else {}
+                        )
+                        delta = choice.get("delta") or {}
+                        finish = choice.get("finish_reason")
                         if finish == "timeout" or delta.get("error") or ev.get("error"):
                             use_worker = True  # Tier 1: timeout/error -> worker
                             break
@@ -335,7 +414,7 @@ async def hedge_stream(
                     return
                 use_worker = False  # sovereign is clean and there is nowhere to divert
 
-            if commit_sovereign or (not use_worker and sovereign_ok):
+            if commit_sovereign or (not use_worker and sovereign is not None):
                 async for chunk in _replay_sovereign(sovereign, buffered, exhausted=exhausted):
                     yield chunk
                 return
