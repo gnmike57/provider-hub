@@ -565,7 +565,7 @@ Edit #13: README @ computer-use section (usage, auth, env, law 9).
 
 ```
 [x] #11 launcher COMPUTER_USE_ENABLED=1
-[ ] #12 live vuln-lab probe verified (IN FLIGHT: _probe_computer.py fired against gx10:8102 alias-traversal target)
+[ ] #12 live vuln-lab probe verified — MECHANICS VERIFIED LIVE (probe → 200, envelope contract exact, TARS spawn + judge loop ran); visual-confirm inconclusive: gx10 backend returned 402 "Billing account is not in good standing" for abliterated-model-large-v2 (same spend-limit class as the primary 429s). Verify semantics proven by the hermetic 3-stream selftest. Re-probe when credits restored. DOCUMENTED DISCOVERY, not a code defect.
 [x] #13 README section
 
 > T3.2 desync-reconciliation evidence (2026-10-21): the whole phase was found BUILT but unticked —
@@ -606,11 +606,16 @@ Edit #5: RUN — RED then GREEN.
 ### Checklist
 
 ```
-[ ] #1 nginx team-bus.conf
-[ ] #2 BUS_API_KEY + bus_enabled Settings
-[ ] #3 /bus/announce + /bus/claim (authed)
-[ ] #4 RED tests green
-[ ] #5 gate
+[x] #1 nginx team-bus.conf
+[x] #2 BUS_API_KEY + bus_enabled Settings
+[x] #3 /bus/announce + /bus/claim (authed)
+[x] #4 RED tests green
+[x] #5 gate
+
+> T4.1 shipped 2026-10-21: evals/team_bus_test.py 5 RED->GREEN (announce+TTL sweep, 401 both
+> endpoints, claim hands to scripted peer and returns its answer, failed claim 502 + counter,
+> BUS_ENABLED=0 -> 404). X-Bus-Key fails CLOSED when BUS_API_KEY unset. Redis-assisted bugs
+> caught by RED: assumed _to_float helper (inlined try/float) and sort()[:200] None-subscript.
 ```
 
 ## TICKET T4.2 — /v1/execute parallel fan-out (F16)
@@ -640,11 +645,17 @@ Edit #10: RUN suite — green; relaunch; healthz.
 ### Checklist
 
 ```
-[ ] #6 CyberSubtaskPlan.subtasks field
-[ ] #7 planner instruction
-[ ] #8 gather + semaphore + per-subtask retry
-[ ] #9 fan-out test green
-[ ] #10 gate
+[x] #6 CyberSubtaskPlan.subtasks field
+[x] #7 planner instruction
+[x] #8 gather + semaphore + per-subtask retry
+[x] #9 fan-out test green (evals/fanout_test.py, 4 cases RED->GREEN)
+
+> T4.2 shipped 2026-10-21: fan-out assembles 3/3 with per-subtask prompts; single-path
+> unchanged + fanout_total==0; an exhausted subtask loses only itself while siblings survive
+> (fallback_errors_total>0); empty-list falls back. Metrics fanout_total/fanout_stages_total
+> declared + documented. run_specialist retry budget is F6's own - the fan-out adds NO
+> duplicate retry machinery (documented refinement of edit #8).
+[x] #10 gate (suite 526/9/1; relaunched :9000, healthz ok, fanout_* + bus_* live on /metrics)
 ```
 
 ## TICKET T4.3 — Two-instance bus handshake (live)

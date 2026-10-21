@@ -353,6 +353,14 @@ class Settings:
     completion_contract: int = field(
         default_factory=lambda: _int_env("COMPLETION_CONTRACT", 1)
     )
+    # T4.2 fan-out: max parallel subtask specialists per /v1/execute.
+    fanout_max_parallel: int = field(
+        default_factory=lambda: _int_env("FANOUT_MAX_PARALLEL", 4)
+    )
+    # T4.1 team bus: peer registry + claim surface. 0 = the /bus/* surface
+    # does not exist (404), the default for a lone hub.
+    bus_enabled: int = field(default_factory=lambda: _int_env("BUS_ENABLED", 0))
+    bus_api_key: str = os.getenv("BUS_API_KEY", "")
     # COMPUTER USE (Phase 3, operator directive 2026-10-21): /v1/computer
     # spawns the Agent TARS runner (tars/computer_task.mjs) - admin-authed,
     # timeout-bounded, verify-each-act. 0 disables (501).
@@ -430,6 +438,11 @@ _METRICS = {
     "fallback_errors_total": 0,
     "primary_errors_total": 0,
     "assembly_total": 0,
+    "fanout_total": 0,
+    "fanout_stages_total": 0,
+    "bus_announce_total": 0,
+    "bus_claim_total": 0,
+    "bus_claim_failed_total": 0,
     "switch_total": 0,
     "switch_verified_total": 0,
     "in_flight": 0,
@@ -551,6 +564,11 @@ def render_prometheus() -> str:
             "fallback_errors_total": "specialist transport/HTTP failures",
             "primary_errors_total": "primary transport/HTTP failures (F12/F13)",
             "assembly_total": "/v1/execute attempts",
+            "fanout_total": "/v1/execute requests that fanned out subtask specialists",
+            "fanout_stages_total": "subtask specialist calls completed by the fan-out",
+            "bus_announce_total": "team-bus peer announcements accepted",
+            "bus_claim_total": "team-bus claim handoffs attempted",
+            "bus_claim_failed_total": "team-bus claims whose peer failed or 4xx/5xx'd",
             "switch_total": "requests accepted by /v1/switch",
             "switch_verified_total": "switches whose upstream probe answered 2xx",
             "in_flight": "streams currently open",
@@ -3075,6 +3093,11 @@ class CyberSubtaskPlan(BaseModel):
         default=None,
         description=f"Client deliverable template containing the anchor {SLOT!r}.",
     )
+    subtasks: Optional[list[str]] = Field(
+        default=None,
+        description="T4.2 fan-out: independent subtasks the planner decomposed "
+        "the deliverable into. None/empty keeps the single-worker path.",
+    )
 
 
 _ORCHESTRATOR_INSTRUCTIONS = """You are the planning tier. Decompose the request into a JSON plan.
@@ -3089,7 +3112,9 @@ Reply with ONLY a JSON object (no markdown fence) with exactly these keys:
 If the request does not need raw technical work, set is_technical_deepdive=false and
 write the full answer into direct_response. If it does, write the stateless technical
 directive into sanitized_worker_prompt and a client deliverable template that contains
-the exact anchor {slot} where the specialist's artefact must appear."""
+the exact anchor {slot} where the specialist's artefact must appear.
+If the deliverable decomposes into independent subtasks, emit them as
+"subtasks": ["..."] - they run in parallel."""
 
 
 def _extract_json(text: str) -> dict:
@@ -3253,12 +3278,42 @@ async def execute(request: Request):
             detail=f"plan scaffolding must contain exactly one anchor {SLOT!r}",
         )
 
-    data = await run_specialist(plan, settings, request_id)
-    artifact = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
-    valid = validate_artifact(artifact, plan.output_grammar_type)
-    if not valid:
-        if (plan.output_grammar_type or "") in ("python_script", "json_sarif"):
-            artifact += "\n\n/* Warning: Output artifact may contain syntax truncation. */"
+    if getattr(plan, "subtasks", None):
+        # T4.2 FAN-OUT: one specialist clone per subtask, semaphore-bounded
+        # (FANOUT_MAX_PARALLEL). A subtask whose retries exhaust is recorded
+        # and LOST - it never sinks its siblings; its own retry budget is
+        # run_specialist/open_fallback's (F6), so no duplicated machinery.
+        sem = asyncio.Semaphore(max(1, settings.fanout_max_parallel))
+        subtasks = [str(s).strip() for s in plan.subtasks if str(s).strip()]
+
+        async def _one(text: str):
+            clone = plan.model_copy(update={"sanitized_worker_prompt": text})
+            async with sem:
+                try:
+                    d = await run_specialist(clone, settings, request_id)
+                except Exception:  # noqa: BLE001 - a lost subtask never sinks siblings
+                    return None
+            incr("fanout_stages_total")
+            return (d.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+
+        incr("fanout_total")
+        parts = list(await asyncio.gather(*[_one(t) for t in subtasks]))
+        sections = []
+        for text, part in zip(subtasks, parts):
+            if part:
+                sections.append(f"### {text}\n{part.strip()}")
+            else:
+                sections.append(
+                    f"### {text}\n_(subtask lost: specialist capacity exhausted)_")
+        artifact = "\n\n".join(sections).strip()
+        valid = validate_artifact(artifact, plan.output_grammar_type)
+    else:
+        data = await run_specialist(plan, settings, request_id)
+        artifact = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+        valid = validate_artifact(artifact, plan.output_grammar_type)
+        if not valid:
+            if (plan.output_grammar_type or "") in ("python_script", "json_sarif"):
+                artifact += "\n\n/* Warning: Output artifact may contain syntax truncation. */"
 
     deliverable = assemble(plan.client_scaffolding, artifact)
     if engagement_id:
@@ -3758,6 +3813,96 @@ async def computer(request: Request):
         "verified": env.get("verified"),
         "steps": env.get("steps") or [],
     }
+
+
+# T4.1 TEAM BUS — a lightweight peer registry + claim surface so several
+# hubs can share load. Announce is idempotent-by-TTL: each peer re-announces
+# and stale entries (90 s) are dropped on every write. Never raises: the bus
+# is an optimization, never a dependency (design rule 7).
+_BUS_PEERS = []  # [{role, goal, load, url, ts}]
+_BUS_TTL = 90.0
+
+
+def _bus_sweep() -> None:
+    """Drop TTL-expired peers. Never raises."""
+    now = time.time()
+    _BUS_PEERS[:] = [p for p in _BUS_PEERS
+                     if now - float(p.get("ts") or 0) <= _BUS_TTL]
+
+
+def _bus_ok(request: Request) -> bool:
+    """F17 for the bus: once BUS_API_KEY is set, X-Bus-Key must match.
+    An unset BUS_API_KEY refuses everything (fail closed)."""
+    key = SETTINGS.bus_api_key
+    return bool(key) and request.headers.get("X-Bus-Key", "") == key
+
+
+@app.post("/bus/announce", include_in_schema=False)
+async def bus_announce(request: Request):
+    if not SETTINGS.bus_enabled:
+        raise HTTPException(status_code=404, detail="bus disabled (BUS_ENABLED=0)")
+    check_body_size(request)
+    body = await read_json_body(request)
+    if not _bus_ok(request):
+        return JSONResponse(status_code=401, content={"error": "bus key required"})
+    try:
+        _load = float(body.get("load") or 0.0)
+    except (TypeError, ValueError):
+        _load = 0.0
+    peer = {
+        "role": str(body.get("role") or "worker")[:40],
+        "goal": str(body.get("goal") or "")[:200],
+        "load": max(0.0, min(1.0, _load)),
+        "url": str(body.get("url") or "").strip()[:200],
+        "ts": time.time(),
+    }
+    if peer["url"]:
+        _BUS_PEERS[:] = [p for p in _BUS_PEERS if p["url"] != peer["url"]]
+        _BUS_PEERS.append(peer)
+        _BUS_PEERS.sort(key=lambda p: (p["load"], p["ts"]))
+        del _BUS_PEERS[200:]
+    _bus_sweep()
+    incr("bus_announce_total")
+    return {"ok": True, "peers": len(_BUS_PEERS)}
+
+
+@app.post("/bus/claim", include_in_schema=False)
+async def bus_claim(request: Request):
+    """Hand an instruction to a peer hub: the peer answers its own
+    /v1/chat/completions as a REDHANDS. Never raises into the caller."""
+    if not SETTINGS.bus_enabled:
+        raise HTTPException(status_code=404, detail="bus disabled (BUS_ENABLED=0)")
+    check_body_size(request)
+    body = await read_json_body(request)
+    if not _bus_ok(request):
+        return JSONResponse(status_code=401, content={"error": "bus key required"})
+    incr("bus_claim_total")
+    peer_url = str(body.get("peer_url") or "").strip().rstrip("/")
+    instruction = str(body.get("instruction") or "").strip()
+    if not peer_url or not instruction:
+        return JSONResponse(status_code=422, content={"error": "peer_url and instruction required"})
+    payload = {
+        "model": str(body.get("model") or "") or SETTINGS.fallback_model,
+        "messages": body.get("payload") or [{"role": "user", "content": instruction}],
+        "stream": False,
+    }
+    try:
+        resp = await app.state.http.post(
+            peer_url + "/v1/chat/completions",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=httpx.Timeout(10.0, read=60.0),
+        )
+        if resp.status_code >= 400:
+            incr("bus_claim_failed_total")
+            return JSONResponse(status_code=502,
+                                content={"error": f"peer answered {resp.status_code}"})
+        data = resp.json()
+        answer = ((data.get("choices") or [{}])[0].get("message", {}) or {}).get("content", "")
+    except Exception as exc:  # noqa: BLE001 - the bus never raises into the caller
+        incr("bus_claim_failed_total")
+        return JSONResponse(status_code=502, content={"error": str(exc)[:300]})
+    return {"ok": True, "answer": answer}
 
 
 @app.get("/metrics")
