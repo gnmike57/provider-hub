@@ -68,7 +68,8 @@ def test_specialist_prompt_redhands_mode():
 def test_chain_resolver():
     chains = providers.CONSTELLATION_CHAINS
     assert set(chains) == {
-        "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP"}
+        "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP",
+        "GLMMAX>ABLIT-UNC>ABLITV2L"}
     # normalisation: case + whitespace insensitive
     assert providers.resolve_constellation_chain(
         "glmmax> deep > ablitv2l") is chains["GLMMAX>DEEP>ABLITV2L"]
@@ -87,7 +88,8 @@ def test_models_constellation_only(monkeypatch):
     with TestClient(proxy_gateway.app) as tc:
         data = tc.get("/v1/models").json()["data"]
     assert [m["id"] for m in data] == [
-        "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP"]
+        "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP",
+        "GLMMAX>ABLIT-UNC>ABLITV2L"]
 
 
 def test_models_full_catalog_is_the_explicit_opt_out(monkeypatch):

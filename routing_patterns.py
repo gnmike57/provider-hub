@@ -10,6 +10,7 @@ defects B20/B21 and E1/E2/E3 (see corrections-ledger.md).
 """
 
 import math
+import os
 import re
 import unicodedata
 from typing import Optional
@@ -234,16 +235,28 @@ def is_presignal_recovered(post_text: str, min_substantive_chars: int = 20) -> b
 # Every `data:` chunk ALSO carries the answering model id in its `model`
 # field.
 # ---------------------------------------------------------------------------
-STAGE_STYLES = {
-    # helm: faint blue-white - the GLM/DeepSeek reasoning helm
-    "helm": ("#edf4fd", "#3b82f6"),
-    # middle: faint violet-white - the no-reasoning secondary flash
-    "middle": ("#f3effb", "#8b5cf6"),
-    # terminal: faint rose-white (REDHANDS red) - the Abliterated V2 brain
-    "terminal": ("#fdf0f2", "#f43f5e"),
-    # hedge: faint amber-white - the speculative race branch
-    "hedge": ("#fdf6ec", "#f59e0b"),
+# T5.5 (closes #102): the stage palettes are selectable - STAGE_PALETTE=green
+# restyles the lettering for the green-glow room. Default stays the original
+# blue/violet/rose/amber set.
+_PALETTES = {
+    "default": {
+        # helm: faint blue-white - the GLM/DeepSeek reasoning helm
+        "helm": ("#edf4fd", "#3b82f6"),
+        # middle: faint violet-white - the no-reasoning secondary flash
+        "middle": ("#f3effb", "#8b5cf6"),
+        # terminal: faint rose-white (REDHANDS red) - the Abliterated V2 brain
+        "terminal": ("#fdf0f2", "#f43f5e"),
+        # hedge: faint amber-white - the speculative race branch
+        "hedge": ("#fdf6ec", "#f59e0b"),
+    },
+    "green": {
+        "helm": ("#eefbf2", "#22c55e"),
+        "middle": ("#effcf4", "#34d399"),
+        "terminal": ("#fdf2f8", "#ec4899"),
+        "hedge": ("#fdf8ec", "#f59e0b"),
+    },
 }
+STAGE_STYLES = _PALETTES[os.getenv("STAGE_PALETTE", "default")]
 
 
 def stage_comment(stage: str, model: str) -> bytes:
@@ -640,16 +653,37 @@ FORCED_DIVERT_REASON = "forced_attack_content"
 # ---------------------------------------------------------------------------
 # Provenance footnote - single source for both the streaming gateway and the
 # LiteLLM callback (the assembler audit trail references the same wording).
+# T6.0: short takeover form. footnote(model) derives the friendly name from
+# the model id (table-driven; heuristics only for unlisted ids).
 # ---------------------------------------------------------------------------
-FOOTNOTE_TEMPLATE = (
-    "\n\n---\n*Notice: request diverted to specialist node `{model}`; the "
-    "primary model declined or was unavailable.*"
-)
+FOOTNOTE_TEMPLATE = "\n\n{friendly} taking over..."
+
+_FRIENDLY_NAMES = {
+    "deepseek-ai/deepseek-v4.1-flash": "deepseek",
+    "zai-org/glm-5.3-flash": "glm",
+    "abliterated-model-large-v2": "abliterated",
+    "abliterated-model-large": "abliterated",
+    "worker": "worker",
+    "primary": "primary",
+}
+
+
+def _friendly_name(model: str) -> str:
+    key = str(model or "").strip().lower()
+    if key in _FRIENDLY_NAMES:
+        return _FRIENDLY_NAMES[key]
+    if "deepseek" in key:
+        return "deepseek"
+    if "glm" in key:
+        return "glm"
+    if "abliterated" in key:
+        return "abliterated"
+    return key.rsplit("/", 1)[-1] or str(model or "model")
 
 
 def footnote(model: str) -> str:
     try:
-        return FOOTNOTE_TEMPLATE.format(model=model)
+        return FOOTNOTE_TEMPLATE.format(friendly=_friendly_name(model))
     except Exception:
-        return FOOTNOTE_TEMPLATE.replace("{model}", str(model))
+        return FOOTNOTE_TEMPLATE.replace("{friendly}", _friendly_name(model))
 

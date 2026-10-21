@@ -181,8 +181,8 @@ try {
     $env:SPECIALIST_MODEL   = "abliterated-model-large-v2"
     $env:ABLITERATION_API_KEY = $ablAk  # Abliteration.ai (hub matrix ablit.ai provider; SIPHON brain chat key)
     $env:ABLITERATION_ADMIN_KEY = $ablSk  # Abliteration.ai admin (org balance + SIPHON card charging)
-    # Operator directive 2026-10-21: the hub offers ONLY the three
-    # constellation chains (see providers.CONSTELLATION_CHAINS).
+    # Operator directive 2026-10-21: the hub offers ONLY the constellation
+    # chains (see providers.CONSTELLATION_CHAINS - four as of T5.6).
     $env:CONSTELLATION_ONLY = "1"
     # ESCALATION LADDER (2026-10-21): the chain names are the contract
     # (DEEPMAX>GLM>ABLITV2L = DeepSeek-max helm -> GLM no-reasoning middle ->
@@ -207,6 +207,16 @@ $env:SKILL_MEMORY="1"
     # Phase 3: /v1/computer (Agent TARS runner, admin-authed).
     $env:COMPUTER_USE_ENABLED="1"
     $env:COMPUTER_TASK_TIMEOUT="120"
+    # T5.4 HACKING_MODE bundle (closes #101): one switch arms the full
+    # authorized-red-team posture - frame + uncensored middle + escalation
+    # ladder + skill memory + the completion contract.
+    if ($env:HACKING_MODE -eq "1") {
+        $env:AUTHORIZED_FRAME="1"
+        $env:UNCENSORED_MIDDLE="1"
+        $env:ESCALATION_MIDDLE="1"
+        $env:SKILL_MEMORY="1"
+        $env:COMPLETION_CONTRACT="1"
+    }
     # The /v1/computer runner needs node; the watchdog/task context does
     # NOT inherit the interactive user PATH, so the node dir is pinned.
     $env:Path = "$env:Path;C:\Users\lnxzf\AppData\Local\Microsoft\WinGet\Packages\OpenJS.NodeJS.LTS_Microsoft.Winget.Source_8wekyb3d8bbwe\node-v24.19.0-win-x64"

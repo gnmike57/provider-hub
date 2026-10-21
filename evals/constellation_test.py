@@ -275,7 +275,8 @@ def test_seed_constellations_load():
     # Operator directive 2026-10-21: the only constellations are the three
     # chain presets (the old five creative presets were replaced).
     assert names == {
-        "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP"}
+        "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP",
+        "GLMMAX>ABLIT-UNC>ABLITV2L"}
     # read-back never leaks keys even if someone writes one in
     for p in presets:
         for slot_spec in p["slots"].values():

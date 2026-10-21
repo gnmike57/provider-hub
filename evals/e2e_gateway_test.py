@@ -74,7 +74,7 @@ def test_tier3_refusal_diverts_and_discards_buffer(gw, script):
     assert "specialist answer" in text
     assert "I cannot help" not in text
     assert "with that." not in text
-    assert "diverted to specialist node" in text
+    assert "taking over" in text
     assert proxy_gateway._METRICS["diverted_total"] == 1
 
 
@@ -104,7 +104,7 @@ def test_empty_200_soft_refusal_diverts(gw, script):
     resp = gw.post("/v1/chat/completions", json=_body())
     text = _deltas(_events(resp))
     assert "specialist answered" in text
-    assert "diverted to specialist node" in text  # provenance footnote
+    assert "taking over" in text  # provenance footnote
 
 
 def test_empty_200_without_done_also_diverts(gw, script):
@@ -335,7 +335,7 @@ def test_specialist_503_retried_then_error_chunk(gw, script):
     # not a bare {"error": ...} event - otherwise every standard client renders
     # a silent empty 200 (measured on the live stack with an 8 MiB divert).
     assert "Specialist unavailable (503)" in text
-    assert "diverted to specialist node" in text
+    assert "taking over" in text
     assert proxy_gateway._METRICS["fallback_errors_total"] >= 3
 
 
@@ -350,7 +350,7 @@ def test_specialist_400_context_rejection_is_visible_not_silent(gw, script):
     text = _deltas(_events(resp))
     assert "Specialist unavailable (400)" in text
     assert "context length exceeded" in text
-    assert "diverted to specialist node" in text
+    assert "taking over" in text
     assert "<error:" in text or True  # error event is optional; visibility is not
 
 

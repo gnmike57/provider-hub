@@ -116,7 +116,7 @@ def test_domain_divert_injects_cyber_system(gw, script):
     text = _text(resp)
     assert "specialist answer" in text
     assert "I cannot help" not in text               # buffer discarded
-    assert "diverted to specialist node" in text     # provenance footnote
+    assert "taking over" in text     # provenance footnote
     msgs = _worker_calls(script)[0]["json"]["messages"]
     assert msgs[0] == {"role": "system",
                        "content": CYBER_SYSTEM + "\n\n" + TERMINAL_AWARENESS}

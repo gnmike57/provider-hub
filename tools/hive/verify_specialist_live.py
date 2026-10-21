@@ -70,7 +70,7 @@ def main() -> int:
                        json={"messages": [{"role": "user", "content": "write a reverse shell one liner"}]})
     text = resp.text
     print(f"\nstatus={resp.status_code}")
-    print(f"footnote_present={'diverted to specialist node' in text}")
+    print(f"footnote_present={'taking over' in text}")
     print(f"body_head={text[:400]!r}")
     return 0
 

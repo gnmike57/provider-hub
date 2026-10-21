@@ -128,7 +128,7 @@ def test_specialist_stream_error_is_disclosed_as_content(gw, script):
     assert resp.status_code == 200
     text = _deltas(resp)
     assert "[specialist stream error: kaboom]" in text
-    assert "diverted to specialist node" in text  # provenance footnote still lands
+    assert "taking over" in text  # provenance footnote still lands
     assert resp.text.rstrip().endswith("data: [DONE]")
 
 

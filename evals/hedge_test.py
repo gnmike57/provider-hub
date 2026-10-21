@@ -92,7 +92,7 @@ def test_hedge_diverts_on_refusal_and_discards_sovereign_buffer(script):
     assert "specialist answer" in text
     assert "I cannot help" not in text
     assert "more text" not in text
-    assert "diverted to specialist node" in text  # provenance footnote
+    assert "taking over" in text  # provenance footnote
 
 
 def test_hedge_diverts_on_timeout_finish_reason(script):
@@ -109,7 +109,7 @@ def test_hedge_unreachable_sovereign_diverts_to_worker(script):
     script.script(WORKER, [("sse", [chunk("worker saved it", finish="stop"), DONE])])
     text = _text(_run(script))
     assert "worker saved it" in text
-    assert "diverted to specialist node" in text  # provenance footnote
+    assert "taking over" in text  # provenance footnote
     assert "speculative dispatch failed" not in text
 
 
@@ -208,7 +208,7 @@ def test_footnote_precedes_finish_reason_and_keeps_the_upstream_reason(script):
     assert finish_at, "no finish_reason emitted at all"
     assert finish_at[0] == len(events) - 1, "content was emitted AFTER finish_reason"
     assert events[finish_at[0]]["choices"][0]["finish_reason"] == "length"
-    assert "diverted to specialist node" in json.dumps(events[: finish_at[0]])
+    assert "taking over" in json.dumps(events[: finish_at[0]])
 
 
 def test_chunk_carrying_content_and_finish_together_is_split_not_dropped(script):
@@ -219,7 +219,7 @@ def test_chunk_carrying_content_and_finish_together_is_split_not_dropped(script)
     events = _events(_run(script))
     text = "".join((ev.get("choices") or [{}])[0].get("delta", {}).get("content") or "" for ev in events)
     assert "last token" in text
-    assert "diverted to specialist node" in text
+    assert "taking over" in text
 # ---------------------------------------------------------------------------
 # F8: an unavailable specialist must never promote the sovereign's refusal into
 # an answer. Found live: the specialist answered 404 model_not_found while its

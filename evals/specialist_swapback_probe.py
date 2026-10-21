@@ -52,7 +52,7 @@ def _post(tc, body):
 
 def _report(name, text, sc):
     worker_called = bool([c for c in sc.calls if c["url"] == WORKER])
-    footnote = "diverted to specialist node" in text
+    footnote = "taking over" in text
     print(f"\n== {name} ==")
     print(f"   specialist called : {worker_called}")
     print(f"   divert footnote   : {footnote}")

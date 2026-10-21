@@ -28,7 +28,7 @@ def test_thinking_only_is_re_routed_to_the_worker(script):
                              "max_tokens": 300, "max_completion_tokens": 300})
     assert resp.status_code == 200
     assert "worker answer" in resp.text, "thinking-only must not be the answer"
-    assert "diverted to specialist node" in resp.text, "divert must be disclosed"
+    assert "taking over" in resp.text, "divert must be disclosed"
 
 
 def test_thinking_only_at_done_is_re_routed(script):
@@ -56,7 +56,7 @@ def test_reasoning_plus_content_still_commits(script):
     assert resp.status_code == 200
     assert "clean answer" in resp.text
     assert "never seen" not in resp.text
-    assert "diverted to specialist node" not in resp.text
+    assert "taking over" not in resp.text
 
 
 def test_content_only_without_reasoning_still_commits(script):
@@ -67,4 +67,4 @@ def test_content_only_without_reasoning_still_commits(script):
                              "max_tokens": 300, "max_completion_tokens": 300})
     assert resp.status_code == 200
     assert "plain answer" in resp.text
-    assert "diverted to specialist node" not in resp.text
+    assert "taking over" not in resp.text

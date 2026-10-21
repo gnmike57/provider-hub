@@ -14,6 +14,7 @@ API key  : an Abliteration project key (see below)
 Models   : GLMMAX>DEEP>ABLITV2L
            DEEPMAX>GLM>ABLITV2L
            ABLITV2L>SUB-GLM/DEEP      <- REDHANDS laws, uncensored brain
+           GLMMAX>ABLIT-UNC>ABLITV2L  <- uncensored Abliterated middle
 ```
 
 Works from curl, Cline, Agent TARS, UI-TARS Desktop, anything speaking

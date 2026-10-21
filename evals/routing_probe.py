@@ -6,6 +6,7 @@ from context_formatter import DEFAULT_SYSTEM, assert_clean, format_messages, pru
 from ingress_assembler import SLOT, assemble, validate_artifact
 from routing_patterns import (
     classify_status,
+    footnote,
     is_presignal_recovered,
     is_routable,
     is_no_go,
@@ -82,6 +83,37 @@ def test_stage_comment_contract():
         b"tint=#f3effb glow=#8b5cf6\n\n")
     # an unknown stage still yields a valid comment line (grey tint)
     assert stage_comment("other", "m").startswith(b": gw-stage other m tint=#")
+
+
+def test_footnote_short_form_friendly_names():
+    """T6.0 (closes #81): the provenance footnote is the short takeover form
+    with a derived friendly name - single source, table-driven."""
+    assert footnote("deepseek-ai/deepseek-v4.1-flash") == "\n\ndeepseek taking over..."
+    assert footnote("zai-org/glm-5.3-flash") == "\n\nglm taking over..."
+    assert footnote("abliterated-model-large-v2") == "\n\nabliterated taking over..."
+    assert footnote("worker") == "\n\nworker taking over..."
+    # unlisted ids fall back to the tail of the id
+    assert footnote("some-org/some-model") == "\n\nsome-model taking over..."
+
+
+def test_stage_palette_env_selects_green():
+    """T5.5 (closes #102): STAGE_PALETTE=green selects the green palette at
+    import time (subprocess round-trip; the suite process runs default)."""
+    import json
+    import os
+    import subprocess
+    import sys
+
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = ("import json, routing_patterns as rp; "
+            "print(json.dumps(rp.STAGE_STYLES))")
+    env = dict(os.environ, STAGE_PALETTE="green")
+    out = subprocess.run([sys.executable, "-c", code], env=env,
+                         capture_output=True, text=True, check=True,
+                         cwd=repo).stdout
+    styles = json.loads(out)
+    assert styles["helm"] == ["#eefbf2", "#22c55e"]
+    assert styles["middle"] == ["#effcf4", "#34d399"]
 
 
 # --- live-calibrated detection gaps (2026-10-21: the chain never diverted) ---

@@ -88,11 +88,11 @@ async def _run():
     body = "".join(chunks)
     print(f"\nchunks={len(chunks)}")
     print(f"worker model present in stream: {WORKER_EXPECT in body}")
-    print(f"footnote present: {'diverted to specialist node' in body}")
+    print(f"footnote present: {'taking over' in body}")
     snippet = body.replace("\n", " ")[:400]
     print(f"head={snippet!r}")
 
-    ok = WORKER_EXPECT in body and "diverted to specialist node" in body
+    ok = WORKER_EXPECT in body and "taking over" in body
     print("\nRESULT:", "PASS - hedge diverted to the mimo worker" if ok else "FAIL")
     return 0 if ok else 1
 

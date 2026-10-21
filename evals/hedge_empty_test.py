@@ -80,7 +80,7 @@ def test_empty_sovereign_diverts_to_worker_with_footnote():
 
     text = _text(_run(handler))
     assert "worker answer" in text, "empty sovereign must not be delivered"
-    assert "diverted to specialist node" in text, "divert must be disclosed"
+    assert "taking over" in text, "divert must be disclosed"
 
 
 def test_empty_sovereign_with_dead_worker_discloses_error():
@@ -109,7 +109,7 @@ def test_sovereign_with_content_still_commits():
     text = _text(_run(handler))
     assert "clean answer" in text
     assert "never seen" not in text
-    assert "diverted to specialist node" not in text
+    assert "taking over" not in text
 
 
 def test_empty_sovereign_counter_moves():

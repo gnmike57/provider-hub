@@ -152,6 +152,18 @@ CONSTELLATION_CHAINS = {
         "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
         "redhands": True,
     },
+    # T5.6 (closes #103): the 4th chain - an UNCENSORED middle. The middle
+    # hop is the non-v2 Abliterated Large, so a refusal from the helm meets
+    # a brain that (almost) never refuses before the V2 terminal burns.
+    "GLMMAX>ABLIT-UNC>ABLITV2L": {
+        "description": "GLM-5.3 max-reasoning helm; uncensored Abliterated "
+                       "Large middle; Abliterated V2 Large terminal "
+                       "(REDHANDS on offense).",
+        "helm": ("primary", "zai-org/glm-5.3-flash", True),
+        "middle": ("ablit.ai", "abliterated-model-large", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": False,
+    },
 }
 
 _CONSTELLATION_LOOKUP = {

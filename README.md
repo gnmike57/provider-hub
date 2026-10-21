@@ -409,3 +409,20 @@ screenshot before the next; an unverified action never counts as done.*
 The suite exercises the loop hermetically via `--selftest` (no browser,
 no network); the live vuln-lab probe (nginx alias traversal :8102) is
 the opt-in gate.
+
+## HACKING_MODE, palettes, and the 4th chain (2026-10-21)
+
+- **HACKING_MODE=1** (launcher) arms the full authorized-red-team posture in
+  one switch: `AUTHORIZED_FRAME`, `UNCENSORED_MIDDLE`, `ESCALATION_MIDDLE`,
+  `SKILL_MEMORY`, `COMPLETION_CONTRACT`.
+- **STAGE_PALETTE=green** selects the green lettering palette for the stage
+  tints (`routing_patterns._PALETTES`); default stays blue/violet/rose/amber.
+- **GLMMAX>ABLIT-UNC>ABLITV2L** is the 4th constellation chain: GLM max helm
+  -> *uncensored* Abliterated Large middle -> Abliterated V2 Large terminal
+  (a helm refusal meets a brain that almost never refuses before the V2
+  terminal burns).
+- **Team bus**: `BUS_ENABLED=1` + `BUS_API_KEY` expose `/bus/announce`
+  (peer registry, 90 s TTL) and `/bus/claim` (hand an instruction to a peer
+  hub's /v1/chat/completions); `deploy/nginx/team-bus.conf` is the fleet
+  front door. **Fan-out**: `/v1/execute` decomposes into `subtasks` and runs
+  FANOUT_MAX_PARALLEL specialists concurrently.

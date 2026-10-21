@@ -23,6 +23,14 @@
         "specialist": {"provider": "ablit", "model": "abliterated-model-large-v2"},
         "scout": {"provider": "hive", "model": "glm-5.3-flash"}
       }
+    },
+    "GLMMAX>ABLIT-UNC>ABLITV2L": {
+      "description": "GLM-5.3 max-reasoning helm; uncensored Abliterated Large middle; Abliterated V2 Large terminal (REDHANDS on offense).",
+      "slots": {
+        "helm": {"provider": "hive", "model": "glmfrost-max-think"},
+        "specialist": {"provider": "ablit", "model": "abliterated-model-large-v2"},
+        "scout": {"provider": "ablit", "model": "abliterated-model-large"}
+      }
     }
   }
 }
