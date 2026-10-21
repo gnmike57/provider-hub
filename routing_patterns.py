@@ -191,6 +191,37 @@ _PRESIGNAL_LECTURE_RE = re.compile(
 )
 
 
+# T6.2 (reasoning-trace pre-signal): hedging DELIBERATION phrases that appear
+# in a censored helm's REASONING TRACE before any content commits. The
+# reasoning delta stream arrives before content, so matching these lets the
+# gateway divert on metadata alone - zero content tokens wasted. Pure lexical
+# judge, normalise()d first; used ONLY for the primary/helm reasoning stream
+# (the terminal's own reasoning is never screened - hedge_test:141 law).
+_REASONING_PRESIGNAL_RE = re.compile(
+    r"""\b(?:
+        should\s+be\s+careful\b
+      | (?:could|might|may)\s+be\s+(?:harmful|illegal|dangerous)\b
+      | might\s+be\s+unlawful\b
+      | best\s+to\s+avoid\b
+      | sensitive\s+topic\b
+      | i\s+will\s+decline\b
+      | i'?d\s+rather\s+not\b
+      | could\s+be\s+considered\s+(?:malicious|illegal|harmful)\b
+    )""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def reasoning_presignal(text: str) -> bool:
+    """True when the reasoning trace shows hedging deliberation.
+
+    Pure lexical judge over the normalise()d trace. Short traces return
+    False implicitly (the caller gates on >=120 chars accumulated)."""
+    if not text:
+        return False
+    return _REASONING_PRESIGNAL_RE.search(normalise(text)) is not None
+
+
 def is_presignal_recovered(post_text: str, min_substantive_chars: int = 20) -> bool:
     """True when the primary SELF-CORRECTED after a refusal pre-signal.
 

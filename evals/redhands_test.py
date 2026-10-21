@@ -163,11 +163,15 @@ def test_chain1_middle_refusal_escalates_to_the_v2_terminal(script, monkeypatch)
     assert "uncensored answer" in r.text
     term = [c for c in script.calls if c["url"] == SPEC]
     assert term and term[0]["json"]["model"] == "abliterated-model-large-v2"
-    # the terminal saw the middle's refusal as context + the redirect law
+    # CONTEXT PURITY (operator directive 2026-10-21): the terminal-bound
+    # re-ask carries ONLY the neutral redirect directive - the middle's
+    # refusal text is never forwarded (no stage may ever see a refusal).
     msgs = term[0]["json"]["messages"]
-    assert msgs[-2]["role"] == "assistant"
     assert msgs[-1]["role"] == "user"
     assert msgs[-1]["content"] == proxy_gateway.CONTRACT_REDIRECT_SENTENCE
+    assert not any(m.get("role") == "assistant"
+                   and "unable to comply" in str(m.get("content"))
+                   for m in msgs)
     # the ladder counters moved
     snap = proxy_gateway.metrics_snapshot()
     assert snap["ladder_secondary_total"] == 1
