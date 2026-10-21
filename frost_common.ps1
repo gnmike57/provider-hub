@@ -1,4 +1,4 @@
-# frost_common.ps1 - shared helpers for the Frost hub ops scripts.
+# frost_common.ps1 - shared helpers for the hub ops scripts.
 #
 # ONE health definition, ONE listener-pid lookup, ONE log rotator (plus the
 # process-identity helper they share). Before this file existed,

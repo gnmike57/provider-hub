@@ -351,6 +351,11 @@ def test_hub_display_is_derived_from_hub_model_aliases():
         "glmmaxablit.ai": ("GLMMaxAblit.ai", "abliterated-model-large-v2", "ablit.ai", True),
         "deepablit.ai": ("DeepAblit.ai", "abliterated-model-large", "ablit.ai", False),
         "glmablit.ai": ("GLMAblit.ai", "abliterated-model-large-v2", "ablit.ai", False),
+        # TEAM routes (always-on /team): derived, not hand-maintained.
+        "teamglm": ("TeamGLM", "zai-org/glm-5.3-flash", "hive", False),
+        "teamdeep": ("TeamDeep", "deepseek-ai/deepseek-v4.1-flash", "hive", False),
+        "teamabliterated": ("TeamAblit.ai", "abliterated-model-large-v2", "ablit.ai", False),
+        "team": ("Team", "abliterated-model-large-v2", "ablit.ai", False),
     }
     assert providers._HUB_DISPLAY == expected
     assert list(providers._HUB_DISPLAY) == list(providers.HUB_MODEL_ALIASES)
@@ -358,6 +363,7 @@ def test_hub_display_is_derived_from_hub_model_aliases():
     assert [m["description"] for m in listing] == [
         "DeepMaxNano", "GLMMaxNano", "DeepNano", "GLMNano",
         "DeepMaxAblit.ai", "GLMMaxAblit.ai", "DeepAblit.ai", "GLMAblit.ai",
+        "TeamGLM", "TeamDeep", "TeamAblit.ai", "Team",
     ]
     # the derivation is total: an unknown stem never breaks the listing
     assert providers._hub_display_name("deepfrost") == "Deepfrost"

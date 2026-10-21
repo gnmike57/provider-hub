@@ -10,8 +10,7 @@ Two families of endpoint make up the hub's public surface:
     POST /v1/execute             deterministic assembly
 
   Per-model ports (FROST_REGISTRY / tools/hive/serve_endpoints.py):
-    9310 frost-general   9311 deepfrost   9312 glmfrost
-    9313 cyberfrost      9314 deepfrost max think   9315 glmfrost max think
+    9310 frost-general   9314 deepfrost max think   9315 glmfrost max think
 
 Every port runs the SAME app, so its /healthz and /v1/models answer without
 touching an upstream - a cheap liveness+shape probe. The chat probe is a real
@@ -32,9 +31,6 @@ import urllib.request
 
 PORTS = [
     (9310, "frost-general"),
-    (9311, "deepfrost"),
-    (9312, "glmfrost"),
-    (9313, "cyberfrost"),
     (9314, "deepfrost max think"),
     (9315, "glmfrost max think"),
 ]

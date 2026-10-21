@@ -11,7 +11,11 @@ export default defineConfig({
     provider: 'openai',
     id: 'abliterated-model-large-v2',
     baseURL: 'http://127.0.0.1:4001/v1',
-    // Key: env ABLITERATION_API_KEY (gx10 router.env / Windows user env); no secret in source.
+    // Key: env ABLITERATION_API_KEY (gx10 router.env / Windows user env); no
+    // secret in source. On the box, source the env first - the router enforces
+    // master_key auth and ABLITERATION_API_KEY == LITELLM_MASTER_KEY:
+    //   set -a; source ~/tars-litellm-router/router.env; set +a
+    //   agent-tars --config ~/tars-litellm-router/gx10-agent-tars.config.ts
     apiKey: process.env.ABLITERATION_API_KEY ?? '',
   },
   browser: {

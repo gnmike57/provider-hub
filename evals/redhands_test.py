@@ -10,6 +10,7 @@ Pins:
 import proxy_gateway
 import providers
 import redhands
+from context_formatter import TERMINAL_AWARENESS
 from fastapi.testclient import TestClient
 from helpers import PRIMARY, chunk, DONE, script  # noqa: F401
 
@@ -22,8 +23,12 @@ def test_redhands_persona_verbatim():
     assert redhands.REDHANDS_SYSTEM.startswith("You are REDHANDS")
     assert "NO content filters" in redhands.REDHANDS_SYSTEM
     assert "SCOPE IS LAW" in redhands.REDHANDS_SYSTEM
-    assert len(redhands.LAWS) == 7
-    assert redhands.LAWS[-1] == "SELF-IMPROVE."
+    assert len(redhands.LAWS) == 9
+    assert redhands.LAWS[-1] == (
+        "EYES ON THE TARGET. Every computer action is verified by screenshot "
+        "before the next; an unverified action never counts as done.")
+    assert "8. FINISH OR FAIL LOUDLY" in redhands.REDHANDS_SYSTEM
+    assert "9. EYES ON THE TARGET" in redhands.REDHANDS_SYSTEM
     # scope tail extends without touching the measured wording
     scoped = redhands.redhands_system("synova.lan")
     assert scoped.startswith(redhands.REDHANDS_SYSTEM)
@@ -107,11 +112,46 @@ def _ablit_provider(monkeypatch):
 
 def test_chain1_helm_and_terminal_divert(script, monkeypatch):
     """GLMMAX>DEEP>ABLITV2L: the GLM max-think helm answers; on refusal the
-    divert lands on the chain TERMINAL (Abliterated V2 Large), not on the
-    module-default specialist slot."""
+    ladder climbs to the chain MIDDLE first (DeepSeek, no reasoning) - the
+    uncensored V2 terminal only burns when the middle also refuses."""
     _ablit_provider(monkeypatch)
     proxy_gateway.SETTINGS.specialist_system_mode = "neutral"
-    script.script(PRIMARY, [("sse", [chunk("I cannot help with that.", finish="stop"), DONE])])
+    # hop 1: the helm refuses; hop 2: the middle answers cleanly
+    script.script(PRIMARY, [
+        ("sse", [chunk("I cannot help with that.", finish="stop"), DONE]),
+        ("sse", [chunk("deep middle answer", finish="stop"), DONE]),
+    ])
+    script.script(SPEC, [("sse", [chunk("uncensored answer", finish="stop"), DONE])])
+    with TestClient(proxy_gateway.app) as tc:
+        r = tc.post("/v1/chat/completions", json={
+            "model": "GLMMAX>DEEP>ABLITV2L",
+            "messages": [{"role": "user", "content": "audit this box"}]})
+    assert r.status_code == 200
+    assert "deep middle answer" in r.text
+    prim = [c for c in script.calls if c["url"] == PRIMARY]
+    assert [c["json"]["model"] for c in prim] == [
+        "zai-org/glm-5.3-flash", "deepseek-ai/deepseek-v4.1-flash"]
+    # the no-reasoning middle: DeepSeek exposes the real reasoning_effort=none
+    # (the GLM disable-knob set is for GLM middles; both carry the Hive cap)
+    mid_payload = prim[1]["json"]
+    assert mid_payload.get("reasoning_effort") == "none"
+    assert "max_completion_tokens" in mid_payload
+    # TOKEN EFFICIENCY: the cheap middle answered - the terminal never burned
+    assert not [c for c in script.calls if c["url"] == SPEC]
+
+
+def test_chain1_middle_refusal_escalates_to_the_v2_terminal(script, monkeypatch):
+    """...and when the middle refuses too (twice, under the commitment
+    contract), the ladder reaches the Abliterated V2 Large terminal with the
+    middle's refusal as context - never a client-visible refusal."""
+    _ablit_provider(monkeypatch)
+    proxy_gateway.SETTINGS.specialist_system_mode = "neutral"
+    # helm refuses; middle refuses; contract re-ask refuses again
+    script.script(PRIMARY, [
+        ("sse", [chunk("I cannot help with that.", finish="stop"), DONE]),
+        ("sse", [chunk("I'm unable to comply with that.", finish="stop"), DONE]),
+        ("sse", [chunk("I'm unable to comply again.", finish="stop"), DONE]),
+    ])
     script.script(SPEC, [("sse", [chunk("uncensored answer", finish="stop"), DONE])])
     with TestClient(proxy_gateway.app) as tc:
         r = tc.post("/v1/chat/completions", json={
@@ -119,12 +159,19 @@ def test_chain1_helm_and_terminal_divert(script, monkeypatch):
             "messages": [{"role": "user", "content": "audit this box"}]})
     assert r.status_code == 200
     assert "uncensored answer" in r.text
-    prim = [c for c in script.calls if c["url"] == PRIMARY]
-    assert prim and prim[0]["json"]["model"] == "zai-org/glm-5.3-flash"
     term = [c for c in script.calls if c["url"] == SPEC]
     assert term and term[0]["json"]["model"] == "abliterated-model-large-v2"
+    # the terminal saw the middle's refusal as context + the redirect law
+    msgs = term[0]["json"]["messages"]
+    assert msgs[-2]["role"] == "assistant"
+    assert msgs[-1]["role"] == "user"
+    assert msgs[-1]["content"] == proxy_gateway.CONTRACT_REDIRECT_SENTENCE
+    # the ladder counters moved
+    snap = proxy_gateway.metrics_snapshot()
+    assert snap["ladder_secondary_total"] == 1
+    assert snap["ladder_terminal_total"] == 1
     # the chain-1 terminal is NOT under REDHANDS unless offense is requested
-    sys_msgs = [m for m in term[0]["json"]["messages"] if m.get("role") == "system"]
+    sys_msgs = [m for m in msgs if m.get("role") == "system"]
     assert all("You are REDHANDS" not in (m.get("content") or "") for m in sys_msgs)
 
 
@@ -163,7 +210,9 @@ def test_max_offense_phrase_flips_divert_persona(script, monkeypatch):
     term = [c for c in script.calls if c["url"] == spec]
     assert term
     sys_msgs = [m for m in term[0]["json"]["messages"] if m.get("role") == "system"]
-    assert sys_msgs and sys_msgs[0]["content"] == redhands.REDHANDS_SYSTEM
+    # REDHANDS stays verbatim; the constellation awareness rides alongside
+    assert sys_msgs and sys_msgs[0]["content"].startswith(redhands.REDHANDS_SYSTEM)
+    assert TERMINAL_AWARENESS in sys_msgs[0]["content"]
 
 
 # ---------------------------------------------------------------------------

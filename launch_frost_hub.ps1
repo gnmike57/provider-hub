@@ -1,7 +1,10 @@
-# launch_frost_hub.ps1 - boots the Frost interception hub (uvicorn) detached.
+# launch_frost_hub.ps1 - boots the constellation interception hub (uvicorn)
+# detached. The filename is the legacy entrypoint name and is kept so the
+# scheduled task and watchdog keep working; the system it boots is the
+# constellation (TheHive + Abliteration), CyberFrost retired 2026-10-21.
 #
-# Idempotent by design: the "Frost Hub" scheduled task fires this at boot AND the
-# watchdog (watchdog_frost_hub.ps1) fires it on a health failure. Running it when
+# Idempotent by design: the "Hub" scheduled task fires this at boot AND the
+# watchdog (watchdog_hub.ps1) fires it on a health failure. Running it when
 # the hub is ALREADY healthy is a no-op that exits 0, so a healthy hub is never
 # churned by a redundant launch.
 #
@@ -150,11 +153,12 @@ try {
         }
     }
 
-    # --- Frost system environment (single source for the boot task) ---------
-    # V2 brain (staged 2026-10-20; activate via activate_v2_primary.ps1 once the
-    # Abliteration org is out of payment_required). While slot_bindings.json still
-    # ends on the Hive/CYBER-FROST snapshot, the hub's boot-restore keeps the LIVE
-    # slots on Hive - these env pins only win if that file is missing/unreadable.
+    # --- Constellation environment (single source for the boot task) --------
+    # CYBER-FROST is RETIRED (2026-10-21): the hub is the constellation - the
+    # GLM/DeepSeek Hive brains up front, the uncensored Abliteration LARGE V2
+    # brain as the terminal/divert slot. The old Frost worker pins are gone;
+    # FALLBACK_* (the divert slot) now points at the V2 terminal like
+    # SPECIALIST_* so a legacy FALLBACK_* reader still lands on the terminal.
     # Abliteration keys come from Windows user-scope env (installed 2026-10-21):
     # process env wins, then persistent User scope. No secrets in source.
     #   ABLITERATION_API_KEY   = ak_... chat/inference key
@@ -169,11 +173,9 @@ try {
     $env:PRIMARY_API_KEY    = $ablAk  # Abliteration chat key (explicit; wins over HIVE_SECRET_KEY)
     $env:PRIMARY_MODEL     = "abliterated-model-large-v2"                # default primary id
     $env:HIVE_SECRET_KEY   = "REDACTED_HIVE_KEY"        # Hive self-hosted LLMs (legacy primary, kept for rollback)
-    $env:FALLBACK_API_URL  = "http://100.67.13.78:4000/v1/chat/completions"  # gx10 hub (worker/cyberfrost)
-    $env:FALLBACK_API_KEY  = "none"
-    $env:FALLBACK_MODEL    = "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
-    $env:FROST_WORKER_API_URL = "http://100.67.13.78:4000/v1/chat/completions"  # gx10 hub for the cyberfrost names (NOT the specialist override)
-    $env:FROST_WORKER_API_KEY = "none"
+    $env:FALLBACK_API_URL  = "https://api.abliteration.ai/v1/chat/completions"  # constellation TERMINAL (CyberFrost retired)
+    $env:FALLBACK_API_KEY  = $ablAk
+    $env:FALLBACK_MODEL    = "abliterated-model-large-v2"
     $env:SPECIALIST_API_URL = "https://api.abliteration.ai/v1/chat/completions"
     $env:SPECIALIST_API_KEY = $ablAk # Abliteration direct (NanoGPT hop dropped 2026-10-20)
     $env:SPECIALIST_MODEL   = "abliterated-model-large-v2"
@@ -182,19 +184,32 @@ try {
     # Operator directive 2026-10-21: the hub offers ONLY the three
     # constellation chains (see providers.CONSTELLATION_CHAINS).
     $env:CONSTELLATION_ONLY = "1"
+    # ESCALATION LADDER (2026-10-21): the chain names are the contract
+    # (DEEPMAX>GLM>ABLITV2L = DeepSeek-max helm -> GLM no-reasoning middle ->
+    # Abliterated V2 Large terminal) - chains ALWAYS climb it. This knob puts
+    # NON-chain routes on the same cheap-first ladder: a confirmed refusal
+    # diverts to the OTHER Hive flash before the uncensored terminal.
+    $env:ESCALATION_MIDDLE  = "1"
     # Money safety (W2): billing refuses plaintext API-key writes without a
     # Fernet ENCRYPTION_KEY, and the money/card endpoints (/v1/user/*,
     # /v1/siphon/*, /v1/admin/*) require the admin key below via X-Admin-Key.
     $env:ENCRYPTION_KEY     = "ER9W35oE9l3Hm3V9dEBdeOCht4R5DPiaQJ6BmfFDjiE="  # Fernet key for user_keys.jsonl at rest
     $env:ADMIN_API_KEY      = "tYcVcsF7RmF7Ozwqph0GC_-UBXiBDy68MsjMSUR0yWg"    # X-Admin-Key for money/card endpoints
     $env:AUDIT_LOG          = "$LOG_DIR\boot_audit.jsonl"
-    $env:KEEPALIVE_URL      = "http://100.67.13.78:4000/v1/models"
+    $env:KEEPALIVE_URL      = "https://api.abliteration.ai/v1/models"  # keep the constellation TERMINAL warm (CyberFrost retired)
     $env:MAX_THINK_MIN_TOKENS = "32768"
     $env:NO_GO_ENABLED        = "1"
     $env:HEDGE_MAX_TOKENS     = "8192"    # raised for V2-large hedge capacity (was 4000)
     $env:SPECIALIST_MAX_TOKENS = "16384"  # V2-large divert budget (was 4096 NanoGPT reserve)
     $env:MAX_CONCURRENT_STREAMS = "64"    # DoS guard on open streams (0 = unlimited)
     $env:COMMIT_TOKENS        = "10"
+$env:SKILL_MEMORY="1"
+    # Phase 3: /v1/computer (Agent TARS runner, admin-authed).
+    $env:COMPUTER_USE_ENABLED="1"
+    $env:COMPUTER_TASK_TIMEOUT="120"
+    # The /v1/computer runner needs node; the watchdog/task context does
+    # NOT inherit the interactive user PATH, so the node dir is pinned.
+    $env:Path = "$env:Path;C:\Users\lnxzf\AppData\Local\Microsoft\WinGet\Packages\OpenJS.NodeJS.LTS_Microsoft.Winget.Source_8wekyb3d8bbwe\node-v24.19.0-win-x64"
     $env:PYTHONUNBUFFERED     = "1"
     $env:PYTHONIOENCODING     = "utf-8"
 

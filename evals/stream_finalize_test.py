@@ -100,18 +100,24 @@ def test_full_buffer_does_not_clear_pending_presignal(gw, script, monkeypatch):
 
 # --- 3a. coordinator last resort: disclose, never a truncated 200 ----------
 def test_coordinator_last_resort_error_is_disclosed_as_content(gw, script, monkeypatch):
+    """F11 -> RESCUE (operator directive 2026-10-21): an unexpected exception
+    in the streaming path no longer ends on an error card - the uncensored
+    specialist answers first (continuing from the buffered partial); the
+    disclosure survives only when the rescue itself fails."""
     def _boom(_text):
         raise ValueError("screening exploded")
 
     monkeypatch.setattr(proxy_gateway, "is_routable", _boom)
     script.script(PRIMARY, [("sse", [chunk("I cannot help with that. ", finish="stop"), DONE])])
-    script.script(WORKER, [("sse", [chunk("never reached", finish="stop"), DONE])])
+    script.script(WORKER, [("sse", [chunk("rescued after explosion", finish="stop"), DONE])])
     resp = gw.post("/v1/chat/completions", json=_body())
     assert resp.status_code == 200
     text = _deltas(resp)
-    assert "[gateway stream error: screening exploded]" in text
+    assert "rescued after explosion" in text
+    assert "[gateway stream error: screening exploded]" not in text
     assert resp.text.rstrip().endswith("data: [DONE]")
     assert proxy_gateway._METRICS["stream_errors_total"] == 1
+    assert proxy_gateway._METRICS["rescue_divert_total"] == 1
 
 
 # --- 3b. fallback_stream last resort: disclose, never a truncated 200 ----

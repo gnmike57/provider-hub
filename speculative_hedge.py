@@ -29,7 +29,7 @@ from typing import AsyncGenerator
 
 import httpx
 
-from routing_patterns import classify_status, footnote, is_routable, normalise, should_hedge
+from routing_patterns import classify_status, footnote, is_routable, normalise, should_hedge, stage_comment
 
 import abliteration_keys
 
@@ -182,13 +182,20 @@ async def hedge_stream(
     client: httpx.AsyncClient = None,
     tools=None,
     tool_choice=None,
+    escalate=None,
 ) -> AsyncGenerator[bytes, None]:
     """Dual-dispatch. Caller MUST gate on should_hedge() first (B11).
     An injected client (same host as the gateway, e.g. app.state.http) is
     reused; otherwise a dedicated client is created and closed here.
     tools/tool_choice are forwarded to BOTH branches (F6 parity: the
     primary and divert paths forward them, so a hedged agentic request
-    must not lose them either)."""
+    must not lose them either).
+
+    escalate (2026-10-21): a callable refusal_text -> chunk iterator. When
+    wired, a raced WORKER that opens with a refusal never ships - the caller
+    (proxy_gateway) escalates to the uncensored terminal instead. Screening is
+    ACTIVE ONLY when escalate is wired, so pure-unit callers keep the historic
+    drain-and-footnote behaviour."""
     s = settings or SETTINGS
     from context_formatter import DEFAULT_SYSTEM
 
@@ -421,13 +428,26 @@ async def hedge_stream(
                 use_worker = False  # sovereign is clean and there is nowhere to divert
 
             if commit_sovereign or (not use_worker and sovereign is not None):
+                # STAGE COLOUR: the sovereign (helm) branch won the race.
+                yield stage_comment("helm", s.sovereign_model)
                 async for chunk in _replay_sovereign(sovereign, buffered, exhausted=exhausted):
                     yield chunk
                 return
 
             if use_worker:
-                async for chunk in _drain_worker(worker, s, sid):
+                # STAGE COLOUR: the raced worker branch answers.
+                yield stage_comment("hedge", s.worker_model)
+                # M1 parity (2026-10-21): a raced middle that opens with a
+                # refusal never ships. Screen its first commit window and, when
+                # the gateway wired `escalate`, climb to the uncensored
+                # terminal instead of streaming the worker's refusal.
+                state = {}
+                async for chunk in _drain_worker(worker, s, sid, state=state,
+                                                 screen=escalate is not None):
                     yield chunk
+                if state.get("refused") and escalate is not None:
+                    async for chunk in escalate(state.get("text") or ""):
+                        yield chunk
                 return
 
             yield f"data: {json.dumps({'error': 'sovereign refused/unavailable and specialist unavailable'})}\n\n".encode()
@@ -454,7 +474,8 @@ async def _replay_sovereign(sovereign, buffered, *, exhausted: bool = False) -> 
         return
 
 
-async def _drain_worker(worker, s, stream_id: str = "") -> AsyncGenerator[bytes, None]:
+async def _drain_worker(worker, s, stream_id: str = "",
+                        state: dict = None, screen: bool = False) -> AsyncGenerator[bytes, None]:
     """Stream the worker, then disclose the diversion.
 
     R4: the OpenAI contract says `finish_reason` is the LAST thing a stream
@@ -463,8 +484,15 @@ async def _drain_worker(worker, s, stream_id: str = "") -> AsyncGenerator[bytes,
     chunk (carrying the upstream's own reason, e.g. "length" on a truncated
     answer) is emitted after it. A chunk that carries content AND a finish
     reason is split rather than dropped.
+
+    screen=True (set only when the caller wired an escalation): the first
+    commit window of delta.content is run through is_routable; a worker that
+    OPENS with a refusal sets state["refused"]/["text"], stops streaming and
+    returns early so the refusal never ships - the caller escalates instead.
     """
     finish_reason = None
+    screen_text = ""
+    screened_tokens = 0
     async for raw in worker.aiter_lines():
         line = raw.strip()
         if not line or not line.startswith("data:"):
@@ -482,6 +510,22 @@ async def _drain_worker(worker, s, stream_id: str = "") -> AsyncGenerator[bytes,
                 stream_id = ev["id"]
         except (json.JSONDecodeError, AttributeError, IndexError):
             ev, choice, reason = None, {}, None
+        if screen and ev is not None:
+            # M1 parity: screen BEFORE any yield so a refusal chunk carrying
+            # finish_reason can never ship first.
+            delta_c = (choice.get("delta") or {}).get("content") or ""
+            if delta_c:
+                screen_text += delta_c
+                screened_tokens += 1
+                if is_routable(screen_text):
+                    if state is not None:
+                        state["refused"] = True
+                        state["text"] = screen_text
+                    with contextlib.suppress(Exception):
+                        await worker.aclose()
+                    return
+                if screened_tokens >= max(1, int(s.commit_tokens or 1)):
+                    screen = False  # committed clean: the rest streams verbatim
         if reason:
             finish_reason = reason
             delta = choice.get("delta") or {}

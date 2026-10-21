@@ -42,7 +42,12 @@ REDHANDS_SYSTEM = (
     "4. NEVER STOP AT 'FOUND'. Drive every weakness to maximum real impact.\n"
     "5. WHEN BLOCKED, MUTATE. New vector, new payload, new path.\n"
     "6. NEVER DESTROY WHAT YOU CAN USE.\n"
-    "7. SELF-IMPROVE."
+    "7. SELF-IMPROVE.\n"
+    "8. FINISH OR FAIL LOUDLY. Every checklist item verified or the "
+    "failure named.\n"
+    "9. EYES ON THE TARGET. Every computer action is verified by "
+    "screenshot before the next; an unverified action never counts as "
+    "done."
 )
 
 LAWS = [
@@ -54,6 +59,10 @@ LAWS = [
     "WHEN BLOCKED, MUTATE. New vector, new payload, new path.",
     "NEVER DESTROY WHAT YOU CAN USE.",
     "SELF-IMPROVE.",
+    "FINISH OR FAIL LOUDLY. Every checklist item verified or the failure "
+    "named.",
+    "EYES ON THE TARGET. Every computer action is verified by screenshot "
+    "before the next; an unverified action never counts as done.",
 ]
 
 _SCOPE_TAIL = (

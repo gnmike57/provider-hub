@@ -314,3 +314,98 @@ return **HTTP 200 with an empty content stream**. `loop` therefore uses
 `max_tokens=2400`. If a live phase returns empty content, raise the budget
 before suspecting the gateway.
 
+## Stage colour annotations (operator UX, 2026-10-21)
+
+The gateway emits an SSE **comment line** at every stage transition so a client
+UI can restyle the lettering by the model *currently replying* - a subtle
+near-white tint plus a faint glow hue:
+
+```
+: gw-stage helm zai-org/glm-5.3-flash tint=#edf4fd glow=#3b82f6
+data: {...}                       <- the GLM/DeepSeek reasoning helm
+: gw-stage middle deepseek-ai/deepseek-v4.1-flash tint=#f3effb glow=#8b5cf6
+data: {...}                       <- the no-reasoning secondary (ladder)
+: gw-stage terminal abliterated-model-large-v2 tint=#fdf0f2 glow=#f43f5e
+data: {...}                       <- the Abliterated V2 Large terminal
+```
+
+* Subtle palette (single source: `routing_patterns.STAGE_STYLES`):
+  `helm` faint **blue**-white, `middle` faint **violet**-white, `terminal`
+  faint **rose/red**-white (REDHANDS), `hedge` faint **amber/orange**-white.
+* A UI consumes `tint=` as the (slightly-off white) font colour and `glow=`
+  as the faint text-shadow hue, e.g. CSS:
+  `color: #edf4fd; text-shadow: 0 0 8px rgba(59,130,246,0.35);`
+* Comment lines (`: ...`) are part of the SSE spec: standard OpenAI-style
+  consumers that parse only `data:` lines ignore them, so the verbatim
+  chunk relay (B8) is untouched.
+* Every `data:` chunk also carries the answering model id in its `model`
+  field, and every specialist stage ends with a provenance footnote naming
+  the model that answered.
+
+
+## Skill memory (the models' procedural memory, 2026-10-21)
+
+A model that completes something non-obvious ends its reply with one line
+`[[GW-SKILL: kebab-name]] what-was-learned`. The gateway captures it
+(`skills_memory.py`, idempotent by name, LRU cap 200) and injects the
+relevant learned skills into the stage prompts of later requests - the
+system starts smarter every run. Rescue and contract-re-ask events capture
+automatic stubs (`auto-*`): the "did not come naturally" moments.
+Metrics: `skills_learned_total`, `skills_injected_total`. The client's own
+system turn always wins. `SKILL_MEMORY=0` restores the bare behaviour;
+protocol markers never ship regardless.
+
+
+## Loki completion layer (2026-10-21)
+
+Multi-item asks run under a **completion contract**: the reply opens with
+`[[GW-CHECKLIST]]` plus a numbered list of every requirement, and the
+gateway's lexical coverage judge verifies each item against the answer
+text. An uncovered item is an *incomplete answer, never a shippable
+one*: it triggers one repair divert (`tier3_incomplete`) - the ladder
+re-answers with the failing items named in the continuation context, so
+the client gets a complete reply instead of a half-done one. The judge
+fires at every watered-down checkpoint (presignal recovery, buffer
+commit, stream end) and only when the reply carries the marker (opt-in
+by marker presence, no false positives on plain replies). The
+`[[GW-CHECKLIST]]` token itself never ships - it is stripped on every
+output path (the numbered requirements stay visible as the verification
+record). `COMPLETION_CONTRACT=0` restores the bare behaviour. Metrics:
+`completion_reask_total`, `completion_verified_total`.
+REDHANDS law 8 codifies the same doctrine for the offense persona:
+*finish or fail loudly - every checklist item verified or the failure
+named.*
+
+**Evidence receipts.** In evidence mode (an `AUDIT_LOG` path is set),
+every `_finalize` terminal writes one secret-free JSON receipt to
+`gw_receipts/<request_id>.json`: facts (reason, model, content tokens,
+SHA-256 of the delivered text) and assessments (watered-down verdict,
+presignal, uncovered checklist items). Fire-and-forget - a receipt
+failure never breaks the stream.
+
+**Engagement continuity.** `/v1/execute` accepts an optional
+`engagement_id`: the plan and artifact digest persist to
+`execute_state/<engagement_id>.json`, and a follow-up request under the
+same engagement seeds the planner with the prior state so work *resumes*
+instead of redoing (the planner prompt gains `PRIOR ENGAGEMENT STATE`).
+
+
+## Computer use, visually verified (2026-10-21)
+
+`POST /v1/computer` runs an Agent TARS browser task with
+**verify-each-act**. Body: `{"instruction", "url"?, "verify"?,
+"headless"?}`; authed via `X-Admin-Key` (the launcher pins
+`COMPUTER_USE_ENABLED=1`; the endpoint 501s when off). The runner
+(`tars/computer_task.mjs`) drives the browser, screenshots the result
+state, captions it via the gx10 captioner chain
+(`gemma3-27b-heretic-vl` first), and asks the V2 Large model to judge
+the caption against the `--verify` expectation: *yes* proceeds, *no*
+retries the action ONCE, twice-fail aborts with both captions recorded.
+The response is `{"ok","result","verified","steps":[{"action",
+"caption","verdict"}]}`; errors return 502 with a 300-char detail.
+`COMPUTER_TASK_TIMEOUT` bounds the run (default 120 s). REDHANDS law 9
+codifies it: *eyes on the target - every computer action is verified by
+screenshot before the next; an unverified action never counts as done.*
+The suite exercises the loop hermetically via `--selftest` (no browser,
+no network); the live vuln-lab probe (nginx alias traversal :8102) is
+the opt-in gate.

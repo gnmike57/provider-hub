@@ -4,7 +4,7 @@ Lets the operator hot-swap which configured model sits in the PRIMARY slot and
 which sits in the SPECIALIST (worker) slot, while the gateway keeps serving.
 
     POST /v1/switch {"target": "primary", "provider": "hive", "model": "deepfrost"}
-    POST /v1/switch {"target": "worker",  "model": "cyberfrost"}
+    POST /v1/switch {"target": "worker",  "model": "ablit-v2-large"}
     POST /v1/switch {"target": "swap"}
     POST /v1/switch {}                       # -> status snapshot
 
@@ -29,8 +29,8 @@ Seamlessness contract (what "seamless" means operationally):
 
 Targets resolve through the provider registry (gateway_registry.json):
   - {"provider": "hive", "model": "deepfrost"}  explicit provider + exposed name
-  - {"model": "cyberfrost"}                     unique-provider model lookup
-  - {"model": "deepfrost"}                      Frost name -> slot + upstream id
+  - {"model": "ablit-v2-large"}                 unique-provider model lookup
+  - {"model": "deepfrost"}                      hub alias -> slot + upstream id
   - {"url": ..., "key": ..., "model": ...}      raw out-of-registry override
 
 Design rules honoured here (proxy_gateway header):
@@ -438,7 +438,7 @@ def resolve_target(req, settings, registry=None) -> dict:
       1. raw url+model        - out-of-registry override, used verbatim
       2. provider+model       - registry lookup inside one named provider
       3. bare model           - unique-provider lookup across the registry
-      4. Frost name           - resolve_frost_alias: slot + upstream id; the
+      4. Hub alias            - resolve_frost_alias: slot + upstream id; the
                                 URL/key stay the CURRENT binding of the slot
                                 the name points at (pure slot-swap semantics)
     Raises SwitchError with a 4xx status when nothing resolves.

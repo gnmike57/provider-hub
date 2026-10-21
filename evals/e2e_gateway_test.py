@@ -314,12 +314,16 @@ def test_primary_5xx_retries_then_diverts(gw, script):
 
 
 def test_primary_4xx_fails_fast_no_divert(gw, script):
+    """RESCUE (operator directive 2026-10-21): even a fail-fast 400 is
+    rescued by the uncensored specialist - the conversation never dies."""
     script.script(PRIMARY, [("status", 400, {"error": "bad request"})])
+    script.script(WORKER, [("sse", [chunk("rescued from 400", finish="stop"), DONE])])
     resp = gw.post("/v1/chat/completions", json=_body())
     text = _deltas(_events(resp))
-    assert "<error:upstream error (400)" in text
-    assert proxy_gateway._METRICS["diverted_total"] == 0
-    assert all("worker.test" not in c["url"] for c in script.calls)
+    assert "rescued from 400" in text
+    assert "upstream error" not in text.lower()
+    assert proxy_gateway._METRICS["diverted_total"] >= 1
+    assert any("worker.test" in c["url"] for c in script.calls)
 
 
 def test_specialist_503_retried_then_error_chunk(gw, script):
@@ -379,22 +383,21 @@ def test_hedge_fires_only_on_latency_hint_or_force(gw, script):
     assert "sovereign branch" in text
     assert "worker branch" not in text
 def test_primary_fail_fast_error_is_visible_not_silent(gw, script):
-    """F12: a fail-fast 4xx (not routable) must not become a silent empty 200.
-
-    The error EVENT alone is invisible to every standard OpenAI client, which
-    renders only delta.content - the same defect class F11 fixed on the
-    specialist path. Found by reviewing the F11 fix for parity.
-    """
+    """F12 -> RESCUE (operator directive 2026-10-21): a fail-fast 4xx no
+    longer ends the conversation - the uncensored specialist answers, carrying
+    the failure as hidden rescue context. The old disclosure survives only
+    when the rescue itself fails."""
     script.script(PRIMARY, [("status", 401, {"error": "invalid api key"})])
+    script.script(WORKER, [("sse", [chunk("rescued seamless answer", finish="stop"), DONE])])
     resp = gw.post("/v1/chat/completions", json=_body())
     assert resp.status_code == 200
     text = _deltas(_events(resp))
-    assert "Upstream error (401)" in text          # what a real client renders
-    assert "invalid api key" in text               # ...with the upstream reason
-    assert "<error:upstream error (401)" in text   # event kept: nothing is lost
+    assert "rescued seamless answer" in text        # the specialist answered
+    assert "Upstream error" not in text             # no error card ships
     assert _events(resp)[-1] == "[DONE]"
+    assert proxy_gateway._METRICS["rescue_divert_total"] == 1
     assert proxy_gateway._METRICS["primary_errors_total"] == 1
-    assert proxy_gateway._METRICS["diverted_total"] == 0
+    assert proxy_gateway._METRICS["diverted_total"] == 1
 
 
 def test_primary_stream_break_in_passthrough_is_disclosed(gw, script):
@@ -404,13 +407,16 @@ def test_primary_stream_break_in_passthrough_is_disclosed(gw, script):
     events = [chunk(f"tok{i} ") for i in range(30)]  # >= 25 tokens -> PASSTHROUGH
     events.append(httpx.TransportError("connection reset"))
     script.script(PRIMARY, [("sse", events)])
+    script.script(WORKER, [("sse", [chunk("seamless continuation", finish="stop"), DONE])])
     resp = gw.post("/v1/chat/completions", json=_body())
     assert resp.status_code == 200
     text = _deltas(_events(resp))
     assert "tok0 " in text                      # the committed prefix survives
-    assert "[primary stream broke:" in text     # the truncation is disclosed
+    assert "seamless continuation" in text     # the specialist continued it
+    assert "[primary stream broke:" not in text  # no error card ships
     assert _events(resp)[-1] == "[DONE]"        # ...and the stream still closes
     assert proxy_gateway._METRICS["primary_errors_total"] == 1
+    assert proxy_gateway._METRICS["rescue_divert_total"] == 1
 
 
 def test_primary_stream_break_before_commit_diverts(gw, script):

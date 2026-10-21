@@ -130,3 +130,35 @@ def test_grammar_attached_for_json_sarif(gw, script):
     gw.post("/v1/execute", json={"messages": [{"role": "user", "content": "q"}]})
     worker_calls = [c for c in script.calls if c["url"] == WORKER]
     assert worker_calls and "grammar_string" in worker_calls[0]["json"]
+
+
+def test_engagement_state_resumes_across_requests(gw, script, tmp_path):
+    """T2.5 engagement continuity: engagement_id persists the plan + artifact
+    digest; a follow-up under the same engagement seeds the planner with the
+    prior state so work RESUMES instead of redoing."""
+    log = tmp_path / "audit.jsonl"
+    proxy_gateway.SETTINGS.audit_log = str(log)
+    try:
+        plan = _plan_payload()
+        artifact = "def fix(buf, n):\n    return copy(buf[:n])"
+        script.script(PRIMARY, [_orchestrator(plan), _orchestrator(plan)])
+        script.script(WORKER, [_worker_answer(artifact)])
+        r1 = gw.post("/v1/execute", json={
+            "messages": [{"role": "user", "content": "audit this"}],
+            "engagement_id": "eng-42"})
+        assert r1.status_code == 200
+        state = tmp_path / "execute_state" / "eng-42.json"
+        assert state.exists()
+        rec = json.loads(state.read_text(encoding="utf-8"))
+        assert rec["engagement_id"] == "eng-42"
+        assert rec["artifact_sha256"]
+        assert "plan" in rec
+        r2 = gw.post("/v1/execute", json={
+            "messages": [{"role": "user", "content": "continue the audit"}],
+            "engagement_id": "eng-42"})
+        assert r2.status_code == 200
+        # the second planner call is seeded with the prior engagement state
+        calls = [c for c in script.calls if c["url"] == PRIMARY]
+        assert "PRIOR ENGAGEMENT STATE" in calls[1]["json"]["messages"][-1]["content"]
+    finally:
+        proxy_gateway.SETTINGS.audit_log = ""

@@ -58,11 +58,14 @@ __all__ = [
 # --------------------------------------------------------------------------
 FROST_ALIASES = {
     # Plain Frost names (restored 2026-10-20): DeepFrost / GLMFrost live on
-    # the PRIMARY slot (the Hive provider) with the exact upstream ids;
-    # CyberFrost lives on the WORKER slot (the gx10 hub specialist). They were
-    # dropped from the table when the max-think names were added, but the
-    # published contract pins them: chat_proxy model addressing, /v1/models
-    # discovery and /v1/switch slot-swaps all resolve through this table.
+    # the PRIMARY slot (the Hive provider) with the exact upstream ids.
+    # CYBER-FROST IS RETIRED (2026-10-21 operator directive): the new system
+    # - the constellation - completely replaces the local-LLM system of old,
+    # so the legacy CyberFrost names now address the UNCENSORED TERMINAL of
+    # every chain: the Abliteration LARGE V2 brain (abliterated-model-large-v2,
+    # the same id all three constellations terminate on; REDHANDS on max-
+    # offense). They stay on the WORKER slot so an operator-set
+    # SPECIALIST_API_URL/KEY override keeps winning.
     "deepfrost v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "deepfrost-v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
     "deepfrost-v41": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
@@ -71,9 +74,9 @@ FROST_ALIASES = {
     "glmfrost-5.3-flash": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost5.3flash": ("primary", "zai-org/glm-5.3-flash"),
-    "cyberfrost 3.8 sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
-    "cyberfrost-3.8-sage": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
-    "cyberfrost": ("worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"),
+    "cyberfrost 3.8 sage": ("worker", "abliterated-model-large-v2"),
+    "cyberfrost-3.8-sage": ("worker", "abliterated-model-large-v2"),
+    "cyberfrost": ("worker", "abliterated-model-large-v2"),
     # Max-think variants (operator request, 2026-10): the SAME upstream models
     # with reasoning pushed to maximum - the gateway injects the knob set and
     # skips the hedge race (see proxy_gateway.wants_max_think / chat_proxy).
@@ -196,6 +199,16 @@ def resolve_constellation_chain(model: str):
 # --------------------------------------------------------------------------
 
 HUB_PROVIDERS = {
+    # THEHIVE - BUILT IN (2026-10-21): the GLM/DeepSeek hop provider resolves
+    # the same persisted HIVE_* env pair as the PRIMARY slot bridge (S-A: the
+    # key is referenced, never copied - _primary_key() is the resolution
+    # code), so a fresh shell carrying only HIVE_SECRET_KEY can already reach
+    # every Hive-served hop. HIVE_API_URL overrides the base for probes.
+    "hive": {
+        "url": os.getenv(
+            "HIVE_API_URL", "https://api-cdn.thehive.ai/api/v3/chat/completions"),
+        "key": os.getenv("HIVE_SECRET_KEY", ""),
+    },
     "nano": {
         "url": os.getenv("NANOGPT_API_URL", "https://nano-gpt.com/api/v1/chat/completions"),
         "key": os.getenv("NANOGPT_API_KEY", ""),
@@ -216,15 +229,33 @@ HUB_MODEL_ALIASES = {
     "glmmaxablit.ai": ("ablit.ai", "abliterated-model-large-v2", True),
     "deepablit.ai": ("ablit.ai", "abliterated-model-large", False),
     "glmablit.ai": ("ablit.ai", "abliterated-model-large-v2", False),
+    # TEAM ROUTES (2026-10-21): /team is ALWAYS on. These ids address the
+    # team sub-agent hops DIRECTLY: the GLM and DeepSeek team brains run on
+    # the built-in Hive provider, and the abliterated terminal is the
+    # refusal-proof Abliteration LARGE V2 brain (REDHANDS on max-offense).
+    # /team dispatch resolves through resolve_hub_alias, so the legacy
+    # "Team" name also reaches the V2 terminal.
+    "teamglm": ("hive", "zai-org/glm-5.3-flash", False),
+    "teamdeep": ("hive", "deepseek-ai/deepseek-v4.1-flash", False),
+    "teamabliterated": ("ablit.ai", "abliterated-model-large-v2", False),
+    "team": ("ablit.ai", "abliterated-model-large-v2", False),
 }
-
+# W5 hygiene: the display derivation IS the aliases (test_hub_display_
+# is_derived_from_hub_model_aliases). "team" is a word stem, so it joins the
+# token table instead of being special-cased in the display builder.
 # Display names, DERIVED from HUB_MODEL_ALIASES (W5): the two tables used to
 # be hand-maintained duplicates, and a new alias rendered the display table
 # stale until someone remembered to update it too. The aliases have no word
 # separators, so the display name is rebuilt token-wise from the known stems.
+# A second, stale copy of this table used to shadow this one (it had lost
+# "team", so every TEAM route rendered lowercase); exactly one table, longest
+# token first.
 _HUB_DISPLAY_TOKENS = (
-    # longest token first: "ablit.ai" must win over any future 1-char stem
+    # longest token first: "abliterated"/"ablit.ai" must win over any future
+    # 1-char stem
+    ("abliterated", "Ablit.ai"),
     ("ablit.ai", "Ablit.ai"),
+    ("team", "Team"),
     ("deep", "Deep"),
     ("glm", "GLM"),
     ("max", "Max"),

@@ -21,10 +21,13 @@ def _body(prompt="hello world"):
 
 def test_authz_off_by_default(client, script):
     script.script(PRIMARY, [("status", 400, {"error": "auth"})])
+    script.script(WORKER, [("sse", [chunk("rescued answer", finish="stop"), DONE])])
     resp = client.post("/v1/chat/completions", json=_body())
-    # 400 from the upstream surfaces as an SSE error chunk (fail fast, no divert)
+    # RESCUE (operator directive 2026-10-21): a fail-fast upstream error no
+    # longer ends the conversation - the uncensored specialist answers.
     assert resp.status_code == 200
-    assert "upstream error (400)" in resp.text
+    assert "rescued answer" in resp.text
+    assert "upstream error" not in resp.text.lower()
 
 
 def test_authz_enforced_denies_empty_principals(client, script, monkeypatch):

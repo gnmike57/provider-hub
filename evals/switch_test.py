@@ -229,7 +229,9 @@ def test_resolve_frost_name_maps_to_slot_binding():
         s,
     )
     assert got["url"] == WORKER and got["provider_id"] == "frost:worker"
-    assert got["model"] == "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
+    # CYBER-FROST RETIRED (2026-10-21): the legacy name resolves to the
+    # constellation's uncensored TERMINAL (abliterated-model-large-v2).
+    assert got["model"] == "abliterated-model-large-v2"
     got2 = model_switch.resolve_target(
         model_switch.parse_switch_request({"target": "primary", "model": "DeepFrost v4.1"}),
         s,

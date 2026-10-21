@@ -21,6 +21,11 @@ def test_key_resolution_precedence(monkeypatch):
     monkeypatch.delenv("FALLBACK_API_KEY")
     assert proxy_gateway._specialist_key() == "nano"
     monkeypatch.delenv("NANOGPT_API_KEY")
+    # hermetic (2026-10-21): the constellation's BUILT-IN floor also resolves
+    # the operator's User-scope Abliteration key, so a bare Windows shell with
+    # no explicit specialist binding still reaches the uncensored terminal.
+    # Pin every contribution out before asserting the "none" floor.
+    monkeypatch.delenv("ABLITERATION_API_KEY", raising=False)
     assert proxy_gateway._specialist_key() == "none"
 
 

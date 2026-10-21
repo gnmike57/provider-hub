@@ -1,12 +1,15 @@
 """Publish per-model gateway endpoints on the gx10 tailnet.
 
 Runs on gx10 (100.67.13.78 / gx10.ayu-sidewinder.ts.net):
-  9311  deepfrost          -> Hive deepseek-ai/deepseek-v4.1-flash  (hedged, worker: local CyberFrost)
-  9312  glmfrost           -> Hive zai-org/glm-5.3-flash           (hedged, worker: local CyberFrost)
-  9313  cyberfrost         -> local CYBER-FROST-3.8-EXL3-SAGE-3.87bpw (no hedge)
-  9314  deepfrost max think -> Hive deepseek-ai/deepseek-v4.1-flash (max-think, no hedge)
-  9315  glmfrost max think  -> Hive zai-org/glm-5.3-flash          (max-think, no hedge)
-  9310  (general)          -> any id in the body; hedge worker = local CyberFrost
+   9314  deepfrost max think -> Hive deepseek-ai/deepseek-v4.1-flash (max-think, no hedge)
+   9315  glmfrost max think  -> Hive zai-org/glm-5.3-flash          (max-think, no hedge)
+   9316  /team               -> the always-on team surface (V2 Large terminal)
+   9310  (general)          -> any id in the body; hedge worker = Ablit V2 Large
+
+CYBER-FROST IS RETIRED (2026-10-21): the constellation completely replaces
+the local-LLM system of old, so the divert/fallback target is the uncensored
+Abliteration LARGE V2 brain (abliterated-model-large-v2) with its key BUILT
+IN (ABLITERATION_API_KEY - proxy_gateway._specialist_key resolves it last).
 """
 import io
 import os
@@ -19,19 +22,20 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 # gx10 local hub (TabbyAPI on :8900, also :4000 via llm_hub.py)
 HUB_URL = "http://127.0.0.1:4000/v1/chat/completions"
 HIVE_URL = "https://api-cdn.thehive.ai/api/v3/chat/completions"
-SPECIALIST = "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
+# Divert target (CYBER-FROST retired 2026-10-21): the constellation's
+# uncensored TERMINAL - the Abliteration LARGE V2 brain, reachable through
+# the built-in ABLITERATION_API_KEY (see proxy_gateway._specialist_key).
+SPECIALIST = "abliterated-model-large-v2"
 
 INSTANCES = [
-    ("deepfrost", 9311, HIVE_URL, "deepseek-ai/deepseek-v4.1-flash", True),
-    ("glmfrost", 9312, HIVE_URL, "zai-org/glm-5.3-flash", True),
-    ("cyberfrost", 9313, HUB_URL, SPECIALIST, False),
     # Max-think ports default the max-think NAME (not the raw upstream id):
     # the gateway recognises it and injects the reasoning knobs itself. The
     # race is disabled at the env layer too (COMMIT_TOKENS=100000) - the
     # gateway already skips hedging for max-think names.
     ("deepfrost max think", 9314, HIVE_URL, "deepfrost max think", False),
     ("glmfrost max think", 9315, HIVE_URL, "glmfrost max think", False),
-    ("general (any Frost name / raw id)", 9310, HIVE_URL,
+    ("team (always-on)", 9316, HIVE_URL, "team", False),
+    ("general (any name / raw id)", 9310, HIVE_URL,
      "deepseek-ai/deepseek-v4.1-flash", True),
 ]
 

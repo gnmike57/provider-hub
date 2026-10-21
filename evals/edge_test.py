@@ -129,7 +129,12 @@ def test_disconnect_drains_in_flight():
     port = s.getsockname()[1]
     s.close()
 
-    config = uvicorn.Config(proxy_gateway.app, host="127.0.0.1", port=port, log_level="error")
+    # lifespan="off": this side-thread server must not run the shared app's
+    # lifespan. A late startup would clobber app.state.http with a real-network
+    # client and a late shutdown would close whatever client is installed at
+    # that moment - both poisoned later tests (concurrent_streams / frost_alias
+    # flakes in full runs). F27 drain is per-request logic, not lifespan.
+    config = uvicorn.Config(proxy_gateway.app, host="127.0.0.1", port=port, log_level="error", lifespan="off")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -168,6 +173,9 @@ def test_disconnect_drains_in_flight():
         # client; once closed, later suites inherited "Cannot send a request,
         # as the client has been closed" (frost_alias flake in the full run).
         # Restore a fresh mock-backed client for whoever runs next.
+        # (lifespan="off" above removes the startup/shutdown cross-talk that
+        # also hit test_concurrent_streams_all_complete; this restore stays as
+        # a cheap belt-and-braces for the swap itself.)
         proxy_gateway.app.state.http = httpx.AsyncClient(
             transport=httpx.MockTransport(script_upstream())
         )

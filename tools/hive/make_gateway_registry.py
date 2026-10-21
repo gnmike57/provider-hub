@@ -5,7 +5,6 @@ The gateway resolves the client's `model` field through this registry
 
     model: "deepseek-4.1-flash"   -> hive: deepseek-ai/deepseek-v4.1-flash
     model: "glm-5.3-flash"        -> hive: zai-org/glm-5.3-flash
-    model: "cyberfrost"           -> local hub specialist
 
 The file holds a live key, so it is gitignored (deployment state, not source).
 """
@@ -43,11 +42,7 @@ doc = {
             "api": "openai",
             "base_url": HUB_BASE,
             "key": "none",
-            "models": {
-                "cyberfrost": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw",
-                "cyber35b": "cyber35b",
-                "qwen3-coder-480b": "qwen3-coder-480b",
-            },
+            "models": {},
         },
     },
     "defaults": {"primary": "hive", "worker": "cyberhub"},

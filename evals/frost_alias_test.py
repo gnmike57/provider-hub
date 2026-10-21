@@ -5,10 +5,29 @@ gateway endpoint can address any of the published specialised systems.
 
 import json
 
+import pytest
+
 import providers
 import proxy_gateway
 from fastapi.testclient import TestClient
 from helpers import DONE, PRIMARY, WORKER, chunk, script  # noqa: F401
+
+
+@pytest.fixture(autouse=True)
+def fresh_envs(monkeypatch):
+    """Full-suite isolation (2026-10-21): the HIVE_* / PRIMARY_* / SPECIALIST_*
+    / WORKER_* / ABLITERATION_* bindings are resolved at Settings-instantiation
+    time from the process env, so a leak from ANY other eval (primary_config,
+    redhands, the verify probes...) flips these alias-routing tests red in the
+    full suite while they stay green in isolation. Pin the whole family for
+    this module - monkeypatch restores the previous state afterwards."""
+    for name in ("PRIMARY_API_URL", "PRIMARY_API_KEY", "PRIMARY_MODEL",
+                 "SPECIALIST_API_URL", "SPECIALIST_API_KEY", "SPECIALIST_MODEL",
+                 "FALLBACK_API_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL",
+                 "WORKER_API_URL", "WORKER_API_KEY", "WORKER_MODEL",
+                 "HIVE_API_BASE", "HIVE_SECRET_KEY", "HIVE_API_URL",
+                 "NANOGPT_API_KEY", "ABLITERATION_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
 
 
 def test_alias_table_covers_the_three_systems():
@@ -20,10 +39,13 @@ def test_alias_table_covers_the_three_systems():
         "primary", "zai-org/glm-5.3-flash")
     assert providers.resolve_frost_alias("glmfrost-5.3-flash") == (
         "primary", "zai-org/glm-5.3-flash")
+    # CYBER-FROST RETIRED (2026-10-21): the legacy names address the
+    # constellation's uncensored Abliteration LARGE V2 terminal now - the
+    # same id every chain terminates on (abliterated-model-large-v2).
     assert providers.resolve_frost_alias("cyberfrost") == (
-        "worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw")
+        "worker", "abliterated-model-large-v2")
     assert providers.resolve_frost_alias("cyberfrost-3.8-sage") == (
-        "worker", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw")
+        "worker", "abliterated-model-large-v2")
 
 
 def test_raw_ids_and_unknown_models_pass_through():
@@ -56,8 +78,9 @@ def test_glmfrost_name_uses_the_glm_upstream_id(script):
 
 
 def test_cyberfrost_name_routes_to_the_worker_slot(script):
-    """CyberFrost lives in the worker slot, so the request must go to WORKER's
-    URL with the specialist id - and still stream back to the client."""
+    """CYBER-FROST is retired (2026-10-21): the legacy names address the
+    uncensored Abliteration LARGE V2 terminal on the worker slot - and the
+    answer still streams back to the client."""
     script.script(WORKER, [("sse", [chunk("specialist", finish="stop"), DONE])])
     with TestClient(proxy_gateway.app) as tc:
         resp = tc.post("/v1/chat/completions",
@@ -67,7 +90,7 @@ def test_cyberfrost_name_routes_to_the_worker_slot(script):
     assert "specialist" in resp.text
     sent = [c for c in script.calls if c["url"] == WORKER]
     assert sent, "the worker slot was never called"
-    assert sent[0]["json"]["model"] == "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
+    assert sent[0]["json"]["model"] == "abliterated-model-large-v2"
     assert not [c for c in script.calls if c["url"] == PRIMARY], (
         "a CyberFrost request must not touch the primary slot")
 

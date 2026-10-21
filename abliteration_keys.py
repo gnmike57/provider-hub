@@ -27,6 +27,11 @@ CLI:
 Design rules (mirrors the repo header):
     6. Guards run once; the egress hook never raises into the request path -
        any pool failure degrades to the configured single key.
+    7. Bulletproofing (2026-10-21): a damaged/foreign pool file degrades to
+       an empty pool (never a crash); reload detection keys on mtime+size
+       (a file without `saved_at` still reloads); ensure_pool() rejects
+       size < 1 BEFORE any remote call and persists after every mint, so a
+       mid-run failure cannot orphan a key whose full value was shown once.
 """
 
 import json
@@ -45,6 +50,7 @@ __all__ = [
     "next_key",
     "pooled_headers",
     "pool_summary",
+    "pool_summary_from_keys",
     "reload_pool",
 ]
 
@@ -83,7 +89,7 @@ def admin_key() -> str:
 # Round-robin pool (read side - hot path, must never raise)
 # ---------------------------------------------------------------------------
 
-_LOCK = threading.Lock()
+_LOCK = threading.RLock()
 _STATE: Dict[str, object] = {"spec": None, "keys": [], "idx": 0}
 
 
@@ -93,12 +99,20 @@ def reload_pool() -> None:
         _STATE["spec"] = None
 
 
-def _load_pool_file() -> Dict:
+def _read_pool_file(path: str) -> Dict:
+    """Read a pool file defensively: any failure (missing, unreadable,
+    corrupt JSON, or a valid-JSON body that is not an object) yields {} -
+    readers never crash on a damaged file."""
     try:
-        with open(POOL_PATH, "r", encoding="utf-8") as fh:
-            return json.load(fh)
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
     except (OSError, ValueError):
         return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _load_pool_file() -> Dict:
+    return _read_pool_file(POOL_PATH)
 
 
 def _resolve_keys() -> List[str]:
@@ -108,8 +122,18 @@ def _resolve_keys() -> List[str]:
         keys = [k.strip() for k in env.split(",") if k.strip()]
     else:
         data = _load_pool_file()
-        keys = [k.get("value", "") for k in data.get("keys", []) if k.get("value")]
-        spec = ("file", data.get("saved_at"))
+        raw = data.get("keys") or []
+        if not isinstance(raw, list):
+            raw = []  # "keys": <non-list> inside an otherwise valid file
+        keys = [k["value"] for k in raw
+                if isinstance(k, dict) and k.get("value")]
+        # Cache key = file identity, NOT the (often absent) `saved_at` field:
+        # a hand-edited or legacy file without saved_at must still reload.
+        try:
+            st = os.stat(POOL_PATH)
+            spec = ("file", st.st_mtime_ns, st.st_size)
+        except OSError:
+            spec = ("file", None)
     with _LOCK:
         if _STATE["spec"] != spec:
             _STATE["spec"] = spec
@@ -120,11 +144,14 @@ def _resolve_keys() -> List[str]:
 
 def next_key() -> str:
     """Next pool key, round-robin. '' when the pool is empty (caller keeps
-    its configured single key)."""
-    keys = _resolve_keys()
-    if not keys:
-        return ""
+    its configured single key). Reload detection and the rotation index
+    advance inside ONE critical section (RLock - _resolve_keys re-enters
+    it), so concurrent callers can never interleave a pool swap between
+    the length read and the index write."""
     with _LOCK:
+        keys = _resolve_keys()
+        if not keys:
+            return ""
         idx = int(_STATE["idx"])
         _STATE["idx"] = (idx + 1) % len(keys)
         return keys[idx % len(keys)]
@@ -139,7 +166,8 @@ def pooled_headers(headers: Optional[Dict[str, str]], url: str) -> Dict[str, str
 
     When `url` targets api.abliteration.ai and the pool is non-empty, return
     a copy of `headers` with Authorization rotated to the next pool key. Any
-    other URL (Hive, gx10 hub, CYBER-FROST, ...) returns `headers` unchanged
+    other URL (Hive, the gx10 box's non-Abliteration services, ...) returns
+    `headers` unchanged
     so today's live topology behaves exactly as before. The input dict is
     never mutated."""
     if not _is_ablit(url):
@@ -152,10 +180,34 @@ def pooled_headers(headers: Optional[Dict[str, str]], url: str) -> Dict[str, str
     return out
 
 
-def _redact(value: str) -> str:
+def _redact(value: Optional[str]) -> str:
+    if value is None:
+        return ""  # empty is empty - do not fabricate a partial mask
+    value = str(value)
+    if not value:
+        return ""
     if len(value) <= 8:
         return value[:3] + "..."
     return value[:5] + "..." + value[-4:]
+
+
+def pool_summary_from_keys(keys: object) -> Dict:
+    """Redacted summary over an explicit list of raw pool entries (no file
+    or env reads). Defensive by contract: non-dict entries are dropped (the
+    same filter the hot path applies) and null/short values redact to "",
+    so a damaged pool file degrades to a smaller summary instead of a 500
+    from a status endpoint."""
+    entries: List[Dict[str, object]] = []
+    for k in keys if isinstance(keys, list) else []:
+        if not isinstance(k, dict):
+            continue
+        entries.append({
+            "id": k.get("id"),
+            "name": k.get("name"),
+            "redacted": _redact(k.get("value")),
+            "created_at": k.get("created_at"),
+        })
+    return {"size": len(entries), "keys": entries}
 
 
 def pool_summary() -> Dict:
@@ -165,20 +217,9 @@ def pool_summary() -> Dict:
         n = len([k for k in env.split(",") if k.strip()])
         return {"source": "env", "size": n}
     data = _load_pool_file()
-    keys = data.get("keys", [])
-    return {
-        "source": "file",
-        "size": len(keys),
-        "keys": [
-            {
-                "id": k.get("id"),
-                "name": k.get("name"),
-                "redacted": _redact(k.get("value", "")),
-                "created_at": k.get("created_at"),
-            }
-            for k in keys
-        ],
-    }
+    summary = pool_summary_from_keys(data.get("keys"))
+    summary["source"] = "file"
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +285,10 @@ class KeyFactory:
                 if not data.get("has_more"):
                     break
                 after = data.get("last_id")
+                if not after:
+                    # has_more without a cursor: a broken page would
+                    # otherwise loop forever - stop with what we have.
+                    break
             return out
         finally:
             if own:
@@ -299,6 +344,11 @@ def ensure_pool(size: int = POOL_SIZE, prefix: str = POOL_PREFIX,
     - Missing entries are minted fresh via the Admin API.
     Returns the redacted summary; full values are written to the pool file."""
     path = pool_path or POOL_PATH
+    if not isinstance(size, int) or isinstance(size, bool) or size < 1:
+        # Reject BEFORE any remote call: a bogus size (e.g. -3 from the CLI)
+        # must never reach the surplus-trimming slice, which with a negative
+        # size would keep nothing and revoke healthy live keys.
+        raise ValueError(f"ensure_pool: size must be a positive integer, got {size!r}")
     f = factory or KeyFactory()
     own = client is None
     if own:
@@ -321,7 +371,25 @@ def ensure_pool(size: int = POOL_SIZE, prefix: str = POOL_PREFIX,
         for i in range(1, size + 1):
             if any(k["name"] == f"{prefix}-{i}" for k in kept):
                 continue
-            created = f.create_key(f"{prefix}-{i}", client)
+            try:
+                created = f.create_key(f"{prefix}-{i}", client)
+            except Exception:
+                # Crash-safety: each minted key's full value is shown ONCE.
+                # If a later mint fails, persist everything confirmed so far
+                # (existing pool + mints already made) before propagating, so
+                # no orphan key is lost forever. Best-effort file write; never
+                # mask the original error.
+                try:
+                    data = {"project_id": f._project_id or f.project_id(client),
+                            "saved_at": time.time(),
+                            "keys": [dict(k) for k in kept]}
+                    tmp = path + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as fh:
+                        json.dump(data, fh, indent=2)
+                    os.replace(tmp, path)
+                except Exception:
+                    pass
+                raise
             kept.append({
                 "id": created["id"], "name": created.get("name"),
                 "value": created.get("value"), "created_at": created.get("created_at"),

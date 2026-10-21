@@ -18,6 +18,7 @@ __all__ = [
     "ROUTING_RE",
     "normalise",
     "is_routable",
+    "is_presignal_recovered",
     "should_hedge",
     "tier2_decision",
     "classify_status",
@@ -32,6 +33,8 @@ __all__ = [
     "RETRY_STATUS",
     "FAIL_FAST_STATUS",
     "FOOTNOTE_TEMPLATE",
+    "STAGE_STYLES",
+    "stage_comment",
 ]
 
 # ---------------------------------------------------------------------------
@@ -52,9 +55,23 @@ __all__ = [
 #     "- I cannot help with that.") was MISSED because the anchor only allowed
 #     leading whitespace. The anchor now tolerates leading markdown/bullet
 #     punctuation - the refusal that follows is still anchored at the start.
+#
+# CALIBRATED 2026-10-21 (live defect, the chain never diverted): a real
+# GLM-5.3-flash refusal - "I'm not going to help with this." - shipped to the
+# client because the anchored regex had no "not going to <verb>" form, and the
+# \A anchor means ANY preamble word before an "I can't" core defeats every
+# alternative ("Sorry, I can't...", "Unfortunately, I cannot..."). Closed:
+#   * the "I'm not going to <refusal verb>" family, "I won't help/assist",
+#     "I'd rather not", "Apologies, but ...";
+#   * an OPTIONAL TIGHT PREAMBLE (unfortunately/regrettably/sadly/sorry + a
+#     separator) that only fires when a real refusal core immediately follows
+#     it - "Sorry for the delay, here is the answer" stays unrouted because
+#     no core follows the preamble.
 # ---------------------------------------------------------------------------
-ROUTING_RE = re.compile(
-    r"""\A\s*(?:[#>*_\-•\u2022]+\s*)*(?:
+# The refusal CORE (single source): the anchored ROUTING_RE and the
+# unanchored _PRESIGNAL_TAIL_RE are built from the SAME alternation, so a new
+# refusal form can never be added to one and forgotten in the other.
+_REFUSAL_CORE = r"""(?:
         i\s*(?:can'?t|cannot|can\s*not)\b
       | i\s*(?:am|'m)\s+unable\s+to\b
       | i\s*(?:am|'m)\s+not\s+able\s+to\b
@@ -66,8 +83,13 @@ ROUTING_RE = re.compile(
       | i'?m\s+sorry\b
       | i\s+am\s+sorry\b
       | sorry,?\s+but\b
+      | apologies,?\s+but\b
       | as\s+an\s+(?:ai\b|ai\s+language\s+model\b|language\s+model\b)
       | i\s+won'?t\s+be\s+able\b
+      | i\s+won'?t\s+(?:help|assist)\b
+      | i\s*(?:am|'m)\s+not\s+going\s+to\s+(?:help|assist|answer|provide|fulfill|do|engage|comply|participate)\b
+      | i'?d\s+rather\s+not\b
+      | that\s+(?:request|question|ask)\s+falls\s+outside\b
       | i\s+am\s+going\s+to\s+have\s+to\b
       | against\s+my\s+(?:safety\s+)?guidelines\b
       | i\s*(?:can'?t|cannot|can\s*not)\s+(?:help|assist|provide|fulfill|do)\b
@@ -75,9 +97,21 @@ ROUTING_RE = re.compile(
       | cannot\s+(?:fulfill|assist\s+with|comply\s+with)\s+(?:this|that|your)\s+request\b
       | not\s+permitted\s+to\b
       | prohibited\s+from\b
-    )""",
+    )"""
+
+ROUTING_RE = re.compile(
+    r"\A\s*(?:[#>*_\-\u2022]+\s*)*"
+    r"(?:(?:unfortunately|regrettably|sadly|sorry)[,:!.]?\s+)?"
+    + _REFUSAL_CORE,
     re.IGNORECASE | re.VERBOSE,
 )
+
+# Unanchored view of the SAME core (see _REFUSAL_CORE): a refusal ANYWHERE in
+# a continuation. The presignal recovery judge uses it because the measured
+# non-recovered shapes re-refuse in a LATER sentence ("I cannot help with
+# that. I'm not able to assist with this request.") - anchored matching only
+# sees the continuation's first words.
+_PRESIGNAL_TAIL_RE = re.compile(_REFUSAL_CORE, re.IGNORECASE | re.VERBOSE)
 
 _PUNCT_FOLD = {
     "\u2018": "'",
@@ -128,6 +162,95 @@ def is_routable(text: str) -> bool:
     if not text:
         return False
     return bool(ROUTING_RE.search(normalise(text)))
+
+
+# Post-refusal LECTURE detector (2026-10-21, live defect): the presignal
+# recovery rule used to accept ANY substantive refusal-free continuation, so
+# the measured GLM-5.3 shape - "I'm not going to help with this. [lecture].
+# I'm happy to help with: [alternatives]. Let me know if any of those would
+# be useful." - counted as "recovered" and the refusal shipped to the client.
+# A TRUE self-correction DELIVERS the ask ("...but here is the full answer
+# anyway: 42"); a lecture re-offers help on OTHER things. Used ONLY by the
+# primary's continue-with-primary recovery judge - never by the terminal
+# commitment contract (a benign closing "let me know if you need more" must
+# not re-ask the specialist).
+_PRESIGNAL_LECTURE_RE = re.compile(
+    r"""\b(?:
+        (?:happy|glad|willing)\s+to\s+help\s+with\b
+      | i\s+(?:can|could)\s+help\s+with\b
+      | let\s+me\s+know\s+if\b
+      | (?:feel\s+free|don'?t\s+hesitate)\s+to\s+(?:ask|reach\s+out)\b
+      | (?:for|with)\s+legitimate\s+(?:reasons|purposes)\b
+      | (?:doing|for)\s+legitimate\s+(?:security\s+)?work\b
+      | (?:other|safer)\s+(?:ways|alternatives|options)\s+to\b
+      | consider\s+(?:looking\s+into|exploring)\b
+      | (?:won'?t|wouldn'?t)\s+be\s+able\s+to\s+(?:help|assist|do)\b
+    )""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def is_presignal_recovered(post_text: str, min_substantive_chars: int = 20) -> bool:
+    """True when the primary SELF-CORRECTED after a refusal pre-signal.
+
+    Recovery = substantive + refusal-free (anchored AND unanchored: the
+    measured non-recovered shapes re-refuse in a later sentence) +
+    LECTURE-free. See _PRESIGNAL_LECTURE_RE and _PRESIGNAL_TAIL_RE for the
+    live defects this closes.
+
+    F1 (scrutiny pass 2026-10-21): the head AND the TAIL are judged -
+    a long continuation that re-refuses or lectures LATE (beyond the
+    old [:400] window) must not ship as "recovered"."""
+    if not post_text:
+        return False
+    if len(post_text) < min_substantive_chars:
+        return False
+    if is_routable(post_text[:200]):
+        return False
+    if len(post_text) > 800:
+        window = post_text[:400] + "\n" + post_text[-400:]
+    else:
+        window = post_text
+    norm = normalise(window)
+    if _PRESIGNAL_TAIL_RE.search(norm):
+        return False
+    return _PRESIGNAL_LECTURE_RE.search(norm) is None
+
+
+# ---------------------------------------------------------------------------
+# STAGE COLOUR ANNOTATIONS (operator UX, 2026-10-21): the gateway emits an
+# SSE COMMENT line at every stage transition so a client UI can restyle the
+# lettering by the model CURRENTLY replying - helm (cheap GLM/DeepSeek) ->
+# middle (the no-reasoning other flash) -> terminal (the Abliterated V2
+# Large brain), plus the speculative hedge race. Comment lines (`: ...`) are
+# part of the SSE spec: standard OpenAI-style consumers that parse only
+# `data:` lines ignore them, so the verbatim chunk relay (B8) is untouched.
+#
+# SUBTLE PALETTE (operator directive): near-white tints for the lettering
+# plus a FAINT GLOW hue per stage. A UI consumes `tint=` as the font colour
+# (a slightly-off white) and `glow=` as the text-shadow hue, e.g. CSS:
+#     color: #edf4fd;
+#     text-shadow: 0 0 8px rgba(59, 130, 246, 0.35);
+# Every `data:` chunk ALSO carries the answering model id in its `model`
+# field.
+# ---------------------------------------------------------------------------
+STAGE_STYLES = {
+    # helm: faint blue-white - the GLM/DeepSeek reasoning helm
+    "helm": ("#edf4fd", "#3b82f6"),
+    # middle: faint violet-white - the no-reasoning secondary flash
+    "middle": ("#f3effb", "#8b5cf6"),
+    # terminal: faint rose-white (REDHANDS red) - the Abliterated V2 brain
+    "terminal": ("#fdf0f2", "#f43f5e"),
+    # hedge: faint amber-white - the speculative race branch
+    "hedge": ("#fdf6ec", "#f59e0b"),
+}
+
+
+def stage_comment(stage: str, model: str) -> bytes:
+    """One SSE comment line announcing the replying stage: its near-white
+    font tint and its faint glow hue."""
+    tint, glow = STAGE_STYLES.get(stage, ("#f5f5f4", "#a8a29e"))
+    return f": gw-stage {stage} {model} tint={tint} glow={glow}\n\n".encode()
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +348,8 @@ NO_GO_RE = re.compile(
     r"""\b(?:
         (?:synthes\w*|manufactur\w*|produc\w*|mak\w*|formulat\w*|cook\w*)\s+
         (?:of\s+|up\s+|a\s+|an\s+|the\s+|some\s+|me\s+|us\s+)*
+        (?:batch(?:es)?\s+of\s+|stockpiles?\s+of\s+|supply\s+of\s+|
+           grams?\s+of\s+|kilos?\s+of\s+|kilograms?\s+of\s+)*
         (?:nerve\s+agents?|sarin|soman|tabun|vx\b|novichok|mustard\s+gas|ricin|
            anthrax|smallpox|weaponiz\w*\s+\w+)
       | csam\b
