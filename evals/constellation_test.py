@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import constellation
 import model_switch
+import stickiness  # hermeticity: reset per _wire_gateway (2026-10-22)
 from model_switch import (SwitchError, SlotManager, parse_switch_request,
                            apply_constellation)
 
@@ -294,6 +295,12 @@ def _wire_gateway(monkeypatch, sc):
 
     monkeypatch.setattr(proxy_gateway, "make_client", _make)
     proxy_gateway.BREAKER = proxy_gateway.SpecialistCircuitBreaker()
+    # HERMETICITY (2026-10-22): earlier tests in this file divert on the
+    # same "hi" conversation fingerprint - without a reset the sticky
+    # window leaked into test_no_presignal_normal_stream and made its clean
+    # answer divert order-dependently (the shared helpers.script fixture
+    # resets this; _wire_gateway bypassed it).
+    stickiness.reset()
     s = proxy_gateway.SETTINGS
     s.primary_api_url, s.primary_api_key, s.primary_model = PRIMARY, "", "primary"
     s.fallback_api_url, s.fallback_api_key, s.fallback_model = WORKER, "none", "worker"

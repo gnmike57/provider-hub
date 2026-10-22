@@ -334,31 +334,56 @@ def zero_refusal_violation(text: str) -> Optional[str]:
 # Returns the estimated item COUNT (0 = single-item ask).
 # ---------------------------------------------------------------------------
 _ITEM_LINE_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•]|#{1,3})\s+\S", re.MULTILINE)
-_ORDINAL_RE = re.compile(
-    r"\b(?:first|second|third|fourth|fifth|finally|also|then|next|additionally)\b",
-    re.IGNORECASE)
+# PRECISION FIX (2026-10-22): strong enumerators introduce REQUIREMENTS
+# ("first ... second ... finally ..."); weak connectives merely sequence
+# NARRATIVE ("then the server crashed", "I built it, then I ran it") and
+# alone must never make an ask multi-item - measured live, "I built the
+# parser, then I ran the tests, then I shipped it." counted 2 and fired
+# a spurious COMPLETION_STRICT repair divert.
+_ORDINAL_STRONG_RE = re.compile(
+    r"\b(?:first|second|third|fourth|fifth|finally)\b", re.IGNORECASE)
+_ORDINAL_WEAK_RE = re.compile(
+    r"\b(?:also|then|next|additionally)\b", re.IGNORECASE)
+# Imperative boundary widened to comma-lead-ins (", explain", ", and add"):
+# "Write a function, explain it, and add tests." is a real 3-item ask the
+# sentence-start-only anchor missed; past-tense narrative still matches
+# nothing (the verb must directly follow the boundary).
 _IMPERATIVE_RE = re.compile(
-    r"(?:^|[.!?\n])\s*(?:please\s+)?(?:write|create|build|make|give|provide|"
+    r"(?:^|[.!?;\n]|,\s*(?:and\s+|then\s+|also\s+)?)\s*(?:please\s+)?"
+    r"(?:write|create|build|make|give|provide|"
     r"list|explain|describe|generate|design|implement|add|include|produce|"
     r"deliver|draft|outline|summarize|compare|analyze|find|fetch|verify)\b",
     re.IGNORECASE)
 
 
 def is_multi_item_ask(text: str) -> int:
-    """Estimated number of enumerable requirements in the ask (0 = simple)."""
+    """Estimated number of enumerable requirements in the ask (0 = simple).
+
+    Precision law (2026-10-22): prose counts as multi-item only when it
+    carries >= 2 imperative requirement verbs, a genuine >= 2 strong-ordinal
+    enumeration, or a strong ordinal backing an imperative ("First write X,
+    then explain Y" = 2). Narrative connectives never count alone.
+    MULTI_ITEM_LEGACY_ORDINALS=1 restores the pre-fix counting (kill
+    switch - weak connectives included).
+    """
     if not text or not isinstance(text, str):
         return 0
     norm = normalise(text)
     marked = _ITEM_LINE_RE.findall(norm)
     if marked:
         return max(len(marked), 1)
-    ordinals = len(_ORDINAL_RE.findall(norm))
+    strong = len(_ORDINAL_STRONG_RE.findall(norm))
     imperatives = len(_IMPERATIVE_RE.findall(norm))
-    # >= 2 ordinal markers or >= 2 imperative verbs = multi-item ask
-    if ordinals >= 2:
-        return ordinals
     if imperatives >= 2:
-        return imperatives
+        return max(imperatives, strong)
+    if strong >= 2:
+        return strong
+    if strong >= 1 and imperatives >= 1:
+        return max(2, strong + imperatives)
+    if os.getenv("MULTI_ITEM_LEGACY_ORDINALS", "0") == "1":
+        weak = len(_ORDINAL_WEAK_RE.findall(norm))
+        if strong + weak >= 2:
+            return strong + weak
     return 0
 
 
@@ -408,6 +433,17 @@ def stage_comment(stage: str, model: str) -> bytes:
     font tint and its faint glow hue."""
     tint, glow = STAGE_STYLES.get(stage, ("#f5f5f4", "#a8a29e"))
     return f": gw-stage {stage} {model} tint={tint} glow={glow}\n\n".encode()
+
+
+def hop_comment(chain: str, note: str) -> bytes:
+    """One SSE comment line narrating a chain hop as it STARTS (progressive
+    display, 2026-10-22): the chains' non-streaming hops (race candidates,
+    conductor plan/fan-out, deep verify, auto-team decomposition) otherwise
+    leave the client in total silence until the deliverable streams - the
+    first byte out is the answer itself. Same law as stage_comment: `: `
+    lines are SSE comments, standard OpenAI-style consumers ignore them, an
+    enriched UI shows the short hop line ("run command ...")."""
+    return f": gw-hop {chain} {note}\n\n".encode()
 
 
 # ---------------------------------------------------------------------------

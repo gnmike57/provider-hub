@@ -1,3 +1,0 @@
-{"ts": 1791309186.704, "request_id": "gw-672a6d15d3c9", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_forced", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
-{"ts": 1791309188.679, "request_id": "gw-205759fa7de3", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "routing_signal": "hedge_forced", "mode": "hedge", "artifact_sha256": null, "deliverable_sha256": null}
-sovereign zai-org/glm-5.3-flash finished with no content -> worker

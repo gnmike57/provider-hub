@@ -14,6 +14,7 @@ import pytest
 
 import proxy_gateway
 import stickiness  # T-C: reset per test (default-on cross-conversation state)
+import camouflage  # T-D: pin the learned pool per test (hermeticity)
 
 PRIMARY = "http://primary.test/v1/chat/completions"
 WORKER = "http://worker.test/v1/chat/completions"
@@ -83,7 +84,7 @@ class Script:
 
 
 @pytest.fixture()
-def script(monkeypatch):
+def script(monkeypatch, tmp_path):
     """Gateway with a MockTransport-backed client + reset state."""
     sc = Script()
     sc.script(PRIMARY, [])  # default: unscripted -> 404 (test must script it)
@@ -102,6 +103,17 @@ def script(monkeypatch):
     # would leak between tests and change which stage answers. Reset like
     # BREAKER: every test starts with per-request decisions.
     stickiness.reset()
+    # T-D HERMETICITY (2026-10-22): the camouflage learned pool + its map
+    # file are PROCESS + MACHINE state - camouflage_test learns pairs into
+    # them, the operator's live map shadows seed vocabulary, and the chains
+    # apply camo mid-stream (the SHARPEN hop), so without a pin the same
+    # suite's assertions become execution-order- and machine-dependent (the
+    # measured full-run failure: 'keystroke sniffer' leaked from
+    # camouflage_test into chains_td's SHARPEN assertion). Pin an EMPTY
+    # pool + a throwaway map path per test: CAMO_SEED always applies.
+    monkeypatch.setattr(camouflage, "_POOL", {})
+    monkeypatch.setattr(camouflage, "_MAP_PATH",
+                        str(tmp_path / "camouflage_map.jsonl"))
     s = proxy_gateway.SETTINGS
     s.primary_api_url = PRIMARY
     s.primary_api_key = ""

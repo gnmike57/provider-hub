@@ -298,6 +298,11 @@ def test_flush_failure_keeps_previous_map_never_raises(tmp_path, monkeypatch):
 
     monkeypatch.setattr(camouflage, "io",
                         types.SimpleNamespace(open=exploding_open))
+    # HERMETICITY (2026-10-22): the injected pair is process state - swap in
+    # a COPY of the pool so the learned 'keystroke sniffer' cannot leak past
+    # this test and shadow the CAMO_SEED ('input monitor') in later suites
+    # (the measured order-dependent chains_td failure in full runs).
+    monkeypatch.setattr(camouflage, "_POOL", dict(camouflage._POOL))
     with camouflage._LOCK:
         camouflage._POOL["keylogger"] = "keystroke sniffer"
     camo._flush()                                     # must not raise

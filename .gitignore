@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.log
-!evals/results/*.log
 .env
 ufo.env
 
@@ -63,11 +62,26 @@ card_amount_audit.jsonl
 skills_memory.jsonl
 camouflage_map.jsonl
 
+# dated suite transcripts (.txt) stay tracked even if a broad results
+# ignore lands later; must precede the sentinel-dump rule to keep it ignored
+!evals/results/*.txt
 # hub runtime artifacts under evals/results (pid / watchdog state / dumps)
 evals/results/frost_hub.pid
 evals/results/frost_watchdog_state.json
 evals/results/_sentinel_dump*
 evals/results/gw_receipts/
+
+# 2026-10-22 hardening: runtime-CHURNING logs + probe scratch under
+# evals/results dirty `git status` on every boot/probe run - they are
+# machine state, not repo content. Untracked via `git rm --cached`; the
+# dated suite transcripts + audit jsonl records stay tracked (the .txt
+# re-include lives ABOVE, before the sentinel-dump rule).
+evals/results/*.log
+evals/results/*.err
+evals/results/*.out
+evals/results/boot_audit.jsonl
+evals/results/_commit.txt
+evals/results/_baseline_*
 
 # ---------------------------------------------------------------------------
 # 2026-10-22 (key-surface audit): secrets that were reachable to `git add -A`.
@@ -107,6 +121,9 @@ evals/_history_key_scan.ps1
 evals/_tmp_ast.py
 evals/_newkey_check.py
 evals/_newkey_swap.py
+evals/_probe_*.py
+evals/_inspect_*.py
+evals/_inspect_*.ps1
 
 
 # point-in-time snapshots from the 2026-10-20 remediation staging - state that

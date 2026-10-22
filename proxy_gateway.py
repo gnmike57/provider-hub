@@ -100,6 +100,7 @@ from routing_patterns import (
     is_multi_item_ask,
     should_hedge,
     stage_comment,
+    hop_comment,
 )
 
 __all__ = ["app", "fallback_stream", "Settings"]
@@ -658,6 +659,57 @@ def metrics_snapshot() -> dict:
     for name, value in speculative_hedge.hedge_failure_counts().items():
         counts[f"hedge_{name}_total"] = value
     return counts
+
+
+# F26b METRICS DURABILITY (2026-10-22, opt-in): _METRICS is process memory -
+# a restart silently zeroed every counter, so the outage window's error rates
+# vanished from monitoring. METRICS_PERSISTENCE=1 reloads counters on boot
+# and flushes them on shutdown (atomic tmp+replace). Gauge-style keys
+# (in_flight, specialist_warm - THIS process's state) and unknown keys never
+# persist. METRICS_STATE_PATH overrides the default metrics_state.json.
+# Default 0 preserves the exact historical behaviour: Prometheus scrape-side
+# counter resets across process boundaries are normal, so durability is the
+# operator's call, not a silent default.
+_METRICS_GAUGE_KEYS = {"in_flight", "specialist_warm"}
+
+
+def _metrics_state_path() -> str:
+    return os.getenv("METRICS_STATE_PATH", "") or "metrics_state.json"
+
+
+def _metrics_load() -> None:
+    """Boot-time counter restore. Never raises (design rule 7)."""
+    try:
+        if not _int_env("METRICS_PERSISTENCE", 0):
+            return
+        with open(_metrics_state_path(), encoding="utf-8") as fh:
+            saved = json.loads(fh.read() or "{}")
+        if isinstance(saved, dict):
+            for name, value in saved.items():
+                if name in _METRICS_GAUGE_KEYS or name not in _METRICS:
+                    continue
+                try:
+                    _METRICS[name] = int(value)
+                except (TypeError, ValueError):
+                    continue
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _metrics_flush() -> None:
+    """Shutdown-time counter persist. Never raises (design rule 7)."""
+    try:
+        if not _int_env("METRICS_PERSISTENCE", 0):
+            return
+        payload = {k: v for k, v in _METRICS.items()
+                   if k not in _METRICS_GAUGE_KEYS}
+        path = _metrics_state_path()
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload))
+        os.replace(tmp, path)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def render_prometheus() -> str:
@@ -2003,6 +2055,8 @@ def _restorable_binding(canonical: str, b: dict) -> bool:
 @app.on_event("startup")
 async def _startup() -> None:
     app.state.http = make_client()
+    # F26b: restore persisted counters (no-op unless METRICS_PERSISTENCE=1).
+    _metrics_load()
     # Identity tag: _shutdown closes ONLY the client this lifespan created.
     # Tests (and the uvicorn side-thread in edge_test) share one app object
     # and swap app.state.http freely; closing whatever is installed at
@@ -2093,6 +2147,10 @@ async def _shutdown() -> None:
     if http is not None and http is getattr(app.state, "_http_owned", None):
         with contextlib.suppress(Exception):
             await http.aclose()
+    # F26b: persist counters for the next boot (no-op unless
+    # METRICS_PERSISTENCE=1). Last statement on purpose: never blocks the
+    # shutdown grace path, never raises into the lifespan.
+    _metrics_flush()
 
 
 async def _keepalive_loop() -> None:
@@ -2355,12 +2413,51 @@ def _completion_strict_violation(settings, body, buffer_text):
         return False
 
 
+# SCRIPT-AWARE COVERAGE TOKENIZER (2026-10-22): the completion/implication
+# judges used to tokenize with [a-z0-9]+, so a CJK/Cyrillic checklist item
+# had ZERO significant words and was silently judged "covered" (probed live:
+# a Chinese item over a completely unrelated Chinese answer = [] uncovered).
+# Now: unicode word runs (ASCII >= 3 chars + stop-filtered, non-ASCII >= 2)
+# plus character BIGRAMS for the scripts that do not space-delimit words
+# (Han/Kana/Hangul) - a CJK run like 添加日志 matches inside a longer reply
+# run instead of demanding exact-equality.
+_WORD_RUN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_CJK_RUN_RE = re.compile(
+    r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]+")
+
+
+def _coverage_tokens(text):
+    """The coverage judges' significant-token set. Never raises (design
+    rule 7: the judges must never kill the stream)."""
+    try:
+        low = str(text or "").lower()
+    except Exception:  # noqa: BLE001
+        return set()
+    toks = set()
+    for w in _WORD_RUN_RE.findall(low):
+        if _CJK_RUN_RE.search(w):
+            continue  # handled as bigrams below
+        if w.isascii():
+            if len(w) >= 3 and w not in _COMPLETION_STOP:
+                toks.add(w)
+        elif len(w) >= 2:
+            toks.add(w)
+    for run in _CJK_RUN_RE.findall(low):
+        if len(run) == 1:
+            toks.add(run)
+        else:
+            for i in range(len(run) - 1):
+                toks.add(run[i:i + 2])
+    return toks
+
+
 def _completion_uncovered(buffer_text):
     """Completion judge (T2.2): for a [[GW-CHECKLIST]]-marked reply return
     the checklist items the answer text does not cover - [] when every
     item is covered, None when the reply carries no checklist (nothing to
-    judge). Coverage = at least half of an item's significant words appear
-    in the reply text outside the checklist block (cheap, deterministic)."""
+    judge). Coverage = at least half of an item's significant tokens
+    appear in the reply text outside the checklist block (cheap,
+    deterministic, SCRIPT-AWARE - see _coverage_tokens)."""
     if not buffer_text:
         return None
     m = _COMPLETION_RE.search(buffer_text)
@@ -2368,11 +2465,10 @@ def _completion_uncovered(buffer_text):
         return None
     items = [ln.strip() for ln in m.group(1).splitlines() if ln.strip()]
     answer_part = buffer_text[:m.start()] + "\n" + buffer_text[m.end():]
-    answer_words = set(re.findall(r"[a-z0-9]+", answer_part.lower()))
+    answer_words = _coverage_tokens(answer_part)
     uncovered = []
     for it in items:
-        words = [w for w in re.findall(r"[a-z0-9]+", it.lower())
-                 if len(w) >= 3 and w not in _COMPLETION_STOP]
+        words = _coverage_tokens(it)
         if not words:
             continue
         hit = sum(1 for w in words if w in answer_words)
@@ -2532,13 +2628,13 @@ def _conductor_uncovered(checklist, deliverable):
 
 def _conductor_implicated(item_text, subtask_text) -> bool:
     """Is this checklist item the responsibility of this subtask? At least
-    half of the item's significant words appear in the subtask text (the
-    coverage judge's own word logic, applied to the repair mapping)."""
-    words = [w for w in re.findall(r"[a-z0-9]+", str(item_text or "").lower())
-             if len(w) >= 3 and w not in _COMPLETION_STOP]
+    half of the item's significant tokens appear in the subtask text (the
+    coverage judge's own token logic - script-aware since 2026-10-22 -
+    applied to the repair mapping)."""
+    words = _coverage_tokens(item_text)
     if not words:
         return False
-    hay = set(re.findall(r"[a-z0-9]+", str(subtask_text or "").lower()))
+    hay = _coverage_tokens(subtask_text)
     return sum(1 for w in words if w in hay) * 2 >= len(words)
 # CONDUCTOR-PART-2C
 async def _conductor_stream(messages, *, user_query, request_id, conductor,
@@ -3370,6 +3466,8 @@ async def chat_proxy(request: Request):
             # the terminal answers the ask under the commitment contract.
             async def _esc():
                 incr("race_terminal_total")
+                if _chain_env_flag("CHAIN_HOP_STATUS"):
+                    yield hop_comment("race", "run command: escalate to terminal")
                 esc_messages = list(messages) + [
                     {"role": "user",
                      "content": CONTRACT_REDIRECT_SENTENCE + CONTRACT_CAMO_TEACHBACK},
@@ -3389,6 +3487,10 @@ async def chat_proxy(request: Request):
 
         async def race_gen() -> AsyncGenerator[bytes, None]:
             try:
+                if _chain_env_flag("CHAIN_HOP_STATUS"):
+                    # PROGRESSIVE DISPLAY: the first byte out the door, long
+                    # before either candidate commits (see hop_comment).
+                    yield hop_comment("race", "run command: 2 candidates in parallel")
                 h = copy.copy(speculative_hedge.SETTINGS)
                 async for chunk in speculative_hedge.race_stream(
                         messages,
@@ -3416,6 +3518,9 @@ async def chat_proxy(request: Request):
 
         async def conductor_gen() -> AsyncGenerator[bytes, None]:
             try:
+                if _chain_env_flag("CHAIN_HOP_STATUS"):
+                    yield hop_comment(
+                        "conductor", "run command: plan, sharpen, fan out")
                 async for chunk in _conductor_stream(
                         messages,
                         user_query=user_query,
@@ -4357,6 +4462,9 @@ async def chat_proxy(request: Request):
         _verify_hop = _hop(chain["verify"])
 
         async def sustained_gen() -> AsyncGenerator[bytes, None]:
+            if _chain_env_flag("CHAIN_HOP_STATUS"):
+                yield hop_comment(
+                    "sustained", "run command: answer + deep verify")
             async for chunk in _sustained_verified(
                     coordinator(), verify=_verify_hop,
                     settings=settings, client=app.state.http):
@@ -4392,6 +4500,9 @@ async def chat_proxy(request: Request):
 
         async def auto_team_gen() -> AsyncGenerator[bytes, None]:
             try:
+                if _chain_env_flag("CHAIN_HOP_STATUS"):
+                    yield hop_comment(
+                        "auto-team", "run command: decompose + fan out")
                 async for chunk in _conductor_stream(
                         messages,
                         user_query=user_query,

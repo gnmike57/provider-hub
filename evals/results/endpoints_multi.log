@@ -1,5 +1,0 @@
-provider-hub endpoints (0.0.0.0, tailnet 100.113.176.84):
-  deepseek-4.1-flash pid=  9868 http://100.113.176.84:9301/v1/chat/completions  (hedged)
-  glm-5.3-flash      pid= 40608 http://100.113.176.84:9302/v1/chat/completions  (hedged)
-  cyberfrost         pid= 13060 http://100.113.176.84:9303/v1/chat/completions
-all up; ctrl-c or kill the pids to stop
