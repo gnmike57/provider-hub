@@ -1,5 +1,16 @@
 # Phase 1 (V2 brain) - STAGED 2026-10-20, Phase 3 (24/7 chassis) - LIVE
 
+> **STATUS AMENDMENT (2026-10-22, line-by-line verification pass).** Superseded
+> by the 2026-10-21 constellation directive (`docs/constellation-hub-plan.md`):
+> the hub on :9000 is the CONSTELLATION hub (abliteration terminal + Hive
+> helms, CONSTELLATION_ONLY=1), not the Hive/CYBER-FROST layout below, and
+> `slot_bindings.json` was purged + rebuilt with the real topology by the W5
+> wave. The "What is LIVE" health claim is TRUE again as of 2026-10-22 (hub
+> healthy on :9000 via the SYSTEM scheduled task, after the
+> `launch_frost_hub.ps1` preflight fix + Machine-scope secret seeding). The
+> `v2-first` preset note below is historical: `constellations.json` (the
+> constellation's own preset file) supersedes that reading.
+
 Gate: POST https://api.abliteration.ai/v1/chat/completions with the ak_ chat key
 still returns **402 insufficient_credits** (org payment_required). Per plan: stage
 Phase 1, keep the LIVE hub on Hive/CYBER-FROST, make Phase 3 live.

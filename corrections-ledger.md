@@ -1,5 +1,15 @@
 # corrections-ledger
 
+> **REFERENCE AMENDMENT (2026-10-22, line-by-line verification pass).** Three
+> broken references, corrected in place: `docs/architecture.md` → the file is
+> `refusal-interception/ARCHITECTURE.MD`; B21's
+> `test_reasoning_held_not_counted_never_leaks_to_worker_path` → the actual pin
+> is `test_reasoning_forwarded_not_counted` (`evals/e2e_gateway_test.py:378`);
+> `evals/_keys.py` exists only in the ufo workspace
+> (`reference-implementation/evals/_keys.py`), not in this repo's `evals/`.
+> All other code/test claims in this ledger verified TRUE against the current
+> tree (2026-10-22).
+
 Defect IDs referenced across `docs/architecture.md` and the module docstrings.
 Every ID below describes a defect observed in earlier drafts of this gateway
 (corpus / prior implementations) and how THIS implementation corrects it.

@@ -1,5 +1,20 @@
 # Plan: Provider Hub — dynamic primary selection for the interception gateway
 
+> **SCOPE AMENDMENT (2026-10-22, line-by-line verification pass).** This plan
+> was written against the **ufo workspace** (`…\ufo\ufo`, branch
+> `feat/provider-hub` @ 8c74bb5, code under `reference-implementation/`) — all
+> of which is true THERE, not in this repo. In provider-hub the modules live
+> at the repo root and the plan is a **design record, largely superseded**:
+> T2 landed differently (`speculative_hedge.hedge_stream(messages, *,
+> request_id, settings, client, tools, tool_choice, escalate)` — the worker
+> is still reduced to `[system, last user]` by design, and only tools are
+> forwarded); `/v1/models` serves the constellation chains, not a registry
+> union; T4 (`admin_ui.py` / `/admin/api/*`) and T5's referenced docs
+> (`docs/run_speculative_gateway.md`, `docs/integrations/opencode_gemma27b.md`)
+> were never built here (the Control Room at `/admin/models` is a different
+> surface). The registry work that DID land: `providers.py` `upsert_provider` /
+> `set_default` / `catalog` / `masked` / `load_registry` + `model_switch.py`.
+
 Base: `main` @ 8c74bb5. Branch: `feat/provider-hub`.
 Workspace root: `C:\Users\lnxzf\Desktop\projects\ufo\ufo`.
 All code under `reference-implementation/`; tests under `reference-implementation/evals/`.

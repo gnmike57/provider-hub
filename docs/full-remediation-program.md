@@ -1,5 +1,23 @@
 # Full Remediation Program — provider-hub + SYNOVA report completeness
 
+> **STATUS AMENDMENT (2026-10-22, line-by-line verification pass).** This plan
+> was an accurate snapshot of the 2026-10-20 pre-remediation state; it has
+> since been **EXECUTED**. W1–W6 deliverables are all in the tree (stage-0
+> restore `evals/stage0_restore_test.py`, money guards `evals/money_guard_test.py`,
+> `_finalize()` in `proxy_gateway.py`, conftest state quarantine, autostart
+> installer fix), the suite is green (**821 passed / 22 skipped / 1 xpassed /
+> 0 failed**, `py -3.12 -m pytest evals/ -q --ignore=evals/results`), and
+> SYNOVA is at **v1.5** (v1.4 embedded the vault byte-exact as
+> `stage8b-credential-vault.md`; v1.5 superseded again). Specific corrections
+> to the text below: the vault lives at `osint\data\evidence\output\synova-ops.md`
+> (not `osint\output\`); the DB stats are osint-super.db = 18 tables / 710,771
+> rows / 139 individuals, synova-intel.db = 13 tables. Every G2 defect listed
+> below (dead `Tier4Classifier`, `requests_clean`, phantom `__all__` entries,
+> dead `buffered_text`, `_HUB_DISPLAY` duplication) was fixed in the W-wave —
+> `evals/state_hygiene_test.py` pins each removal. The W6 live-state gate is
+> TRUE again as of 2026-10-22: both Task Scheduler tasks Running/healthy after
+> the launcher preflight fix (see `docs/constellation-hub-plan.md`).
+
 Status: **PLAN — team assembled, awaiting operator GO.** Date: 2026-10-20.
 Inputs: this session's multi-agent code review (19 files, ~60 verified findings),
 live machine verification (Task Scheduler, /healthz, slot_bindings.json, watchdog

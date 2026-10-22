@@ -1,5 +1,21 @@
 # EPIC ULTRA — Sequential Edit Ledger + Master Checklist
 
+> **LEDGER AMENDMENT (2026-10-22, line-by-line verification pass).** Every
+> checked edit's named symbol, regex, env knob, endpoint, metric, and test
+> file verifiably landed. Five notes, amended in place per protocol:
+> (1) the commit hashes quoted below (7568b8eb, 6f90209b) are no longer valid
+> objects — history was rewritten later; the actual commits are `7e1d728b`
+> (phases 1-3), `ddf43829` (phase 4), `6cff32de` (phase 5), `50c13fc6`
+> (phase 6). (2) "NO git remote configured" is stale — `origin`
+> (github.com/gnmike57/provider-hub.git) is now configured. (3) the Phase-7
+> "hub-pool keys retired, note in-file" claim: `abliteration_pool.json` holds
+> four live keys (hub-pool-1..4) with NO retired note — the retirement, if
+> real, exists only as runtime state. (4) the bus "peers file" is in-memory
+> (`_BUS_PEERS` in `proxy_gateway.py`), not `bus_peers.jsonl`. (5) the
+> retired-footnote grep claim has two live exceptions in
+> `evals/context_handoff_test.py` (:360 asserts the OLD wording — it is probe
+> script, outside the `evals/results/*` carve-out).
+
 Companion to the epic plan. Every ticket expanded to per-edit, per-line
 precision. EXECUTION ORDER: **T2.0 (live defects) -> Phase 1 -> Phase 2
 -> Phase 3 -> Phase 4 -> Phase 5 -> Phase 6 (camouflage + pre-metadata

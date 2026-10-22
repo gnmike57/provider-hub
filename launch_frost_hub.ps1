@@ -1,4 +1,4 @@
-# launch_frost_hub.ps1 - boots the constellation interception hub (uvicorn)
+﻿# launch_frost_hub.ps1 - boots the constellation interception hub (uvicorn)
 # detached. The filename is the legacy entrypoint name and is kept so the
 # scheduled task and watchdog keep working; the system it boots is the
 # constellation (TheHive + Abliteration), CyberFrost retired 2026-10-21.
@@ -51,6 +51,22 @@ $LAUNCH_LOG = "$LOG_DIR\frost_hub_launch.log"
 # Keep the launcher's own audit log bounded (boot evidence, one line per note).
 Rotate-Log -Path $LAUNCH_LOG -MaxBytes 2MB
 
+function Write-Note([string]$m) {
+    # Launcher log file FIRST (guarded), console SECOND (guarded): the file is
+    # the persistent evidence trail for boot failures - what the old console-only
+    # notes lost whenever the scheduled task ran the launcher hidden; the
+    # console is a convenience for interactive runs. Neither may break the launch.
+    # 2026-10-22 FIX: moved ABOVE Resolve-Secret / the preflight. It used to sit
+    # below Find-Python, so a missing REQUIRED secret under the SYSTEM scheduled
+    # task called Write-Note before it was defined -> CommandNotFoundException ->
+    # exit 1 with zero notes (the watchdog then retried forever; the intended
+    # "PREFLIGHT FAIL ... exit 3" never surfaced).
+    try { Add-Content -LiteralPath $LAUNCH_LOG -Value ("{0} {1}" -f (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"), $m) -Encoding utf8 } catch { }
+    # [Console]::Out (not Write-Output): helper functions must return clean values
+    # to their callers, and this is called from inside Stop-HubProcesses.
+    try { if (-not $Quiet) { [Console]::Out.WriteLine($m) } } catch { }
+}
+
 # --- secret resolution: NO secrets in source ---------------------------------
 # 2026-10-21 (hundred-push W0): the literals that used to live in this file
 # were committed (therefore burned) and now resolve from the environment only
@@ -59,11 +75,15 @@ Rotate-Log -Path $LAUNCH_LOG -MaxBytes 2MB
 # secret is a hard preflight failure (exit 3) so Task Scheduler / the watchdog
 # surface it instead of booting a money-unsafe hub. Rotation later only
 # touches User scope - this file never changes again.
+# 2026-10-22 FIX: Machine scope added as the last fallback. The "Frost Hub" /
+# watchdog scheduled tasks run as SYSTEM, whose User scope is NOT the
+# operator's - without this, every task-context launch died in preflight.
 function Resolve-Secret([string]$Name, [switch]$Required) {
     $v = [Environment]::GetEnvironmentVariable($Name, 'Process')
     if (-not $v) { $v = [Environment]::GetEnvironmentVariable($Name, 'User') }
+    if (-not $v) { $v = [Environment]::GetEnvironmentVariable($Name, 'Machine') }
     if (-not $v -and $Required) {
-        Write-Note ("PREFLIGHT FAIL: required secret {0} is not set (process or User scope). Seed once with: setx {0} '<value>'" -f $Name)
+        Write-Note ("PREFLIGHT FAIL: required secret {0} is not set (process, User or Machine scope). Seed once with: setx {0} '<value>' / [Environment]::SetEnvironmentVariable('{0}','<value>','Machine')" -f $Name)
         exit 3
     }
     return $v
@@ -116,16 +136,8 @@ if (-not (Test-PythonRunsHub $py)) {
 }
 
 # --- helpers ----------------------------------------------------------------
-function Write-Note([string]$m) {
-    # Launcher log file FIRST (guarded), console SECOND (guarded): the file is
-    # the persistent evidence trail for boot failures - what the old console-only
-    # notes lost whenever the scheduled task ran the launcher hidden; the
-    # console is a convenience for interactive runs. Neither may break the launch.
-    try { Add-Content -LiteralPath $LAUNCH_LOG -Value ("{0} {1}" -f (Get-Date).ToString("yyyy-MM-dd HH:mm:ss"), $m) -Encoding utf8 } catch { }
-    # [Console]::Out (not Write-Output): helper functions must return clean values
-    # to their callers, and this is called from inside Stop-HubProcesses.
-    try { if (-not $Quiet) { [Console]::Out.WriteLine($m) } } catch { }
-}
+# (Write-Note now lives ABOVE Resolve-Secret - see the 2026-10-22 FIX note
+# there; it must be defined before the preflight can call it.)
 
 # Test-HubHealth / Get-HubListenerPids / Get-ProcIdentity / Rotate-Log live in
 # frost_common.ps1 (dot-sourced above): ONE health definition for every script
@@ -166,7 +178,7 @@ if ($DryRun) {
     # here we print WHAT would happen, never any secret value, and exit 0
     # before the fast-path health check so a healthy hub is not even probed.
     Write-Note ("DryRun: would resolve python (venv -> Python312 -> PATH), pin the Constellation env (PRIMARY/FALLBACK/SPECIALIST -> abliterated-model-large-v2, CONSTELLATION_ONLY=1, ESCALATION_MIDDLE=1, HACKING_MODE bundle, billing knobs), clear stale :{0} listeners, and launch uvicorn proxy_gateway:app on port {0}" -f $PORT)
-    Write-Note "DryRun: secrets resolved from env/User scope only (ABLITERATION_API_KEY, ABLITERATION_ADMIN_KEY, HIVE_SECRET_KEY, ENCRYPTION_KEY, ADMIN_API_KEY) - values are never printed"
+    Write-Note "DryRun: secrets resolved from env/User/Machine scope (ABLITERATION_API_KEY, ABLITERATION_ADMIN_KEY, HIVE_SECRET_KEY, ENCRYPTION_KEY, ADMIN_API_KEY) - values are never printed"
     Write-Note "DryRun: no process started, no hub touched"
     exit 0
 }
@@ -201,8 +213,10 @@ try {
     #   ABLITERATION_ADMIN_KEY  = sk_... admin key (the ONLY admin key alive)
     $ablAk = $env:ABLITERATION_API_KEY
     if (-not $ablAk) { $ablAk = [Environment]::GetEnvironmentVariable('ABLITERATION_API_KEY', 'User') }
+    if (-not $ablAk) { $ablAk = [Environment]::GetEnvironmentVariable('ABLITERATION_API_KEY', 'Machine') }
     $ablSk = $env:ABLITERATION_ADMIN_KEY
     if (-not $ablSk) { $ablSk = [Environment]::GetEnvironmentVariable('ABLITERATION_ADMIN_KEY', 'User') }
+    if (-not $ablSk) { $ablSk = [Environment]::GetEnvironmentVariable('ABLITERATION_ADMIN_KEY', 'Machine') }
     if (-not $ablAk) { Write-Warning "ABLITERATION_API_KEY not set (process or User scope) - Abliteration calls will fail" }
     if (-not $ablSk) { Write-Warning "ABLITERATION_ADMIN_KEY not set (process or User scope) - SIPHON card charging will fail" }
     $env:PRIMARY_API_URL   = "https://api.abliteration.ai/v1/chat/completions"

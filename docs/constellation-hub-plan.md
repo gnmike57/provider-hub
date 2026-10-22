@@ -1,5 +1,55 @@
 # Constellation Hub + REDHANDS — Plan & Implementation Record (2026-10-21)
 
+> **RECONCILIATION (2026-10-22, line-by-line verification pass).** Amendments
+> in place, per protocol §9.4 (dated notes, never silent swaps):
+> * **The catalog grew to SEVEN chains** (option-parity law: only grows). T5.6
+>   added chain 4 `GLMMAX>ABLIT-UNC>ABLITV2L` (uncensored middle); the T-D wave
+>   (2026-10-22) added chain 5 `RACE:DEEPMAX/GLMMAX>ABLITV2L` (parallel
+>   max-reasoning helms, first clean answer commits), chain 6
+>   `GLMMAX-CONDUCTOR>DEEP+ABLITV2L` (decompose → camouflage-sharpen → fan-out
+>   to blind DeepSeek sub-agents + V2 REDHANDS for the nasty hop → assemble →
+>   completion-contract verify; kill switch `CONDUCTOR_CHAIN_ENABLED`), and
+>   chain 7 `ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY` (V2 helm under REDHANDS,
+>   cheap GLM pre-probe, DeepSeek evidence verification). The original three
+>   ids below stay byte-identical (pinned by `evals/redhands_test.py`,
+>   `evals/option_parity_test.py`, `evals/parity_baseline.json`).
+> * **Key pool**: `abliteration_pool.json` now holds FOUR live pool keys
+>   (`hub-pool-1..4`, none revoked) — the "2-key pool" text below describes the
+>   2026-10-21 mint; `ensure_pool(2)` was re-run with N=4 (org-burst bench).
+>   The chat key `ABLITERATION_API_KEY` was rotated 2026-10-22 (ak_QcXw…);
+>   the admin key `sk_Vizp…IVup` is unchanged (verified 2026-10-22).
+> * **Roadmap status (verified live 2026-10-22)**: (1) PARTIAL — the
+>   ZERO-REFUSAL LAW landed a deterministic multilingual full-reply judge
+>   (`routing_patterns.zero_refusal_violation`) at all four commit sites, but
+>   the LLM scout-judge (hard-refusal vs hedging vs done) is still open; the
+>   LLM-judged surfaces that DO exist are the `/v1/verify` two-reviewer council
+>   and the SUSTAINED GLM pre-probe. (2) DONE — via chain-6 CONDUCTOR +
+>   AUTO_TEAM + `/v1/verify` (RARV-C: plan → fan-out → coverage judge →
+>   council → tamper-evident receipt). (3) **NOT DONE** — live-probed
+>   2026-10-22: gx10 `:4001` still serves the OLD tars-hybrid surface
+>   (`abliterated-model-large-v2`, `tars-hybrid`, `abliterated-model`, old
+>   master key); the constellation `litellm_config.yaml` was never deployed and
+>   is itself now stale (3 chains vs the hub's 7; pool keys re-minted since).
+>   (4) OPEN — `docs/autonomous-hacking-system-plan.md` is referenced below but
+>   does not exist yet (vuln-lab targets staged in `.staging/vuln-lab/`).
+> * **Verification (superseded counts)**: full suite on 2026-10-22 =
+>   **821 passed / 22 skipped / 1 xpassed / 0 failed** (`py -3.12 -m pytest
+>   evals/ -q --ignore=evals/results`), grown by the T-A..T-E waves
+>   (multilingual refusal cores, COMPLETION_STRICT, chains RACE/CONDUCTOR/
+>   SUSTAINED, AUTO_TEAM, /v1/verify, conductor subtask retries).
+> * **Hub autostart (fixed 2026-10-22)**: the SYSTEM scheduled-task launch died
+>   in preflight (`Write-Note` called before it was defined, and SYSTEM cannot
+>   see the operator's User-scope secrets). Fixed in
+>   `launch_frost_hub.ps1` (Write-Note hoisted above the preflight; secret
+>   resolution gained a Machine-scope fallback) and the five secrets were
+>   seeded to Machine scope. Verified: task LastResult=0, hub healthy under
+>   SYSTEM, watchdog pass `[OK]`.
+> * **Matrix (2026-10-22)**: the max-scope matrix ran to completion ON the
+>   gx10 (`evals/loadgen_results/launch_matrix.sh`); collected and re-analyzed
+>   locally: **3424 recorded cases, 2353 passed (68.72%), 3 ReadError
+>   errors**. CONDUCTOR wins 10 of 14 categories. Report:
+>   `evals/loadgen_results/matrix_report.md`.
+
 ## Directive
 
 1. Replace the speculative system (including the key factory) on the gx10 with
