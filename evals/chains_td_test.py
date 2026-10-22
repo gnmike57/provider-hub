@@ -114,6 +114,8 @@ def test_td_chains_resolve_and_published_four_stay_byte_identical():
 
 def test_td_models_catalog_grows_to_seven(monkeypatch):
     monkeypatch.delenv("CONSTELLATION_ONLY", raising=False)
+    # full structural pin: the ablit hide (2026-10-22) is OFF for this test
+    monkeypatch.setenv("HIDE_ABLIT_MODELS", "0")
     with TestClient(proxy_gateway.app) as tc:
         data = tc.get("/v1/models").json()["data"]
     ids = [m["id"] for m in data]

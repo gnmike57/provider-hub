@@ -91,6 +91,8 @@ def test_chain_resolver():
 
 
 def test_models_constellation_only(monkeypatch):
+    # full structural pin: the ablit hide (2026-10-22) is OFF for this test
+    monkeypatch.setenv("HIDE_ABLIT_MODELS", "0")
     # the chain catalog is the DEFAULT (operator directive: only chains)
     monkeypatch.delenv("CONSTELLATION_ONLY", raising=False)
     with TestClient(proxy_gateway.app) as tc:

@@ -2003,14 +2003,57 @@ async def usage_middleware(request: Request, call_next):
 
     async def metered_body_iterator():
         total_tokens = 0
+        tokens_in = 0
+        usage_prompt = None
+        usage_completion = None
+        carry = ""
         try:
             async for chunk in original_body_iterator:
                 if isinstance(chunk, bytes):
-                    # Rough token estimate: ~4 chars per token
-                    total_tokens += len(chunk) // 4
+                    # S-METER (2026-10-22 log review): the old len(chunk)//4
+                    # estimate billed the SSE ENVELOPE (JSON keys, data:
+                    # prefixes, reasoning deltas, [DONE]) and hard-coded
+                    # tokens_in=0 - measured live at tokens_out=59k /
+                    # $118.49 for one ordinary reply. Now: prefer the
+                    # upstream usage object whenever the stream carries one;
+                    # otherwise estimate from CONTENT deltas only. Never
+                    # raises into the stream (design rule 7).
+                    try:
+                        carry += chunk.decode("utf-8", "ignore")
+                        while "\n" in carry:
+                            ln, carry = carry.split("\n", 1)
+                            ln = ln.strip()
+                            if not ln.startswith("data:"):
+                                continue
+                            payload = ln[5:].strip()
+                            if payload in ("", "[DONE]"):
+                                continue
+                            try:
+                                ev = json.loads(payload)
+                            except Exception:  # noqa: BLE001
+                                continue
+                            if not isinstance(ev, dict):
+                                continue
+                            u = ev.get("usage")
+                            if isinstance(u, dict):
+                                if u.get("prompt_tokens"):
+                                    usage_prompt = u["prompt_tokens"]
+                                if u.get("completion_tokens"):
+                                    usage_completion = u["completion_tokens"]
+                            ch = ((ev.get("choices") or [{}])[0] or {})
+                            d = ch.get("delta") or {}
+                            if d.get("content"):
+                                total_tokens += max(
+                                    1, len(str(d["content"])) // 4)
+                    except Exception:  # noqa: BLE001 - metering never kills
+                        pass
                 yield chunk
         finally:
             # After the stream is fully consumed, deduct from balance
+            if usage_completion is not None:
+                total_tokens = int(usage_completion)   # the real count wins
+            if usage_prompt is not None:
+                tokens_in = int(usage_prompt)
             if total_tokens > 0:
                 cost_usd = total_tokens * SETTINGS.credit_cost_per_token
                 balance = billing_mod.BILLING.get_balance(user_id)
@@ -2019,7 +2062,7 @@ async def usage_middleware(request: Request, call_next):
                 billing_mod.USAGE.record(
                     user_id=user_id,
                     model=SETTINGS.primary_model,
-                    tokens_in=0,
+                    tokens_in=tokens_in,
                     tokens_out=total_tokens,
                     cost_usd=cost_usd,
                     provider="gateway",
@@ -4140,6 +4183,17 @@ async def chat_proxy(request: Request):
                         if finish == "timeout" or delta.get("error") or ev.get("error"):
                             routed_reason = f"tier1_{finish or 'error'}"
                             break
+                        # S-METER (2026-10-22): a usage-only event (usage
+                        # object, no content/tool/reasoning delta) is real
+                        # client-visible metadata - BUFFERING used to DROP it,
+                        # so OpenAI-style clients and the billing middleware
+                        # never saw the token counts. Forward verbatim; the
+                        # finish machinery below still owns finish_reason.
+                        if ev.get("usage") and not any(
+                                delta.get(k) for k in (
+                                    "content", "tool_calls",
+                                    "reasoning_content", "reasoning", "thinking")):
+                            pending.append(line)
                         # T-C LOGPROB PRESIGNAL (2026-10-22): the top-logprobs
                         # riding the content tokens are the helm's deliberation
                         # made visible - a refusal-marker token at high
@@ -5306,21 +5360,32 @@ async def list_models():
 
     Operator directive 2026-10-21: the hub offers EXACTLY the three
     constellation chains - this is the DEFAULT. CONSTELLATION_ONLY=0
-    (debug/legacy) restores the old full catalog."""
+    (debug/legacy) restores the old full catalog.
+
+    TEMP HIDE (operator directive 2026-10-22): HIDE_ABLIT_MODELS=1 (the
+    default) removes every entry whose id STARTS with "ablit" - the
+    ABLITV2L-helm chains and the abliterated registry ids. The ablit
+    TERMINAL hops of the remaining chains are untouched (only the listing
+    changes). HIDE_ABLIT_MODELS=0 restores the full catalog."""
+    def _visible(e):
+        return not str(e.get("id") or "").lower().startswith("ablit")
+
+    hide_ablit = (os.getenv("HIDE_ABLIT_MODELS", "1").strip().lower()
+                  not in ("0", "false", "no", "off"))
     if os.getenv("CONSTELLATION_ONLY", "1").strip().lower() not in ("0", "false", "no", "off"):
-        return {
-            "object": "list",
-            "data": [
-                {
-                    "id": cid,
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": "constellation",
-                    "description": chain["description"],
-                }
-                for cid, chain in CONSTELLATION_CHAINS.items()
-            ],
-        }
+        data = [
+            {
+                "id": cid,
+                "object": "model",
+                "created": 0,
+                "owned_by": "constellation",
+                "description": chain["description"],
+            }
+            for cid, chain in CONSTELLATION_CHAINS.items()
+        ]
+        if hide_ablit:
+            data = [e for e in data if _visible(e)]
+        return {"object": "list", "data": data}
     data = []
     for m in FROST_REGISTRY:
         data.append({
@@ -5339,6 +5404,8 @@ async def list_models():
             "reasoning": m.get("reasoning"),
         })
     data.extend(hub_models_for_listing())
+    if hide_ablit:
+        data = [e for e in data if _visible(e)]
     return {"object": "list", "data": data}
 
 

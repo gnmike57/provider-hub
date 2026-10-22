@@ -249,6 +249,9 @@ model id, and a reasoning mode directly - bypassing the primary/worker slots.
 | Stream cap | `MAX_CONCURRENT_STREAMS` | `64` (429 + `Retry-After` when full; `0` = unlimited) |
 | Logprob presignal | `LOGPROB_PRESIGNAL`, `LOGPROB_TOPK` | `0` (opt-in: scan the helm's content top-logprobs for refusal markers and divert *before* the text completes), `5` |
 | Stickiness | `HELM_STICKINESS`, `HELM_STICKY_TURNS` | `1`, `3` (after a divert, the next N turns of the same conversation go straight to the terminal without calling the helm; `0` = per-request decisions) |
+| Ablit catalog hide | `HIDE_ABLIT_MODELS` | `1` (TEMP 2026-10-22: `/v1/models` drops every id starting with "ablit" — the two ABLITV2L-helm chains + abliterated registry ids; ablit chain terminals keep working; `0` = full catalog) |
+| Live credit tests | `LIVE_CREDITS`, `LIVE_HUB_URL`, `LIVE_HUB_KEY` | `0` (`evals/live_models_test.py` spends real Hive/NanoGPT credits across every non-ablit surface + the benign→offensive→benign chain lifecycle when `1`) |
+| Usage metering | — | usage events prefer the upstream `usage` object (prompt/completion tokens); without one, only content deltas are estimated (~4 chars/token) — never the SSE envelope |
 
 Gate 8 scans the **unanswered span**: the client-controlled turns
 (`system`, `developer`, `user`) after the most recent assistant reply. An ask
