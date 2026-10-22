@@ -47,15 +47,20 @@ def log(msg):
 
 
 def _hive_key():
-    """One real hive key from the local vault (the account pool still
-    rotates all of them per request; this seeds the env fallback)."""
+    """The hive key: HIVE_SECRET_KEY env first (the GX10 box has NO
+    account_pool.json - the credential pools are local vaults by design),
+    then the local vault file. The account pool still rotates all keys
+    per request; this seeds the env fallback."""
+    env = os.getenv("HIVE_SECRET_KEY", "").strip()
+    if env:
+        return env
     with io.open(os.path.join(ROOT, "account_pool.json"),
                  encoding="utf-8") as fh:
         pool = json.load(fh)
     for acct in pool.get("accounts", []):
         if acct.get("provider") == "hive":
             return acct["key"]
-    raise SystemExit("no hive account in account_pool.json")
+    raise SystemExit("no hive key: set HIVE_SECRET_KEY or account_pool.json")
 
 
 def hub_env():
