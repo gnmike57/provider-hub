@@ -275,14 +275,25 @@ def test_pool_mutations_go_through_the_lock(tmp_path, monkeypatch):
 
     real_lock = threading.Lock()
     entered = threading.Event()   # set when reload reaches the rebind
-    proceed = threading.Event()   # main releases reload's rebind
+    proceed = threading.Event()  # main releases reload's rebind
+    # FLAKE FIX (2026-10-23): the gate used to park EVERY entrant on the
+    # same `proceed` - Event.set() then woke reload AND capture together, and
+    # when capture won the wake race its append was wiped by reload's rebind
+    # (live failure: IndexError at capture's `return _POOL[-1]`, empty pool).
+    # Two-stage release makes the order deterministic: reload's rebind
+    # completes (t.join) BEFORE capture is allowed through the gate.
+    capture_gate = threading.Event()
 
     class ReloadGate:
-        """Parks reload between its file read and its _POOL rebind."""
+        """Parks reload between its file read and its _POOL rebind; later
+        entrants (capture) park on their own stage-2 gate."""
 
         def __enter__(self):
-            entered.set()
-            proceed.wait(5)
+            if not entered.is_set():
+                entered.set()
+                proceed.wait(10)
+            else:
+                capture_gate.wait(10)
             return None
 
         def __exit__(self, *exc):
@@ -303,6 +314,7 @@ def test_pool_mutations_go_through_the_lock(tmp_path, monkeypatch):
         proceed.set()            # release the rebind
         t.join(5)
         assert not t.is_alive()
+        capture_gate.set()        # NOW capture may enter the gate
         c.join(5)                # capture now runs on the reloaded pool
         assert not c.is_alive()
     finally:
