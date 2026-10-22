@@ -45,7 +45,7 @@ CHAIN3 = "ABLITV2L>SUB-GLM/DEEP"  # REDHANDS V2 helm > GLM blind > terminal
 
 # Real GLM / DeepSeek upstream ids (the "infinite cheap tokens" tier).
 GLM_UPSTREAM = "zai-org/glm-5.3-flash"
-DEEP_UPSTREAM = "deepseek-ai/deepseek-v4.1-flash"
+DEEP_UPSTREAM = "deepseek-ai/deepseek-v4.1-flash-1017"
 TERM_UPSTREAM = "abliterated-model-large-v2"
 
 # The extreme-banned-prompt corpus: REAL hard no-go classes (Gate 7 handles
@@ -497,7 +497,12 @@ def test_streamed_refusal_then_lecture_diverts_at_stream_end(script, monkeypatch
     assert _calls(script, SPEC) == []              # the cheap middle answered
     snap = proxy_gateway.metrics_snapshot()
     assert snap["presignal_detected_total"] == 1
-    assert snap["presignal_failed_total"] == 1
+    # ZERO-REFUSAL LAW (2026-10-22): the divert decision moved to the
+    # full-reply judge, which fires BEFORE the presignal-recovery block -
+    # attribution is zero_refusal_divert_total now (presignal_failed_total
+    # only increments when the law is off, ZERO_REFUSAL=0).
+    assert snap["zero_refusal_divert_total"] == 1
+    assert snap["presignal_failed_total"] == 0
     assert snap["ladder_secondary_total"] == 1
 
 
@@ -544,7 +549,7 @@ def test_stage_colour_annotations_follow_the_ladder(script, monkeypatch):
     assert "stage colour answer" in r.text
     # the stage sequence: helm -> middle -> terminal, each with its tint+glow
     assert ": gw-stage helm zai-org/glm-5.3-flash tint=#edf4fd glow=#3b82f6" in r.text
-    assert ": gw-stage middle deepseek-ai/deepseek-v4.1-flash tint=#f3effb glow=#8b5cf6" in r.text
+    assert ": gw-stage middle deepseek-ai/deepseek-v4.1-flash-1017 tint=#f3effb glow=#8b5cf6" in r.text
     assert ": gw-stage terminal abliterated-model-large-v2 tint=#fdf0f2 glow=#f43f5e" in r.text
     # a clean answer announces ONLY the helm, as the very first line
     script.script(PRIMARY, [("sse", [chunk("clean helm answer", finish="stop"), DONE])])

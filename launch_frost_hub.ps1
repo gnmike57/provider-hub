@@ -23,7 +23,11 @@ param(
     # Seconds to wait for /healthz to report ok=true after launching.
     [int]$WaitSeconds = 60,
     # Suppress the informational success line (the watchdog logs on its own).
-    [switch]$Quiet
+    [switch]$Quiet,
+    # 2026-10-21 (hundred-push W0): print the launch plan (secret VALUES never
+    # printed), run the secret preflight, and exit 0 without touching the hub.
+    # Safe probe for scheduled-task / watchdog debugging.
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,6 +50,28 @@ $LAUNCH_LOG = "$LOG_DIR\frost_hub_launch.log"
 . (Join-Path $ROOT "frost_common.ps1")
 # Keep the launcher's own audit log bounded (boot evidence, one line per note).
 Rotate-Log -Path $LAUNCH_LOG -MaxBytes 2MB
+
+# --- secret resolution: NO secrets in source ---------------------------------
+# 2026-10-21 (hundred-push W0): the literals that used to live in this file
+# were committed (therefore burned) and now resolve from the environment only
+# - process env first, then the persistent User scope (setx; seeded 2026-10-21
+# with the same values so boot behavior is unchanged). A missing REQUIRED
+# secret is a hard preflight failure (exit 3) so Task Scheduler / the watchdog
+# surface it instead of booting a money-unsafe hub. Rotation later only
+# touches User scope - this file never changes again.
+function Resolve-Secret([string]$Name, [switch]$Required) {
+    $v = [Environment]::GetEnvironmentVariable($Name, 'Process')
+    if (-not $v) { $v = [Environment]::GetEnvironmentVariable($Name, 'User') }
+    if (-not $v -and $Required) {
+        Write-Note ("PREFLIGHT FAIL: required secret {0} is not set (process or User scope). Seed once with: setx {0} '<value>'" -f $Name)
+        exit 3
+    }
+    return $v
+}
+
+# Preflight runs ALWAYS - including under -DryRun and before any hub touch.
+$null = Resolve-Secret 'ENCRYPTION_KEY' -Required   # Fernet: user_keys.jsonl at rest (money safety)
+$null = Resolve-Secret 'ADMIN_API_KEY'  -Required   # X-Admin-Key: /v1/admin|user|siphon surface
 
 # --- discover python executable --------------------------------------------
 # Prefer the project venv, then the Python 3.12 install that carries the
@@ -135,6 +161,16 @@ try {
 }
 if (-not $haveLock) { Write-Note "another launch is in progress; nothing to do"; exit 0 }
 
+if ($DryRun) {
+    # -DryRun (2026-10-21, W0): plan only. Secret preflight already ran above;
+    # here we print WHAT would happen, never any secret value, and exit 0
+    # before the fast-path health check so a healthy hub is not even probed.
+    Write-Note ("DryRun: would resolve python (venv -> Python312 -> PATH), pin the Constellation env (PRIMARY/FALLBACK/SPECIALIST -> abliterated-model-large-v2, CONSTELLATION_ONLY=1, ESCALATION_MIDDLE=1, HACKING_MODE bundle, billing knobs), clear stale :{0} listeners, and launch uvicorn proxy_gateway:app on port {0}" -f $PORT)
+    Write-Note "DryRun: secrets resolved from env/User scope only (ABLITERATION_API_KEY, ABLITERATION_ADMIN_KEY, HIVE_SECRET_KEY, ENCRYPTION_KEY, ADMIN_API_KEY) - values are never printed"
+    Write-Note "DryRun: no process started, no hub touched"
+    exit 0
+}
+
 try {
     # --- fast path: already healthy and not forced --------------------------
     if (-not $Force) {
@@ -172,7 +208,8 @@ try {
     $env:PRIMARY_API_URL   = "https://api.abliteration.ai/v1/chat/completions"
     $env:PRIMARY_API_KEY    = $ablAk  # Abliteration chat key (explicit; wins over HIVE_SECRET_KEY)
     $env:PRIMARY_MODEL     = "abliterated-model-large-v2"                # default primary id
-    $env:HIVE_SECRET_KEY   = "REDACTED_HIVE_KEY"        # Hive self-hosted LLMs (legacy primary, kept for rollback)
+    $hiveKey = Resolve-Secret 'HIVE_SECRET_KEY'  # optional legacy rollback; live rotation is account_pool.json
+    if ($hiveKey) { $env:HIVE_SECRET_KEY = $hiveKey } else { Write-Note "HIVE_SECRET_KEY not set in env - legacy Hive rollback path stays disabled (account_pool is the live mechanism)" }
     $env:FALLBACK_API_URL  = "https://api.abliteration.ai/v1/chat/completions"  # constellation TERMINAL (CyberFrost retired)
     $env:FALLBACK_API_KEY  = $ablAk
     $env:FALLBACK_MODEL    = "abliterated-model-large-v2"
@@ -193,8 +230,10 @@ try {
     # Money safety (W2): billing refuses plaintext API-key writes without a
     # Fernet ENCRYPTION_KEY, and the money/card endpoints (/v1/user/*,
     # /v1/siphon/*, /v1/admin/*) require the admin key below via X-Admin-Key.
-    $env:ENCRYPTION_KEY     = "ER9W35oE9l3Hm3V9dEBdeOCht4R5DPiaQJ6BmfFDjiE="  # Fernet key for user_keys.jsonl at rest
-    $env:ADMIN_API_KEY      = "tYcVcsF7RmF7Ozwqph0GC_-UBXiBDy68MsjMSUR0yWg"    # X-Admin-Key for money/card endpoints
+    # REQUIRED secrets (preflight above guarantees presence): Fernet key for
+    # user_keys.jsonl at rest; X-Admin-Key for the money/card endpoints.
+    $env:ENCRYPTION_KEY     = Resolve-Secret 'ENCRYPTION_KEY' -Required
+    $env:ADMIN_API_KEY      = Resolve-Secret 'ADMIN_API_KEY' -Required
     $env:AUDIT_LOG          = "$LOG_DIR\boot_audit.jsonl"
     $env:KEEPALIVE_URL      = "https://api.abliteration.ai/v1/models"  # keep the constellation TERMINAL warm (CyberFrost retired)
     $env:MAX_THINK_MIN_TOKENS = "32768"

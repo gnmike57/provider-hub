@@ -1,0 +1,14 @@
+{
+	"language": "en",
+	"vlmProvider": "",
+	"vlmBaseUrl": "",
+	"vlmApiKey": "",
+	"vlmModelName": "",
+	"useResponsesApi": false,
+	"maxLoopCount": 100,
+	"loopIntervalInMs": 1000,
+	"searchEngineForBrowser": "google",
+	"operator": "Local Computer Operator",
+	"reportStorageBaseUrl": "",
+	"utioBaseUrl": ""
+}

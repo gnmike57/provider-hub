@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+import hub_ipc  # cross-process file locks for the JSONL state files (W2)
 from cryptography.fernet import Fernet
 
 __all__ = [
@@ -71,6 +72,56 @@ AUTO_TOPUP_CARD_ID = os.getenv("AUTO_TOPUP_CARD_ID", "")
 
 RETENTION_DAYS = int(os.getenv("USAGE_RETENTION_DAYS", "7"))
 
+# --------------------------------------------------------------------------
+# Cross-process write coordination (W2, additive).
+#
+# The JSONL state files can be written by more than one process (gateway,
+# admin CLIs, maintenance scripts).  Each individual write is already atomic
+# (tmp + os.replace) but two concurrent FULL rewrites could still drop the
+# other side's rows; a shared advisory lock closes that window.  Semantics:
+#
+#   * BILLING_FILE_LOCKS=0 (or HUB_IPC_LOCKS=0) keeps the exact pre-lock
+#     behaviour: writes go straight through _atomic_write_jsonl unlocked.
+#     Default is ON ("1") because the lock degrades to unlocked-on-timeout,
+#     i.e. it can only serialize, never wedge, billing writes.
+#   * BILLING_COMPACT_INTERVAL: only the append-only fast path (below) is
+#     affected.  Unset/0 = the historical full-rewrite path on EVERY record()
+#     (default, byte-identical persistence semantics).
+#   * The threading.RLock()es above stay authoritative within the process;
+#     hub_ipc only adds the cross-process half.
+# --------------------------------------------------------------------------
+BILLING_FILE_LOCKS = os.getenv("BILLING_FILE_LOCKS", "1").strip().lower() in (
+    "1", "true", "on", "yes")
+# Append-only fast path for UsageTracker.record(): 0/unset = full rewrite
+# every event (historical), N>0 = append JSONL directly and fully rewrite
+# (compact) only every Nth event.  In-memory _events stays the complete
+# authoritative list in both modes, so user_usage/system_usage are identical.
+BILLING_COMPACT_INTERVAL = int(os.getenv("BILLING_COMPACT_INTERVAL", "0") or 0)
+
+
+def _file_locks_enabled() -> bool:
+    """Use-site kill switch for cross-process persistence locking.
+
+    Env wins when set (live tunability, the account_pool ACCOUNT_POOL_ENABLED
+    pattern); the import-time BILLING_FILE_LOCKS constant is the fallback so
+    tests/embedders can also monkeypatch the module attribute.
+    """
+    raw = os.getenv("BILLING_FILE_LOCKS", "")
+    if raw:
+        return raw.strip().lower() in ("1", "true", "on", "yes")
+    return BILLING_FILE_LOCKS
+
+
+def _compact_interval() -> int:
+    """Use-site read of the append fast-path knob (0 = historical rewrite)."""
+    raw = os.getenv("BILLING_COMPACT_INTERVAL", "")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            return 0
+    return BILLING_COMPACT_INTERVAL
+
 ABLITERATION_ADMIN_KEY = os.getenv(
     "ABLITERATION_ADMIN_KEY", os.getenv("ABLITERATION_API_KEY", "")
 )
@@ -132,6 +183,65 @@ def _atomic_write_jsonl(path: str, rows: List[dict]) -> None:
     os.replace(tmp, path)
 
 
+def _persist_jsonl(path: str, rows: List[dict]) -> None:
+    """Atomic write, serialized across processes when locks are enabled.
+
+    Additive wrapper around _atomic_write_jsonl: identical bytes on disk,
+    identical OSError-swallowing at call sites (callers keep their
+    ``try/except OSError: pass``), plus an advisory cross-process lock so
+    concurrent FULL rewrites from gateway + admin CLIs cannot drop each
+    other's rows.  BILLING_FILE_LOCKS=0 / HUB_IPC_LOCKS=0 (or a lock timeout
+    - see hub_ipc.locked_path degrade) preserves the exact unlocked path.
+    """
+    if not _file_locks_enabled():
+        _atomic_write_jsonl(path, rows)  # pre-hub_ipc behaviour
+        return
+    try:
+        with hub_ipc.locked_path(path):
+            _atomic_write_jsonl(path, rows)
+    except hub_ipc.LockTimeout:
+        # Lock could not be taken within the budget: fall back to the
+        # historical unlocked write rather than raise into billing paths.
+        _atomic_write_jsonl(path, rows)
+
+
+def _append_and_maybe_compact(path: str, row: dict, rows: List[dict],
+                              tail: int, counter: "List[int]") -> None:
+    """Append-only fast path for UsageTracker.record() (BILLING_COMPACT_INTERVAL).
+
+    Appends ONE line to the JSONL instead of rewriting the whole file, then
+    fully rewrites (compacts) every ``BILLING_COMPACT_INTERVAL``-th event.
+    ``rows`` stays the authoritative in-memory list (the compaction snapshot
+    is taken under the caller's threading lock BEFORE calling this), so reads
+    are unchanged.  ``counter`` is a one-element mutable count shared by the
+    tracker; compaction fires when ``counter[0] % interval == 0``.
+
+    Kill switch: BILLING_COMPACT_INTERVAL unset/0 -> callers must use the
+    historical full-rewrite path (enforced at the use site).
+    """
+    interval = _compact_interval()
+    interval = interval if interval and interval > 0 else 0
+    counter[0] = int(counter[0]) + 1
+    fire_compact = bool(interval) and (counter[0] % interval == 0)
+    if not _file_locks_enabled():
+        if fire_compact:
+            _atomic_write_jsonl(path, rows[-tail:])
+        else:
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        return
+    try:
+        with hub_ipc.locked_path(path):
+            if fire_compact:
+                _atomic_write_jsonl(path, rows[-tail:])
+            else:
+                with open(path, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except hub_ipc.LockTimeout:
+        # Degraded: historical full rewrite is always safe fallback.
+        _atomic_write_jsonl(path, rows[-tail:])
+
+
 def _load_jsonl(path: str) -> List[dict]:
     if not os.path.exists(path):
         return []
@@ -186,7 +296,7 @@ class KeyVault:
                           if not (r.get("user_id") == user_id and r.get("provider") == provider)]
             self._rows.append(row)
             try:
-                _atomic_write_jsonl(self.path, self._rows)
+                _persist_jsonl(self.path, self._rows)
             except OSError:
                 pass
 
@@ -270,7 +380,7 @@ class UserBilling:
                 }
                 self._rows.append(row)
                 try:
-                    _atomic_write_jsonl(self.path, self._rows)
+                    _persist_jsonl(self.path, self._rows)
                 except OSError:
                     pass
             return row
@@ -300,7 +410,7 @@ class UserBilling:
             row["cost_since_topup"] = float(row.get("cost_since_topup", 0.0) or 0.0) + cost_usd
             balance_after = float(row.get("credits_usd", 0.0))
             try:
-                _atomic_write_jsonl(self.path, self._rows)
+                _persist_jsonl(self.path, self._rows)
             except OSError:
                 pass
         # Auto top-up when the balance falls to the trigger threshold
@@ -317,7 +427,7 @@ class UserBilling:
             row["credits_usd"] = float(row.get("credits_usd", 0.0)) + amount_usd
             row["last_topup_at"] = _now()
             try:
-                _atomic_write_jsonl(self.path, self._rows)
+                _persist_jsonl(self.path, self._rows)
             except OSError:
                 pass
 
@@ -427,7 +537,7 @@ class UserBilling:
             )
 
             try:
-                _atomic_write_jsonl(self.path, self._rows)
+                _persist_jsonl(self.path, self._rows)
             except OSError:
                 pass
 
@@ -476,6 +586,11 @@ class UsageTracker:
         self.path = path or USAGE_PATH
         self._lock = threading.RLock()
         self._events: List[dict] = []
+        # One-element mutable counter shared with the append fast path
+        # (_append_and_maybe_compact): counts record() calls in THIS process
+        # so compaction can fire on every Nth event.  Unused (stays 0) on the
+        # historical full-rewrite path (BILLING_COMPACT_INTERVAL unset/0).
+        self._persist_count = [0]
         self._load()
 
     def _load(self) -> None:
@@ -516,7 +631,20 @@ class UsageTracker:
         with self._lock:
             self._events.append(event)
             try:
-                _atomic_write_jsonl(self.path, self._events[-10000:])
+                interval = _compact_interval()
+                if interval and interval > 0:
+                    # Append-only fast path (opt-in via BILLING_COMPACT_INTERVAL):
+                    # one-line append, full rewrite every Nth event.  In-memory
+                    # _events stays authoritative either way, so user_usage /
+                    # system_usage are identical across both paths.
+                    _append_and_maybe_compact(
+                        self.path, event, self._events, 10000, self._persist_count
+                    )
+                else:
+                    # Historical path (default, interval unset/0): full
+                    # rewrite of the tail on every event - byte-identical
+                    # persistence semantics to pre-W2.
+                    _persist_jsonl(self.path, self._events[-10000:])
             except OSError:
                 pass
 

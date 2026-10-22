@@ -1,0 +1,198 @@
+== 1. doc page coverage ==
+  PASS 127 docs downloaded
+  PASS every doc page listed in docs-index.md
+  PASS docs-index total line says 127
+== 2. capability coverage ==
+  PASS manifest capabilityCount matches list
+  PASS every capability endpoint appears in SKILL.md
+  PASS every capability title in capability-matrix.md
+== 3. MCP tool names ==
+  PASS all 31 MCP tools in matrix
+  PASS WebMCP tools present
+== 4. no invented facts ==
+  PASS no invented claim: x-provider-key used as instruction
+  PASS no invented claim: x-memory-size used as instruction
+  PASS no invented claim: x-x402-payment-required request header
+  PASS no invented claim: luma example model
+  PASS no invented claim: wrong video status path as truth
+== 5. x402 truth ==
+  PASS x402.md contains x-x402: true
+  PASS x402.md contains X-PAYMENT
+  PASS x402.md contains L402 <token>:<preimage>
+  PASS x402.md contains completeUrl
+  PASS x402.md contains /api/v1/x402/endpoints
+  PASS manifest x402 schemes documented in skill
+== 6. auth truth ==
+  PASS auth-and-agents.md contains models.read
+  PASS auth-and-agents.md contains api.use
+  PASS auth-and-agents.md contains /api/v1/auth/keys
+  PASS auth-and-agents.md contains /oauth/token
+  PASS auth-and-agents.md contains /.well-known/nanogpt-agent-auth
+  PASS auth-and-agents.md contains device login
+  PASS auth-and-agents.md contains @nanogpt/mcp
+== 7. sources present ==
+  PASS source openapi.json
+  PASS source openapi-site.json
+  PASS source auth.md
+  PASS source harness__agents.html
+  PASS source harness__a2a.html
+  PASS source harness__mcp.html
+  PASS source 00-llms.txt
+  PASS manifest agent-capabilities.json
+  PASS manifest x402-endpoints.json
+  PASS manifest oauth-authorization-server.json
+  PASS manifest oauth-protected-resource.json
+  PASS manifest nanogpt-agent-auth.json
+  PASS manifest api-catalog.json
+== 8. Hunter enrichment coverage ==
+  PASS all 8 hunter tools in data-enrichment.md
+  PASS SKILL.md lists all 8 hunter tools
+  PASS data-enrichment.md contains email-count
+  PASS data-enrichment.md contains hunterSearchesBilled
+  PASS data-enrichment.md contains hunterVerificationsBilled
+  PASS data-enrichment.md contains hunterEnrichmentsBilled
+  PASS data-enrichment.md contains nanogpt_hunter
+  PASS data-enrichment.md contains /api/v1/data/hunter/
+  PASS data-enrichment.md contains never pass a separate Hunter API key
+  PASS data-enrichment.md contains meta.nanogpt
+  PASS capability-matrix.md covers hunter detail
+== 9. Agent tooling coverage ==
+  PASS agent-tooling.md contains @nanogpt/mcp
+  PASS agent-tooling.md contains nanogpt_chat
+  PASS agent-tooling.md contains nanogpt_vision
+  PASS agent-tooling.md contains nanogpt_3d_generate
+  PASS agent-tooling.md contains nanogpt_list_3d_models
+  PASS agent-tooling.md contains nanogpt_ai_qr
+  PASS agent-tooling.md contains submit_and_poll
+  PASS agent-tooling.md contains runId
+  PASS agent-tooling.md contains NANOGPT_TIMEOUT_MS
+  PASS agent-tooling.md contains get_chat_state
+  PASS agent-tooling.md contains find_text_models
+  PASS agent-tooling.md contains draft_chat_message
+  PASS agent-tooling.md contains agent-card.json
+  PASS agent-tooling.md contains nanogpt:tool_search
+  PASS agent-tooling.md contains defer_loading
+  PASS agent-tooling.md contains claw-medium
+  PASS agent-tooling.md contains nativeServer
+  PASS agent-tooling.md contains a2a-sdk
+  PASS agent-tooling.md contains nanogpt://raw/
+  PASS agent-tooling.md contains NANOGPT_AUTH_MODE
+  PASS agent-tooling.md contains models.read
+  PASS agent-tooling.md contains api.use
+  PASS agent-tooling.md contains device login
+  PASS agent-tooling.md contains cmd /c
+  PASS SKILL.md points to agent-tooling.md
+== 10. Install / setup bundle ==
+  PASS setup/SETUP.md exists
+  PASS setup/a2a_server_starter.py exists
+  PASS setup/mcp.client.json exists
+  PASS setup/requirements.txt exists
+  PASS setup/env.example exists
+  PASS SETUP.md contains npm install -g @nanogpt/mcp
+  PASS SETUP.md contains a2a-sdk[http-server]
+  PASS SETUP.md contains codex mcp add
+  PASS SETUP.md contains cmd /c
+  PASS SETUP.md contains claude mcp add
+  PASS SETUP.md contains a2a_server_starter
+  PASS SETUP.md contains DefaultRequestHandler
+  PASS SETUP.md contains supported_interfaces
+  PASS SETUP.md contains protobuf
+  PASS SETUP.md contains 34 tools
+  PASS SETUP.md contains env vars
+  PASS SETUP.md contains requirements.txt
+  PASS SETUP.md contains WebMCP
+  PASS SETUP.md contains device login
+  PASS a2a_server_starter.py contains add_a2a_routes_to_fastapi
+  PASS a2a_server_starter.py contains create_jsonrpc_routes
+  PASS a2a_server_starter.py contains agent_card=
+  PASS a2a_server_starter.py contains supported_interfaces
+  PASS a2a_server_starter.py contains TASK_STATE_COMPLETED
+  PASS a2a_server_starter.py contains claw-medium
+  PASS a2a_server_starter.py contains AsyncOpenAI
+  PASS a2a_server_starter.py contains AgentExecutor
+== 11. No real key stored (project + home configs) ==
+  PASS no real API key inside the project
+== 12. Machine integrations record ==
+  PASS INTEGRATIONS.md exists
+  PASS INTEGRATIONS.md contains Codex
+  PASS INTEGRATIONS.md contains Claude Code
+  PASS INTEGRATIONS.md contains OpenCode
+  PASS INTEGRATIONS.md contains Cline
+  PASS INTEGRATIONS.md contains Roo Code
+  PASS INTEGRATIONS.md contains Kilo Code
+  PASS INTEGRATIONS.md contains Cursor
+  PASS INTEGRATIONS.md contains Gemini CLI
+  PASS INTEGRATIONS.md contains Grok CLI
+  PASS INTEGRATIONS.md contains Droid
+  PASS INTEGRATIONS.md contains Command Code
+  PASS INTEGRATIONS.md contains CodeBuddy
+  PASS INTEGRATIONS.md contains cline_mcp_settings.json
+  PASS INTEGRATIONS.md contains auth.json
+  PASS INTEGRATIONS.md contains opencode.json
+  PASS INTEGRATIONS.md contains 13/13
+  PASS INTEGRATIONS.md contains 651 text model
+  PASS INTEGRATIONS.md contains nanogpt-mcp v1.5.0
+  PASS INTEGRATIONS.md contains 34 tools
+  PASS INTEGRATIONS.md contains v1legacy
+  PASS INTEGRATIONS.md contains Not configurable
+  PASS INTEGRATIONS.md contains de-wire
+== 13. Cross-cutting knowledge (limits/pricing/caching/reasoning/security) ==
+  PASS cross-cutting.md exists
+  PASS cross-cutting.md contains 25 requests/second
+  PASS cross-cutting.md contains 00:00 UTC
+  PASS cross-cutting.md contains daily_rpd_limit_exceeded
+  PASS cross-cutting.md contains 32 MiB
+  PASS cross-cutting.md contains Request Billing
+  PASS cross-cutting.md contains 24h
+  PASS cross-cutting.md contains idempotency
+  PASS cross-cutting.md contains ~90% off
+  PASS cross-cutting.md contains cache_control
+  PASS cross-cutting.md contains reasoning_content
+  PASS cross-cutting.md contains /api/v1legacy/
+  PASS cross-cutting.md contains /api/v1thinking/
+  PASS cross-cutting.md contains reasoning-exclude
+  PASS cross-cutting.md contains :throughput
+  PASS cross-cutting.md contains :latency
+  PASS cross-cutting.md contains :price
+  PASS cross-cutting.md contains :tools
+  PASS cross-cutting.md contains :caching
+  PASS cross-cutting.md contains PII redaction
+  PASS cross-cutting.md contains $0.0005
+  PASS cross-cutting.md contains Grepture
+  PASS cross-cutting.md contains redaction: true
+  PASS cross-cutting.md contains moderation: true
+  PASS cross-cutting.md contains moderation-models
+  PASS cross-cutting.md contains nanogpt fix this
+  PASS cross-cutting.md contains nanogptjs
+  PASS cross-cutting.md contains nanogpt-client
+  PASS cross-cutting.md contains Teams
+  PASS cross-cutting.md contains Evals
+  PASS cross-cutting.md contains BYOK
+  PASS cross-cutting.md contains Distillation
+  PASS x402.md (condensed) contains x-x402: true
+  PASS x402.md (condensed) contains X-PAYMENT
+  PASS x402.md (condensed) contains L402 <token>:<preimage>
+  PASS x402.md (condensed) contains completeUrl
+  PASS x402.md (condensed) contains /api/v1/x402/endpoints
+  PASS x402.md (condensed) contains pending
+  PASS x402.md (condensed) contains reconciliation
+  PASS auth-and-agents.md (condensed) contains models.read
+  PASS auth-and-agents.md (condensed) contains api.use
+  PASS auth-and-agents.md (condensed) contains /api/v1/auth/keys
+  PASS auth-and-agents.md (condensed) contains /oauth/token
+  PASS auth-and-agents.md (condensed) contains /.well-known/nanogpt-agent-auth
+  PASS auth-and-agents.md (condensed) contains device login
+  PASS auth-and-agents.md (condensed) contains @nanogpt/mcp
+  PASS auth-and-agents.md (condensed) contains get_chat_state
+  PASS auth-and-agents.md (condensed) contains defer_loading
+
+RESULT: 174 passed, 0 failed
+
+---
+Live API tests: live-verification.md
+Hunter (8 tools) live-tested: data-enrichment.md
+Agent tooling + install: agent-tooling.md, setup/SETUP.md
+Machine integrations (13 configs): INTEGRATIONS.md
+Limits/pricing/caching/streaming/reasoning/security: cross-cutting.md
+Conciseness: x402 + auth dumps condensed 34KB->8KB; verbatim kept in sources/
+Scope: 59/59 e2e domains covered

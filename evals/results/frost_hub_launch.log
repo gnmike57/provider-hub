@@ -1,0 +1,107 @@
+﻿2026-10-20 17:43:02 Frost hub already healthy on :9000 (pid=24544); no action
+2026-10-20 17:44:10 Frost hub launched pid=30828 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-20 17:44:12 Frost hub healthy on :9000 (pid=30828)
+2026-10-20 17:56:27   replacing hub listener pid=30828 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-20 17:56:27 Frost hub launched pid=39680 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-20 17:56:36 Frost hub healthy on :9000 (pid=39680)
+2026-10-20 19:09:13 Frost hub already healthy on :9000 (pid=39680); no action
+2026-10-20 19:09:26   replacing hub listener pid=39680 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-20 19:09:26 Frost hub launched pid=34088 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-20 19:09:28 Frost hub healthy on :9000 (pid=34088)
+2026-10-21 01:27:37 Frost hub launched pid=22628 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 01:27:47 Frost hub healthy on :9000 (pid=22628)
+2026-10-21 01:27:47 Frost hub already healthy on :9000 (pid=22628); no action
+2026-10-21 05:55:11   replacing hub listener pid=22628 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 05:55:13 Frost hub launched pid=27348 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 05:55:17 Frost hub healthy on :9000 (pid=27348)
+2026-10-21 06:50:56   replacing hub listener pid=27348 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 06:50:59 Frost hub launched pid=21896 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 06:51:13 Frost hub healthy on :9000 (pid=21896)
+2026-10-21 06:55:51   replacing hub listener pid=21896 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 06:55:54 Frost hub launched pid=9652 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 06:56:07 Frost hub healthy on :9000 (pid=9652)
+2026-10-21 09:32:59   replacing hub listener pid=9652 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 09:33:01 Frost hub launched pid=37964 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 09:33:07 Frost hub healthy on :9000 (pid=37964)
+2026-10-21 09:45:43   replacing hub listener pid=37964 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 09:45:46 Frost hub launched pid=35848 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 09:45:52 Frost hub healthy on :9000 (pid=35848)
+2026-10-21 10:05:01   replacing hub listener pid=35848 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 10:05:06 Frost hub launched pid=35608 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 10:05:12 Frost hub healthy on :9000 (pid=35608)
+2026-10-21 10:09:34   replacing hub listener pid=35608 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 10:09:38 Frost hub launched pid=24132 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 10:09:45 Frost hub healthy on :9000 (pid=24132)
+2026-10-21 10:22:38   replacing hub listener pid=24132 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 10:22:41 Frost hub launched pid=20540 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 10:22:47 Frost hub healthy on :9000 (pid=20540)
+2026-10-21 10:52:54   replacing hub listener pid=20540 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 10:52:56 Frost hub launched pid=29132 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 10:53:03 Frost hub healthy on :9000 (pid=29132)
+2026-10-21 10:55:00   replacing hub listener pid=29132 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 10:55:03 Frost hub launched pid=7940 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 10:55:08 Frost hub healthy on :9000 (pid=7940)
+2026-10-21 12:00:49   replacing hub listener pid=7940 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 12:00:52 Frost hub launched pid=34336 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 12:00:58 Frost hub healthy on :9000 (pid=34336)
+2026-10-21 12:16:08   replacing hub listener pid=34336 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 12:16:11 Frost hub launched pid=9652 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 12:16:16 Frost hub healthy on :9000 (pid=9652)
+2026-10-21 12:46:25 Frost hub launched pid=19332 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 12:46:33 Frost hub healthy on :9000 (pid=19332)
+2026-10-21 12:47:47   replacing hub listener pid=19332 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 12:47:52 Frost hub launched pid=29152 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 12:48:59 Frost hub pid=29152 did NOT pass /healthz within 60s (listener pids=[])
+2026-10-21 13:18:07 Frost hub launched pid=26516 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 13:20:50 Frost hub launched pid=20416 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 13:21:03 Frost hub healthy on :9000 (pid=20416)
+2026-10-21 13:22:05   replacing hub listener pid=20416 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 13:22:10 Frost hub launched pid=30860 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 13:23:17 Frost hub pid=30860 did NOT pass /healthz within 60s (listener pids=[])
+2026-10-21 13:32:12   replacing hub listener pid=30860 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 13:32:19 Frost hub launched pid=41784 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 13:32:27 Frost hub healthy on :9000 (pid=41784)
+2026-10-21 15:57:13 Frost hub already healthy on :9000 (pid=41784); no action
+2026-10-21 15:57:38 Frost hub launched pid=32464 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 15:57:45 Frost hub healthy on :9000 (pid=32464)
+2026-10-21 15:58:10 Frost hub launched pid=37152 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 15:58:18 Frost hub healthy on :9000 (pid=37152)
+2026-10-21 16:03:29 Frost hub launched pid=42464 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 16:03:37 Frost hub healthy on :9000 (pid=42464)
+2026-10-21 16:06:50 Frost hub launched pid=41800 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 16:06:56 Frost hub healthy on :9000 (pid=41800)
+2026-10-21 16:18:03 Frost hub already healthy on :9000 (pid=41800); no action
+2026-10-21 16:18:23 Frost hub launched pid=4184 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 16:18:30 Frost hub healthy on :9000 (pid=4184)
+2026-10-21 16:24:18 Frost hub launched pid=14000 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 16:24:45 Frost hub healthy on :9000 (pid=14000)
+2026-10-21 16:28:31 Frost hub launched pid=25244 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 16:28:38 Frost hub healthy on :9000 (pid=25244)
+2026-10-21 16:28:39   replacing hub listener pid=25244 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 16:28:40 Frost hub launched pid=24976 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 16:28:42 Frost hub healthy on :9000 (pid=24976)
+2026-10-21 18:03:19   replacing hub listener pid=24976 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 18:03:20 Frost hub launched pid=35296 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 18:03:24 Frost hub healthy on :9000 (pid=35296)
+2026-10-21 18:20:53   replacing hub listener pid=35296 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 18:20:53 Frost hub launched pid=31908 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 18:20:55 Frost hub healthy on :9000 (pid=31908)
+2026-10-21 18:27:10   replacing hub listener pid=31908 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-21 18:27:11 Frost hub launched pid=26504 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-21 18:27:13 Frost hub healthy on :9000 (pid=26504)
+2026-10-21 21:30:19 DryRun: would resolve python (venv -> Python312 -> PATH), pin the Constellation env (PRIMARY/FALLBACK/SPECIALIST -> abliterated-model-large-v2, CONSTELLATION_ONLY=1, ESCALATION_MIDDLE=1, HACKING_MODE bundle, billing knobs), clear stale :9000 listeners, and launch uvicorn proxy_gateway:app on port 9000
+2026-10-21 21:30:19 DryRun: secrets resolved from env/User scope only (ABLITERATION_API_KEY, ABLITERATION_ADMIN_KEY, HIVE_SECRET_KEY, ENCRYPTION_KEY, ADMIN_API_KEY) - values are never printed
+2026-10-21 21:30:19 DryRun: no process started, no hub touched
+2026-10-22 08:20:09 Frost hub launched pid=13868 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-22 08:20:13 Frost hub healthy on :9000 (pid=13868)
+2026-10-22 10:31:14   replacing hub listener pid=13868 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-22 10:32:02 Frost hub launched pid=35868 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-22 10:32:55 Frost hub launched pid=27752 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-22 10:33:07 Frost hub healthy on :9000 (pid=27752)
+2026-10-22 10:34:27   replacing hub listener pid=27752 cmd="C:\Users\lnxzf\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000 --log-level info 
+2026-10-22 10:34:35 Frost hub launched pid=30648 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-22 10:34:45 Frost hub healthy on :9000 (pid=30648)
+2026-10-22 11:58:15 Frost hub launched pid=292 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-22 11:58:31 Frost hub healthy on :9000 (pid=292)
+2026-10-22 12:00:33 Frost hub launched pid=14276 on http://127.0.0.1:9000; out=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.out.log err=C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\frost_hub_boot.err.log
+2026-10-22 12:00:43 Frost hub healthy on :9000 (pid=14276)

@@ -61,6 +61,9 @@ _STATE_ENV = {
     "USERS_FILE": "users.jsonl",
     "USAGE_FILE": "usage_events.jsonl",
     "ABLITERATION_POOL_FILE": "abliteration_pool.json",
+    # Multi-account credential pool (full key values - gitignored). Tests
+    # override the live pool per-case via ACCOUNT_POOL_KEYS.
+    "ACCOUNT_POOL_FILE": "account_pool.json",
 }
 
 # Per-session quarantine directory (pytest's tmp_path is a fixture and cannot

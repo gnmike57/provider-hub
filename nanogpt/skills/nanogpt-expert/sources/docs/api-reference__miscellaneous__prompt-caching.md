@@ -1,0 +1,437 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Prompt Caching
+
+> Understand NanoGPT caching behavior: implicit caching by default on supported providers (including many open-source routes), plus explicit prompt-caching controls for Claude.
+
+## Overview
+
+Prompt caching lets you cache large, reusable prompt prefixes (system prompts, reference documents, tool definitions, and long conversation history) so follow-up requests can reuse the cached prefix instead of reprocessing it from scratch.
+
+Benefits:
+
+* Up to \~90% cost reduction on cached input tokens (cache hits)
+* Lower latency on requests with large static prefixes
+
+NanoGPT supports two caching modes:
+
+* **Implicit caching (default):** For providers/models that support provider-native prompt reuse (including OpenAI, Gemini, and many open-source provider routes), caching is applied automatically when eligible. No extra request fields are required.
+* **Explicit prompt caching (Claude):** Claude caching uses request controls (`prompt_caching`/`promptCaching`/body-level `cache_control`, or inline `cache_control`) to mark reusable prefixes and select TTLs. You can add these yourself, or your client can supply them automatically.
+
+[OpenCode adds Claude cache markers automatically](/integrations/opencode#claude-prompt-caching). Its default markers use a five-minute TTL. To request one-hour caching, set `enabled: true` and `ttl: "1h"` in the helper; you do not also need an `anthropic-beta` header.
+
+NanoGPT also supports **cache-capable provider routing** with top-level `caching: true`. This is not a prompt annotation mode. It only requires routing to a provider that supports prompt/input caching and, by default, tries to keep later matching requests on the same provider.
+
+## Supported Models
+
+### Implicit caching (automatic)
+
+NanoGPT automatically uses implicit caching on providers/models that support it, including OpenAI and Gemini model families plus many open-source provider/model routes.
+
+No cache-control flags are required for this mode.
+
+For normal automatic routing, NanoGPT also tries cache-affinity routing when it can help: it hashes the request shape with the user/API-key or session identity and tries to route later matching requests to the same provider. This applies only to eligible automatic routes. Explicit provider selection and routing preferences use their own routing rules. Claude routes also need caller cache intent, and `prompt_caching.enabled: false` disables that cache affinity.
+
+If the provider that would be used does not support caching, NanoGPT does not apply cache-affinity routing for that request because there is no provider-side cache to reuse. Cache-affinity routing by itself does not add explicit cache-write annotations. For models/routes that require explicit writes, such as Claude, the request still needs a helper or cache markers, whether supplied by you or your client.
+
+### Cache-Capable Provider Routing
+
+Set top-level `caching: true` when you want NanoGPT to route the request to any available provider that supports prompt/input caching. This is capability-based routing: you do not need to choose a provider. If no cache-capable provider is available for the model, the request fails rather than silently using a non-caching provider.
+
+```json theme={null}
+{
+  "model": "model-id",
+  "caching": true,
+  "messages": [
+    { "role": "user", "content": "Hello" }
+  ]
+}
+```
+
+`caching: true` prefers the provider from your previous matching request (soft affinity). `stickyProvider` defaults to `false`; set it to `true` to disable cross-provider fallback. Neither setting guarantees a cache hit.
+
+To disable cross-provider fallback for a cache-capable request:
+
+```json theme={null}
+{
+  "model": "model-id",
+  "caching": true,
+  "stickyprovider": true,
+  "messages": [
+    { "role": "user", "content": "Hello" }
+  ]
+}
+```
+
+Top-level `stickyProvider` is accepted as a camelCase alias for `stickyprovider`. `true` disables cross-provider fallback. `false` allows fallback, but explicit caching still keeps soft affinity to a previous eligible provider.
+
+The affinity record expires after about one hour without a successful matching request. This is separate from the provider's cache TTL and does not guarantee a warm cache for one hour.
+
+**Price routing is a different goal.** `provider.sort: "price"`, `:price`, or `max_price` without `order` can activate price ranking, which takes precedence over cache-affinity selection and can change providers between requests. See [routing examples and precedence](/api-reference/miscellaneous/provider-selection#price-caps-and-cache-reuse).
+
+You can request the same behavior with a model suffix:
+
+```json theme={null}
+{
+  "model": "moonshotai/kimi-k2.6:thinking:caching",
+  "messages": [
+    { "role": "user", "content": "Hello" }
+  ]
+}
+```
+
+The suffix aliases `:cache` and `:cached` are also accepted.
+
+Use `prompt_caching` / `promptCaching` only when you need provider-specific cache-control annotations or TTL behavior. Top-level `caching: true` does not add Anthropic-style `cache_control` markers or configure cache TTLs.
+
+### Explicit prompt caching controls (Claude)
+
+Explicit prompt-caching controls are available on Claude models, including these families (examples):
+
+| Model family | Example model IDs |
+| - | - |
+| Claude 3.5 Sonnet v2 | `claude-3-5-sonnet-20241022` |
+| Claude 3.5 Haiku | `claude-3-5-haiku-20241022` |
+| Claude 3.7 Sonnet | `claude-3-7-sonnet-20250219` (and `:thinking` variants) |
+| Claude Sonnet 4 | `claude-sonnet-4-20250514` (and `:thinking` variants) |
+| Claude Sonnet 4.5 | `claude-sonnet-4-5-20250929` (and `:thinking` variants) |
+| Claude Haiku 4.5 | `claude-haiku-4-5-20251001` |
+| Claude Haiku 5.5 | `anthropic/claude-haiku-5.5` (also `anthropic/claude-haiku-latest`) |
+| Claude Opus 4 | `claude-opus-4-20250514` (and `:thinking` variants) |
+| Claude Opus 4.1 | `claude-opus-4-1-20250805` (and `:thinking` variants) |
+| Claude Opus 4.5 | `claude-opus-4-5-20251101` (and `:thinking` variants) |
+| Claude Opus 4.6 | `claude-opus-4-6` (and `:thinking` variants) |
+| Claude Sonnet 5.5 | `anthropic/claude-sonnet-5.5` |
+| Claude Opus 5.5 | `anthropic/claude-opus-5.5` |
+| Claude Fable 5.1 | `anthropic/claude-fable-5.1` |
+
+For legacy IDs, `anthropic/` aliases are also available (for example `anthropic/claude-sonnet-4.5`, `anthropic/claude-opus-4.6:thinking`). Use the exact ID returned by the model catalogue rather than constructing an alias.
+
+### Claude minimum cacheable tokens
+
+Minimum cacheable sizes depend on the model version and upstream route. A minimum for an older Claude model does not establish the minimum for Claude 5.5. See the [Claude prompt caching documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) for native model thresholds.
+
+If your cached prefix is smaller than the selected route's minimum, the request can still succeed without creating a cache entry. Verify caching with write/read usage fields rather than a successful response alone.
+
+## Subscription Billing for Chat Completions
+
+On `POST /api/v1/chat/completions`, supported explicit cache controls select pay-as-you-go billing and bypass subscription coverage for that request. This includes the body helper and inline `cache_control` markers added by clients such as OpenCode.
+
+This rule does not mean an implicit cache hit alone switches a request to pay-as-you-go, and it should not be used to infer billing on the separate [Messages endpoint](/api-reference/endpoint/messages). See [pay-as-you-go billing controls](/api-reference/miscellaneous/billing-override) for other billing overrides.
+
+## How To Enable Explicit Prompt Caching (Claude)
+
+Prompt caching works on `POST /api/v1/chat/completions`.
+
+You can enable it in 3 ways.
+
+### Option 1: body-level helper (`promptCaching` / `prompt_caching` / `cache_control`)
+
+Add a top-level helper object:
+
+```json theme={null}
+{
+  "model": "anthropic/claude-sonnet-4.5",
+  "messages": [
+    { "role": "system", "content": "Your large static content..." },
+    { "role": "user", "content": "Summarize the key points." }
+  ],
+  "promptCaching": {
+    "enabled": true,
+    "ttl": "5m",
+    "cutAfterMessageIndex": 0
+  }
+}
+```
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+| - | - | - | - |
+| `enabled` | boolean | -- | Set `true` to enable or `false` to disable explicit caching. A helper containing only `ttl` does not enable caching. |
+| `ttl` | `"5m"` or `"1h"` | `"5m"` | Cache time-to-live. Only the exact string `"1h"` selects one hour; omitted or unrecognized helper values use `"5m"`. |
+| `cutAfterMessageIndex` / `cut_after_message_index` | integer | -- | Zero-based last message index eligible for automatic cache-boundary placement. Existing inline markers are preserved. |
+| `stickyProvider` | boolean | `false` | When `true`, avoid failover to preserve cache consistency (see [stickyProvider](#cache-consistency-with-stickyprovider)) |
+| `explicitCacheControl` / `explicit_cache_control` | boolean | `false` | When `true`, use only existing inline `cache_control` boundaries and do not add automatic cache breakpoints. |
+
+**`explicitCacheControl`** *(boolean, default `false`)*
+
+When `true`, no additional cache breakpoints are added automatically. Use it when you want to control every boundary yourself.
+
+For a helper with `ttl: "1h"`, existing message, system, and tool markers are updated to one hour whether this flag is `true` or `false`. You do not need `explicitCacheControl: true` to apply a one-hour TTL to OpenCode's markers. Leaving it `false` also allows NanoGPT to add automatic breakpoints within the request's block limit.
+
+Also accepts the snake\_case alias `explicit_cache_control`.
+
+Aliases are accepted:
+
+* `promptCaching`
+* `prompt_caching`
+* `cache_control` (body-level helper alias)
+
+Passing `true` instead of an object defaults to:
+
+```json theme={null}
+{ "enabled": true, "ttl": "5m" }
+```
+
+If `cutAfterMessageIndex` is omitted, NanoGPT selects cache boundaries automatically.
+
+The helper is sufficient for both TTLs. NanoGPT applies the cache settings upstream, so callers do not need to add beta headers alongside it.
+
+### Option 2: inline `cache_control` markers
+
+Attach `cache_control` directly to content blocks you want cached:
+
+```json theme={null}
+{
+  "model": "anthropic/claude-sonnet-4.5",
+  "messages": [
+    {
+      "role": "system",
+      "content": [
+        {
+          "type": "text",
+          "text": "Your long reference document...",
+          "cache_control": { "type": "ephemeral" }
+        }
+      ]
+    },
+    { "role": "user", "content": "Live question goes here" }
+  ]
+}
+```
+
+### Combining inline markers with body-level settings
+
+```json theme={null}
+{
+  "model": "anthropic/claude-sonnet-4.5",
+  "messages": [
+    {
+      "role": "system",
+      "content": [
+        {
+          "type": "text",
+          "text": "You are a helpful coding assistant with access to a large codebase...",
+          "cache_control": { "type": "ephemeral" }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": "Summarize the auth module"
+    }
+  ],
+  "promptCaching": {
+    "enabled": true,
+    "ttl": "1h",
+    "explicitCacheControl": true
+  }
+}
+```
+
+In this example, the system prompt's `cache_control` marker is preserved and its TTL is set to `1h`. The user message does not receive an auto-generated cache breakpoint.
+
+### Option 3: `anthropic-beta` header (Claude-compatible)
+
+The Anthropic-compatible header is supported as an alternative on models with Claude cache controls. It is optional when using the body helper or inline markers:
+
+```text theme={null}
+anthropic-beta: prompt-caching-2024-07-31
+```
+
+To request one hour through the header alternative:
+
+```text theme={null}
+anthropic-beta: prompt-caching-2024-07-31,extended-cache-ttl-2025-04-11
+```
+
+A body helper's explicit `ttl` takes precedence over the header's TTL. A body-level `enabled: false` disables explicit caching even if the header requests it.
+
+## Controlling What Gets Cached
+
+> **Note:** `cutAfterMessageIndex` limits where new cache breakpoints can be placed automatically. `explicitCacheControl: true` disables new automatic breakpoints, so the cut index has no effect on placement in that mode. Applying a one-hour helper TTL to existing markers does not depend on this flag.
+
+### `cutAfterMessageIndex`
+
+Override automatic cache breakpoints by setting the last cached message index:
+
+```json theme={null}
+{
+  "promptCaching": {
+    "enabled": true,
+    "cutAfterMessageIndex": 4
+  }
+}
+```
+
+This sets the last message eligible for automatic breakpoint placement to index `4`. A breakpoint caches the prefix up to that boundary. It does not remove existing inline markers after that index.
+
+You can also set this via request header:
+
+```text theme={null}
+x-prompt-caching-cut-after: 4
+```
+
+The depth header selects a boundary only when explicit caching is otherwise enabled; it does not enable caching by itself.
+
+### Cache block limit
+
+A maximum of 4 `cache_control` breakpoints are allowed per request across system prompt, tools, and messages. Excess breakpoints are pruned automatically without removing prompt content.
+
+## Forcing a Cache Write
+
+There is no separate "force write" flag.
+
+Enable prompt caching and send the request. The first eligible request writes cache automatically (if provider thresholds/availability allow it). Repeated requests with the same cached prefix read from cache.
+
+## Usage Fields (How To Verify Cache Hits)
+
+When caching is active (implicit or explicit), responses can include:
+
+* `cache_creation_input_tokens`: tokens written to cache on this request
+* `cache_read_input_tokens`: tokens read from cache on this request (cache hit when `> 0`)
+* `prompt_tokens_details.cached_tokens`: OpenAI-style cached token count
+
+Compare an eligible cache write with a subsequent request that reuses the same prefix before expiration:
+
+<CodeGroup>
+  ```json First eligible write theme={null}
+  {
+    "usage": {
+      "prompt_tokens": 8500,
+      "completion_tokens": 200,
+      "cache_creation_input_tokens": 8000,
+      "cache_read_input_tokens": 0
+    }
+  }
+  ```
+
+  ```json Subsequent cache hit theme={null}
+  {
+    "usage": {
+      "prompt_tokens": 8500,
+      "completion_tokens": 200,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 8000
+    }
+  }
+  ```
+</CodeGroup>
+
+These are illustrative counts. A response can contain both writes and reads; the important evidence of a hit is a positive read count.
+
+When present, `x_nanogpt_pricing` includes cache pricing breakdown fields such as `cacheCreationInputTokens`, `cacheReadInputTokens`, `cacheTTL`, and `cacheCost`. `cacheTTL` describes the billing TTL; check write/read counts separately to establish cache use.
+
+For streaming Chat Completions, request usage explicitly and inspect the final usage event:
+
+```json theme={null}
+{
+  "stream": true,
+  "stream_options": { "include_usage": true }
+}
+```
+
+If both cache counts stay at zero, check the prefix length, markers and TTL, prefix changes, expiration, and routing changes. Repeated short prompts are not a reliable caching test.
+
+For the SSE shape, see [Streaming Protocol](/api-reference/miscellaneous/streaming-protocol).
+
+## Pricing
+
+Cache writes and reads are billed differently by provider. Implicit-caching providers apply their cache pricing automatically when eligible. Explicit Claude caching uses the TTL settings below.
+
+### Gemini Pro models (implicit caching, provider-native)
+
+| Token type | Rate (per 1M tokens) | Notes |
+| - | - | - |
+| Regular input | \$2.00 | -- |
+| Cache write surcharge | +\$0.375 | Added on top of input cost |
+| Cache read | \$0.20 | 90% cheaper than input |
+
+Example: writing 10,000 cached tokens costs `(10k × $2.00/M) + (10k × $0.375/M) = $0.02375`. Reading 10,000 cached tokens costs `10k × $0.20/M = $0.002`.
+
+### Gemini Flash models (implicit caching, provider-native)
+
+| Token type | Rate (per 1M tokens) | Notes |
+| - | - | - |
+| Regular input | Varies by model | -- |
+| Cache write surcharge | +\$0.083 | Added on top of input cost |
+| Cache read | 10% of input rate | 90% cheaper than input |
+
+For Gemini 2.0 models, cache reads are 25% of the base input rate (75% cheaper), not 10%.
+
+### Claude models (explicit caching)
+
+The standard Claude cache multipliers are below. Model- or route-specific rates can differ; use the selected model's pricing and the response's billing breakdown when available.
+
+| TTL | Creation multiplier on cached input tokens | Read multiplier |
+| - | - | - |
+| `5m` | `1.25x` | `0.1x` |
+| `1h` | `2.0x` | `0.1x` |
+
+Claude Sonnet 5.5, including its Thinking and Latest aliases, uses a `0.05x` cache-read multiplier: \$0.10 per million cached input tokens. Cache creation remains `1.25x` for five minutes and `2.0x` for one hour.
+
+Claude Haiku 5.5, including Haiku Latest, charges \$0.01 per million cached input tokens for prompts up to 100K tokens and \$0.05 above 100K. The prompt length determines the pricing tier, including cached tokens.
+
+## TTL Options (Explicit Claude Controls)
+
+| TTL | Duration | Description |
+| - | - | - |
+| `"5m"` | 5 minutes | Default. Suitable for interactive sessions. |
+| `"1h"` | 1 hour | Extended. Useful for batch processing or long-running sessions. |
+
+## Structuring Prompts for Cache Hits
+
+Cache hits require the cached prefix to be byte-identical across requests.
+
+Best practices:
+
+* Put static content first (system prompt, reference docs, tool definitions).
+* Keep cached content identical across requests (no timestamps, request IDs, or dynamic inserts).
+* Put dynamic content after the cache boundary (typically the latest user message).
+
+For explicit Claude caches, reuse refreshes the TTL. If the cache expires without reuse, an eligible later request writes it again. Changing content before a boundary prevents reuse of that complete prefix; an earlier unchanged cached prefix may still be reused.
+
+### Large tool catalogs and hosted search
+
+An eagerly loaded function catalog is part of the initial prompt prefix. Adding, removing, or changing any eager definition changes that prefix and can prevent reuse of the earlier cached prompt.
+
+On compatible Responses models, [hosted tool search](/api-reference/miscellaneous/hosted-tool-search) keeps a small search-tool definition in the initial prefix and reveals relevant functions later. This can reduce initial input tokens and improve the opportunity for cache reuse across catalog changes. It does not guarantee a cache hit: exact-prefix rules, minimum token thresholds, TTLs, and the selected model route still apply.
+
+## Cache Consistency with `stickyProvider` (Explicit Caching)
+
+Each provider keeps its own cache. If a request fails over to another provider, the previous cache may be unavailable.
+
+If cache consistency matters more than availability, set:
+
+```json theme={null}
+{
+  "promptCaching": { "enabled": true, "ttl": "5m", "stickyProvider": true }
+}
+```
+
+Behavior:
+
+* `stickyProvider: false` (default): the request may succeed even if routing changes, but you might rebuild caches.
+* `stickyProvider: true`: if a fallback would be required, the request returns `503` instead.
+
+Leave `promptCaching.stickyProvider` unset unless you accept reduced availability to preserve the cache. It does not extend the TTL or guarantee a hit.
+
+Top-level `stickyprovider` / `stickyProvider` and nested `promptCaching.stickyProvider` control the same fallback switch. If both are supplied, the top-level value takes precedence. With `caching: true`, soft affinity remains even when the switch is `false`. Privacy, price, and provider restrictions still constrain eligible routes.
+
+## NanoGPT Web UI
+
+In the NanoGPT web UI, models with explicit prompt-caching controls show a prompt caching toggle where you can choose cache duration.
+
+## Limitations and Caveats
+
+* Provider-side minimum token thresholds still apply before a cache entry is created.
+* A maximum of 4 cache breakpoints (`cache_control`) are supported per request.
+* Some models report aggregate prompt usage differently; use `cache_creation_input_tokens` and `cache_read_input_tokens` for authoritative cached token counts.
+* On cache hits, a small non-zero `cache_creation_input_tokens` can appear due to per-request overhead and does not necessarily indicate a cache miss.
+* Implicit caching behavior (eligibility, TTL behavior, and exact discounts) is provider-dependent.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

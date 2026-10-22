@@ -1,0 +1,174 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Model Context Protocol (MCP)
+
+> Integrate NanoGPT into your AI workflows via MCP
+
+# NanoGPT MCP Server
+
+The NanoGPT MCP Server allows you to integrate NanoGPT's powerful AI capabilities directly into your favorite AI tools and editors that support the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
+
+With this server, you can give your AI agents access to NanoGPT's full library of LLMs, image, video, 3D, speech and music generation, web search, and scraping. The source code is on [GitHub](https://github.com/Nano-GPT-com/nanogpt-mcp).
+
+## Installation
+
+You can run the NanoGPT MCP server directly using `npx`. No manual installation is required if you have Node.js installed.
+
+```bash theme={null}
+npx @nanogpt/mcp
+```
+
+### Claude Code
+
+To add NanoGPT MCP to Claude Code via the CLI:
+
+**macOS / Linux**
+
+```bash theme={null}
+claude mcp add nanogpt --scope user \
+  --env NANOGPT_API_KEY=YOUR_API_KEY \
+  -- npx -y @nanogpt/mcp
+```
+
+**Windows**
+
+```powershell theme={null}
+claude mcp add nanogpt --scope user --env NANOGPT_API_KEY=YOUR_API_KEY -- cmd /c "C:\Program Files\nodejs\npx.cmd" -y @nanogpt/mcp
+```
+
+On native Windows, `npx` is usually a `.cmd` shim, so it should be launched through `cmd /c`. If you use WSL, run the macOS/Linux command inside WSL instead of the native Windows one.
+
+Replace `YOUR_API_KEY` with your actual NanoGPT API key.
+
+### Codex
+
+```bash theme={null}
+codex mcp add nanogpt --env NANOGPT_API_KEY=YOUR_API_KEY -- npx -y @nanogpt/mcp
+```
+
+### IDE Integration
+
+To use NanoGPT MCP with tools like **Claude Desktop**, **Cline**, or **Cursor**, add the following to your configuration file:
+
+```json theme={null}
+{
+  "mcpServers": {
+    "nanogpt": {
+      "command": "npx",
+      "args": ["-y", "@nanogpt/mcp"],
+      "env": {
+        "NANOGPT_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+## Configuration
+
+The server is configured via environment variables.
+
+| Variable | Description | Default |
+| :- | :- | :- |
+| `NANOGPT_API_KEY` | **Required**. Your NanoGPT API key. | - |
+| `NANOGPT_BASE_URL` | The base URL for the NanoGPT API. | `https://nano-gpt.com` |
+| `NANOGPT_AUTH_MODE` | Authentication mode (`bearer`, `x-api-key`, or `both`). | `bearer` |
+| `NANOGPT_LOG_LEVEL` | Logging verbosity (`debug`, `info`, `warn`, `error`). | `info` |
+| `NANOGPT_TIMEOUT_MS` | Request timeout in milliseconds. | `120000` |
+| `NANOGPT_MAX_RETRIES` | Number of times to retry failed requests. | `0` |
+| `NANOGPT_DEFAULT_MODEL` | Default model to use for chat tools. | - |
+
+## Available Tools
+
+| Area | Tools |
+| - | - |
+| Account | `nanogpt_get_balance` |
+| Text | `nanogpt_chat`, `nanogpt_vision`, `nanogpt_embeddings`, `nanogpt_ai_detection` |
+| Images | `nanogpt_image_generate`, `nanogpt_image_edit`, `nanogpt_ai_qr` |
+| Video | `nanogpt_video_generate` |
+| 3D | `nanogpt_3d_generate` |
+| Audio | `nanogpt_text_to_speech`, `nanogpt_music_generate`, `nanogpt_audio_transcribe` |
+| Web and research | `nanogpt_web_search`, `nanogpt_scrape_urls`, `nanogpt_firecrawl`, `nanogpt_youtube_transcribe`, `nanogpt_x_research`, `nanogpt_hunter` |
+| Social and maps data | `nanogpt_reddit`, `nanogpt_google_maps_scrape`, `nanogpt_google_maps_reviews_scrape`, `nanogpt_facebook_ads`, `nanogpt_facebook_posts_scrape`, `nanogpt_instagram_profile`, `nanogpt_instagram_posts_scrape`, `nanogpt_instagram_reels`, `nanogpt_linkedin_profile`, `nanogpt_tiktok_scrape` |
+| Model catalogs (free) | `nanogpt_list_text_models`, `nanogpt_list_image_models`, `nanogpt_list_video_models`, `nanogpt_list_3d_models`, `nanogpt_list_audio_models` |
+
+Each tool describes its parameters to your agent through MCP, so the agent can call it without reading the API documentation. The source code is on [GitHub](https://github.com/Nano-GPT-com/nanogpt-mcp).
+
+See the [MCP integration guide](/integrations/mcp#tool-reference) for parameters and examples.
+
+## Video and 3D Generation
+
+Video and 3D jobs run asynchronously and usually take between 30 seconds and several minutes:
+
+* `operation: "submit_and_poll"` submits the job and waits up to `timeout_ms` (default 50 seconds) for the result. A finished job returns the video or GLB URL. The wait includes the submit request, but a submission that is still in progress is never cut short (aborting it could lose a job that was already accepted), so an unusually slow submission can take longer than `timeout_ms`.
+* If the job is still running, the result contains its `runId`. Call the tool again with `operation: "poll"` and that `runId` to keep waiting, or `operation: "status"` for a single check.
+* `operation: "submit"` only submits the job.
+
+Many MCP clients stop a tool call after 60 seconds, so keep `timeout_ms` below your client's tool timeout and continue long jobs with `poll`. A job is charged when it is submitted, so poll instead of submitting it again.
+
+## Resources
+
+Resources allow agents to "read" data stored by the server. NanoGPT MCP provides:
+
+* **`nanogpt://raw/{id}`**: Access the raw JSON response from a previous API call.
+* **`nanogpt://image/{id}`**: Access an image generated during the session.
+* **`nanogpt://media/{id}`**: Access generated audio or other media from the session.
+
+## Cost & Billing
+
+* Paid tools deduct from your NanoGPT account balance.
+* Model listing operations are complimentary.
+* Video and 3D jobs are charged when submitted; use `poll` to keep waiting instead of submitting again.
+
+## Troubleshooting
+
+### API key validation
+
+* Ensure `NANOGPT_API_KEY` is set in your MCP client configuration.
+* Verify the key in your NanoGPT API dashboard and remove any extra spaces.
+* If Claude Code fails immediately with `Invalid API key`, verify the MCP launcher command too, especially on native Windows where `npx` should run via `cmd /c "C:\Program Files\nodejs\npx.cmd"`.
+
+### Timeouts for long operations
+
+For video and 3D jobs, keep `timeout_ms` below your MCP client's tool-call timeout (often 60 seconds) and continue with `operation: "poll"`. For slow web searches or other large requests, increase the HTTP timeout with `NANOGPT_TIMEOUT_MS`:
+
+```json theme={null}
+{
+  "mcpServers": {
+    "nanogpt": {
+      "command": "npx",
+      "args": ["-y", "@nanogpt/mcp"],
+      "env": {
+        "NANOGPT_API_KEY": "your_api_key_here",
+        "NANOGPT_TIMEOUT_MS": "900000"
+      }
+    }
+  }
+}
+```
+
+### Node.js version compatibility
+
+The MCP server requires Node.js 22+:
+
+```bash theme={null}
+node --version
+```
+
+### MCP client connection checks
+
+* Re-add the server configuration if your client can’t connect.
+* Review your MCP client logs for connection errors.
+
+## Getting Started
+
+1. Get your API key from the [NanoGPT API dashboard](https://nano-gpt.com/api).
+2. Configure your MCP client (like Claude Desktop) with the server settings.
+3. Start chatting with your agent and ask it to "Search the web for...", "Generate an image of...", "Make a 5 second video of..." or "Create a 3D model of...".
+
+For more details on specific models and pricing, visit the [Pricing Page](/api-reference/miscellaneous/pricing).
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

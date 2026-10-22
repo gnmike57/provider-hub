@@ -132,7 +132,7 @@ def test_chain1_helm_and_terminal_divert(script, monkeypatch):
     assert "deep middle answer" in r.text
     prim = [c for c in script.calls if c["url"] == PRIMARY]
     assert [c["json"]["model"] for c in prim] == [
-        "zai-org/glm-5.3-flash", "deepseek-ai/deepseek-v4.1-flash"]
+        "zai-org/glm-5.3-flash", "deepseek-ai/deepseek-v4.1-flash-1017"]
     # the no-reasoning middle: DeepSeek exposes the real reasoning_effort=none
     # (the GLM disable-knob set is for GLM middles; both carry the Hive cap)
     mid_payload = prim[1]["json"]

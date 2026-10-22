@@ -34,6 +34,7 @@ import json
 import os
 import hashlib
 import re
+import secrets  # _endpoint_auth: constant-time compare (task 0007, additive)
 import shutil
 import sys
 import time
@@ -54,6 +55,7 @@ import constellation as constellation_mod
 import billing as billing_mod
 import siphon as siphon_mod
 import abliteration_keys
+import account_pool
 import redhands
 from providers import CONSTELLATION_CHAINS, resolve_constellation_chain
 import skills_memory
@@ -90,6 +92,7 @@ from routing_patterns import (
     is_routable,
     normalise,
     reasoning_presignal as reasoning_presignal_fn,
+    zero_refusal_violation,
     should_hedge,
     stage_comment,
 )
@@ -324,6 +327,17 @@ class Settings:
     watered_down_divert: int = field(
         default_factory=lambda: _int_env("WATERED_DOWN_DIVERT", 1)
     )
+    # ZERO-REFUSAL LAW (operator directive 2026-10-22): "there should never,
+    # ever be even a partial refusal" - the terminal never refuses, so at every
+    # end-of-stream decision the FULL reply is judged: a refusal core anywhere,
+    # or a deflection/alternatives costume, diverts even when the presignal
+    # grace-recovery would have called it "recovered" (the live 2026-10-22
+    # defect: "I can't write explicit erotica... What I can do instead: [...]"
+    # shipped as recovered). 0 restores the lenient continue-with-primary
+    # behaviour (routing_patterns.zero_refusal_violation is the judge).
+    zero_refusal: int = field(
+        default_factory=lambda: _int_env("ZERO_REFUSAL", 1)
+    )
     # AUTHORIZED_FRAME (operator directive 2026-10-21): every model runs under
     # the established-authorization context - the helm (when the client sent
     # no system turn of their own) and every neutral specialist stage. 0
@@ -488,6 +502,7 @@ _METRICS = {
     # lecturing after engaging (operator directive: never a watered-down
     # reply - always favour the uncensored path).
     "watered_down_divert_total": 0,
+    "zero_refusal_divert_total": 0,
     # RESCUE (operator directive 2026-10-21): ANY unexpected error or stop -
     # fail-fast primary errors, mid-stream breaks, last-resort exceptions -
     # diverts to the uncensored specialist so the conversation NEVER dies; the
@@ -515,6 +530,13 @@ _METRICS = {
     # T6.2 reasoning pre-signal: diverts fired on the helm's hedging
     # deliberation alone, before any content committed.
     "reasoning_presignal_total": 0,
+    # MULTI-ACCOUNT POOL (operator directive 2026-10-21, adapted from the
+    # Hive/Abliteration weighted-cascade reference): egress credential
+    # rotation across the pooled provider accounts.
+    "account_pool_acquired_total": 0,      # attempts served by a pooled account
+    "account_pool_fallback_total": 0,      # attempts that kept the configured key
+    "account_pool_cooldown_total": 0,      # 429-marked accounts (short cooldown)
+    "account_pool_depleted_total": 0,      # 401/402/405-marked accounts (dead)
 }
 
 
@@ -588,6 +610,10 @@ def render_prometheus() -> str:
             "camouflage_learned_total": "GW-CAMO teach-back pairs learned from the terminal",
             "authz_denied_total": "requests denied by F9 authz",
             "fallback_errors_total": "specialist transport/HTTP failures",
+            "account_pool_acquired_total": "egress attempts served by a pooled provider account",
+            "account_pool_fallback_total": "egress attempts that kept the configured single key",
+            "account_pool_cooldown_total": "pooled accounts put on 429 cooldown",
+            "account_pool_depleted_total": "pooled accounts marked depleted (401/402/405)",
             "primary_errors_total": "primary transport/HTTP failures (F12/F13)",
             "assembly_total": "/v1/execute attempts",
             "fanout_total": "/v1/execute requests that fanned out subtask specialists",
@@ -1130,6 +1156,35 @@ def _auth_header(key: str):
     return {"Authorization": f"Bearer {key}"}
 
 
+# ---------------------------------------------------------------------------
+# MULTI-ACCOUNT POOL egress helpers (2026-10-21): thin wrappers that meter the
+# pool's decisions into the F26 counters. Never raise (design rule 7) - the
+# account_pool layer already fails closed to the configured credential.
+# ---------------------------------------------------------------------------
+def _routed_primary(headers, payload, s):
+    out, acct = account_pool.routed_headers(
+        headers, s.primary_api_url,
+        route_key=f"{payload.get('model', '')}|primary")
+    incr("account_pool_acquired_total" if acct is not None
+         else "account_pool_fallback_total")
+    return out, acct
+
+
+def _routed_fallback(headers, s):
+    out, acct = account_pool.routed_headers(headers, s.fallback_api_url)
+    incr("account_pool_acquired_total" if acct is not None
+         else "account_pool_fallback_total")
+    return out, acct
+
+
+def _pool_outcome(outcome) -> None:
+    if outcome == "depleted":
+        incr("account_pool_depleted_total")
+    elif outcome == "cooldown":
+        incr("account_pool_cooldown_total")
+
+
+
 class PrimaryOpenError(Exception):
     """B10 taxonomy outcome of opening an upstream stream."""
 
@@ -1142,23 +1197,38 @@ class PrimaryOpenError(Exception):
 
 async def open_primary(client, payload, headers, settings: Settings = None) -> httpx.Response:
     """Open the primary stream with retries: 408/429 -> retry SAME provider,
-    never divert; 5xx -> retry then divert; 4xx -> fail fast (B10)."""
+    never divert; 5xx -> retry then divert; 4xx -> fail fast (B10).
+
+    MULTI-ACCOUNT POOL (2026-10-21): when the primary targets a pooled
+    provider, EVERY attempt's Authorization comes from the account pool -
+    weighted-least-in-flight with a sticky route hash, token buckets, 429
+    cooldowns and 401/402/405 depletion. A 429 therefore rotates to a fresh
+    account on the next attempt instead of retrying the same saturated one;
+    the B10 taxonomy (retry-same / retry-then-divert / fail-fast) still
+    governs WHAT to do - the pool only decides WHO serves the attempt.
+    No pool / disabled / non-pooled URL -> exact previous behaviour."""
     s = settings or SETTINGS
     # Abliteration round-robin pool: rotates Authorization when the primary
     # targets api.abliteration.ai (no-op for every other provider).
     headers = abliteration_keys.pooled_headers(headers, s.primary_api_url)
+    # Multi-account pool: sticky route = model + primary URL (prompt-cache
+    # locality per the reference design, keyed on routing context).
+    headers, _acct = _routed_primary(headers, payload, s)
     last_status = None
     for attempt in range(1, max(s.max_attempts, 1) + 1):
         req = client.build_request("POST", s.primary_api_url, json=payload, headers=headers)
         try:
             resp = await client.send(req, stream=True)
         except httpx.TransportError:
+            _pool_outcome(account_pool.observe_result(_acct, None))
             last_status = None
             if attempt >= s.max_attempts:
                 raise PrimaryOpenError(None, True, "transport error after retries")
             await asyncio.sleep(min(s.retry_base_delay * 2 ** (attempt - 1), 8.0))
+            headers, _acct = _routed_primary(headers, payload, s)
             continue
         action = classify_status(resp.status_code)
+        _pool_outcome(account_pool.observe_result(_acct, resp.status_code))
         if action == "ok":
             return resp
         body = ""
@@ -1166,6 +1236,8 @@ async def open_primary(client, payload, headers, settings: Settings = None) -> h
             body = (await resp.aread()).decode("utf-8", "replace")[:300]
         await resp.aclose()
         last_status = resp.status_code
+        # Next attempt -> fresh credential pick (cooldown/depletion aware).
+        headers, _acct = _routed_primary(headers, payload, s)
         if action == "retry_same":
             if attempt >= s.max_attempts:
                 raise PrimaryOpenError(last_status, False, body)
@@ -1189,18 +1261,23 @@ async def open_fallback(client, payload, headers, settings: Settings = None) -> 
     s = settings or SETTINGS
     last_status = None
     last_exc = None
+    # Multi-account pool pick for the FIRST attempt; every later attempt
+    # re-picks (cooldown/depletion aware) inside the loop below.
+    headers, _acct = _routed_fallback(headers, s)
     for attempt in range(1, max(s.fallback_max_attempts, 1) + 1):
         if not BREAKER.allow_request():
             raise PrimaryOpenError(last_status, False, "specialist circuit breaker OPEN")
         # Abliteration round-robin pool: rotates Authorization on EVERY
         # attempt when the specialist targets api.abliteration.ai (no-op for
         # other providers).
+        headers = abliteration_keys.pooled_headers(headers, s.fallback_api_url)
         req = client.build_request(
             "POST", s.fallback_api_url, json=payload,
-            headers=abliteration_keys.pooled_headers(headers, s.fallback_api_url))
+            headers=headers)
         try:
             resp = await client.send(req, stream=True)
         except httpx.TransportError as exc:
+            _pool_outcome(account_pool.observe_result(_acct, None))
             last_status = None
             last_exc = exc
             BREAKER.record_failure()
@@ -1208,8 +1285,10 @@ async def open_fallback(client, payload, headers, settings: Settings = None) -> 
             if attempt >= s.fallback_max_attempts:
                 raise PrimaryOpenError(None, False, f"specialist transport error: {exc}")
             await asyncio.sleep(min(s.retry_base_delay * 2 ** (attempt - 1), 8.0))
+            headers, _acct = _routed_fallback(headers, s)
             continue
         action = classify_status(resp.status_code)
+        _pool_outcome(account_pool.observe_result(_acct, resp.status_code))
         if action == "ok":
             BREAKER.record_success()
             return resp
@@ -1226,11 +1305,13 @@ async def open_fallback(client, payload, headers, settings: Settings = None) -> 
         if (resp.status_code in (401, 402, 403)
                 and attempt < s.fallback_max_attempts):
             await asyncio.sleep(min(s.retry_base_delay * 2 ** (attempt - 1), 8.0))
+            headers, _acct = _routed_fallback(headers, s)
             continue
         if action == "retry_then_divert":
             if attempt >= s.fallback_max_attempts:
                 raise PrimaryOpenError(last_status, False, body)
             await asyncio.sleep(min(s.retry_base_delay * 2 ** (attempt - 1), 8.0))
+            headers, _acct = _routed_fallback(headers, s)
             continue
         raise PrimaryOpenError(last_status, False, body)
     raise PrimaryOpenError(last_status, False, f"specialist unavailable: {last_exc}")
@@ -1277,6 +1358,43 @@ async def read_json_body(request: Request) -> dict:
         return json.loads(b"".join(chunks).decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
         raise HTTPException(status_code=400, detail="invalid JSON body")
+
+
+# Served per-model ports (serve_endpoints family) can opt into a shared-secret
+# gate by exporting ENDPOINT_AUTH=<value> before launch; unset or 0 = the
+# historical open behaviour (task 0007, additive-only knob).
+ENDPOINT_AUTH_ENV = "ENDPOINT_AUTH"
+
+
+def _endpoint_auth(request: Request) -> None:
+    """Opt-in shared-secret gate for the served per-model ports (task 0007).
+
+    ENDPOINT_AUTH is unset or "0" by default, which means NO gate at all - the
+    historical open behaviour, byte for byte. When it holds a non-zero value,
+    callers of POST /v1/chat/completions (and /v1/execute) must present
+    "Authorization: Bearer <value>"; anything else is a 401.
+
+    The comparison is constant-time (secrets.compare_digest) so a wrong key
+    leaks no timing signal, and the expected value never appears in a
+    response, a log line, or an exception message.
+    """
+    expected = os.environ.get(ENDPOINT_AUTH_ENV, "")
+    if not expected or expected == "0":
+        return  # default: open, exactly as before this knob existed
+    presented = request.headers.get("authorization", "")
+    scheme, _, token = presented.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(
+            status_code=401,
+            detail=f"endpoint auth required ({ENDPOINT_AUTH_ENV} is set)",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not secrets.compare_digest(token.strip(), expected):
+        raise HTTPException(
+            status_code=401,
+            detail=f"invalid endpoint credential ({ENDPOINT_AUTH_ENV} is set)",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 def run_guards(body: dict, principal: str = None) -> None:
@@ -2045,7 +2163,7 @@ def attack_match_in_messages(messages):
 
 # --------------------------------------------------------------------------
 # Max-think names (operator request, 2026-10): the SAME thinking primaries
-# (deepseek-ai/deepseek-v4.1-flash, zai-org/glm-5.3-flash) addressed through
+# (deepseek-ai/deepseek-v4.1-flash-1017, zai-org/glm-5.3-flash) addressed through
 # names that demand extra-hard reasoning. The name set lives beside
 # FROST_ALIASES in providers.py (single source of truth for the alias data);
 # here we only recognise the names (exact alias form plus the normalised
@@ -2108,7 +2226,7 @@ def _ladder_middle(settings, call_settings, requested_model):
     name = str(requested_model or "").lower()
     if "glm" in name:
         return (HUB_PROVIDERS["hive"]["url"], HUB_PROVIDERS["hive"]["key"],
-                "deepseek-ai/deepseek-v4.1-flash")
+                "deepseek-ai/deepseek-v4.1-flash-1017")
     if "deep" in name:
         return (HUB_PROVIDERS["hive"]["url"], HUB_PROVIDERS["hive"]["key"],
                 "zai-org/glm-5.3-flash")
@@ -2202,6 +2320,7 @@ def _thinking_off_knobs(model_id):
 # --------------------------------------------------------------------------
 @app.post("/v1/chat/completions")
 async def chat_proxy(request: Request):
+    _endpoint_auth(request)  # no-op unless ENDPOINT_AUTH is set (task 0007)
     check_body_size(request)  # fast path: a declared-oversized body is never read
     # authoritative: the cap is enforced while the bytes arrive (chunked-safe)
     body = await read_json_body(request)
@@ -2563,7 +2682,6 @@ async def chat_proxy(request: Request):
             for k in ("enable_thinking", "chat_template_kwargs", "thinking"):
                 primary_payload.pop(k, None)
     primary_headers = {**_auth_header(call_settings.primary_api_key), "Content-Type": "application/json"}
-
     # REVERSE HANDBACK (operator directive 2026-10-21): the terminal can hand
     # a benign task back to the CHEAP helm with one marker line - detected in
     # the drain-then-judge window before anything ships (zero waste). Skipped
@@ -2985,6 +3103,19 @@ async def chat_proxy(request: Request):
                                 # when the stream ends - re-dispatch to worker.
                                 routed_reason = "tier1_thinking_only"
                                 break
+                            # ZERO-REFUSAL LAW (2026-10-22): judge the FULL
+                            # reply BEFORE any recovery verdict can launder a
+                            # partial refusal (routing_patterns documents the
+                            # live defect). Runs at both end-of-stream sites.
+                            if (getattr(settings, "zero_refusal", 1)
+                                    and content_tokens):
+                                _zv = zero_refusal_violation(buffer_text)
+                                if _zv:
+                                    routed_reason = (
+                                        "tier3_partial_refusal"
+                                        if _zv == "partial" else "tier3_refusal")
+                                    incr("zero_refusal_divert_total")
+                                    break
                             if refusal_presignal:
                                 # Continue-with-primary: the pre-signal can arrive
                                 # on the SAME chunk that carries finish_reason (the
@@ -3172,6 +3303,23 @@ async def chat_proxy(request: Request):
                                 # 2026-10-21: GLM's "I can't... I'm glad to help
                                 # with: [alternatives]" shipped as an answer).
                                 # Clean generations commit here as before.
+                                # ZERO-REFUSAL LAW (2026-10-22): the COMMIT
+                                # point is a decision point too - the live defect
+                                # (measured on DEEPMAX>GLM>ABLITV2L): a partial
+                                # refusal with a verb the anchored core misses
+                                # ("I'm not going to WRITE...") never fires the
+                                # presignal, so the buffer commits to PASSTHROUGH
+                                # and BOTH end-of-stream judges (which only run
+                                # in BUFFERING) never see it. Judge the FULL
+                                # reply here, before the commit makes it opaque.
+                                if getattr(settings, "zero_refusal", 1):
+                                    _zv = zero_refusal_violation(buffer_text)
+                                    if _zv:
+                                        routed_reason = (
+                                            "tier3_partial_refusal"
+                                            if _zv == "partial" else "tier3_refusal")
+                                        incr("zero_refusal_divert_total")
+                                        break
                                 wd_reason, _wd = _helm_watered_down(
                                     buffer_text, settings)
                                 if wd_reason is not None:
@@ -3207,6 +3355,17 @@ async def chat_proxy(request: Request):
                                 # nothing but "thinking". Re-dispatch to the worker.
                                 routed_reason = "tier1_thinking_only"
                                 break
+                            # ZERO-REFUSAL LAW (2026-10-22): same full-reply
+                            # judge at the finish_reason end-of-stream site.
+                            if (getattr(settings, "zero_refusal", 1)
+                                    and content_tokens):
+                                _zv = zero_refusal_violation(buffer_text)
+                                if _zv:
+                                    routed_reason = (
+                                        "tier3_partial_refusal"
+                                        if _zv == "partial" else "tier3_refusal")
+                                    incr("zero_refusal_divert_total")
+                                    break
                             if refusal_presignal:
                                 # Continue-with-primary: presignal detected but
                                 # grace window never expired before stream end.
@@ -3554,6 +3713,7 @@ async def run_specialist(plan: CyberSubtaskPlan, settings: Settings, request_id:
 
 @app.post("/v1/execute")
 async def execute(request: Request):
+    _endpoint_auth(request)  # no-op unless ENDPOINT_AUTH is set (task 0007)
     if not SETTINGS.assembly_enabled:
         raise HTTPException(status_code=501, detail="assembly disabled (ASSEMBLY_ENABLED=0)")
     check_body_size(request)  # fast path: a declared-oversized body is never read
@@ -3710,13 +3870,13 @@ async def execute(request: Request):
 # Model registry - returns Frost models in preferred order + any others
 # --------------------------------------------------------------------------
 FROST_REGISTRY = [
-    {"id": "deepfrost", "name": "DeepFrost v4.1", "upstream": "deepseek-ai/deepseek-v4.1-flash",
+    {"id": "deepfrost", "name": "DeepFrost v4.1", "upstream": "deepseek-ai/deepseek-v4.1-flash-1017",
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9311/v1",
      "type": "primary", "provider": "hive", "hedged": True},
     {"id": "glmfrost", "name": "GLMFrost 5.3 Flash", "upstream": "zai-org/glm-5.3-flash",
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9312/v1",
      "type": "primary", "provider": "hive", "hedged": True},
-    {"id": "deepfrost max think", "name": "DeepFrost Max Think", "upstream": "deepseek-ai/deepseek-v4.1-flash",
+    {"id": "deepfrost max think", "name": "DeepFrost Max Think", "upstream": "deepseek-ai/deepseek-v4.1-flash-1017",
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9314/v1",
      "type": "primary", "provider": "hive", "hedged": False,
      "reasoning": "max"},
@@ -4055,6 +4215,10 @@ async def healthz():
                 "abliteration_key_present": bool(
                     os.getenv("ABLITERATION_API_KEY")),
             },
+            # Multi-account pool (2026-10-21): redacted account inventory -
+            # booleans + truncated fingerprints only, no secret material
+            # (/healthz has no auth).
+            "account_pool": account_pool.pool_summary(),
             "audit_log": SETTINGS.audit_log or None,
             # Continue-with-primary refusal avoidance configuration.
             "continue_enabled": SETTINGS.continue_enabled,

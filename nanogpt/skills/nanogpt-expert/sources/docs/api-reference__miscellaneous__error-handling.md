@@ -1,0 +1,313 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Error Handling
+
+> Error formats, status codes, and retry guidance for the NanoGPT API.
+
+## Overview
+
+NanoGPT APIs return standard HTTP status codes. Many endpoints also follow OpenAI- or Anthropic-compatible error shapes so you can reuse existing SDK error handling.
+
+If you contact support about an API error, include the `X-Request-ID` response header (when present).
+
+For private feedback submission and status retrieval, see the
+[Feedback API](/api-reference/endpoint/feedback#retrieval-error-codes) for the
+exact HTTP status and `error.code` mapping. Feedback uses `feedback_unavailable`
+for both permanent `410` responses and temporary `503` responses, so clients
+must check the HTTP status before retrying.
+
+## Error Response Formats
+
+NanoGPT has a few common error envelopes depending on the API surface.
+
+### OpenAI-compatible (most `/api/v1/*` endpoints)
+
+Used by endpoints like:
+
+* `POST /api/v1/chat/completions`
+* `POST /api/v1/responses`
+* `POST /api/v1/embeddings`
+* `GET /api/v1/models`
+
+```json theme={null}
+{
+  "error": {
+    "message": "Human-readable error message",
+    "type": "invalid_request_error",
+    "code": "missing_required_parameter",
+    "param": "model"
+  }
+}
+```
+
+Fields:
+
+* `error.message`: human-readable
+* `error.type`: high-level category (see [Error Types](#error-types))
+* `error.code`: optional machine-readable code (see [Error Codes](#error-codes))
+* `error.param`: optional name of the request field that caused the error
+
+### Anthropic-compatible (`POST /api/v1/messages`)
+
+The Messages API uses the Anthropic-style wrapper:
+
+```json theme={null}
+{
+  "type": "error",
+  "error": {
+    "type": "invalid_request_error",
+    "message": "max_tokens is required",
+    "param": "max_tokens"
+  }
+}
+```
+
+### Legacy / simple format (some `/api/*` endpoints)
+
+Some older endpoints return a simpler body:
+
+```json theme={null}
+{ "error": "Insufficient balance", "status": 402 }
+```
+
+Some responses also include a structured object and convenience fields (for example, `requiredBalance` on `402`).
+
+## Status Codes
+
+This table covers the most common HTTP error statuses you may encounter.
+
+| Status | Meaning | Typical client action |
+| - | - | - |
+| `400` | Invalid request / validation failed | Fix the request, then retry |
+| `401` | Missing/invalid API key | Do not retry until credentials are fixed |
+| `402` | Insufficient balance | Add funds or disable paid enhancements, then retry |
+| `403` | Authenticated but not permitted | Choose an allowed model/feature or change permissions |
+| `404` | Resource not found | Check the model/resource ID |
+| `408` / `504` | Timeout | Retry with backoff |
+| `409` | Conflict | Resolve state (duplicate/redeemed/already processed) |
+| `413` | Payload too large | Reduce payload size and retry |
+| `429` | Rate limited | Wait (use `Retry-After` if present), then retry. This can be a per-second throughput limit or a per-key daily limit. |
+| `500` | Server error | Retry with backoff |
+| `503` | Temporarily unavailable | Retry with backoff; consider changing model if persistent |
+
+Notes:
+
+* Some endpoints include convenience fields like `status` in the JSON body mirroring the HTTP status code.
+* Some error responses include `Retry-After` (seconds) for `429`.
+
+## Error Types
+
+Depending on the endpoint, you may see different type strings. Common values include:
+
+* `invalid_request_error` (400)
+* `authentication_error` (401)
+* `permission_denied_error` or `permission_error` (403)
+* `not_found_error` (404)
+* `rate_limit_error` (429)
+* `server_error`, `service_unavailable`, or `api_error` (500/503)
+
+## Error Codes
+
+Not every error includes a `code`. When present, codes are useful for programmatic handling.
+
+Common codes include:
+
+### Request validation
+
+* `missing_required_parameter`
+* `invalid_parameter_value`
+* `invalid_json`
+* `invalid_json_schema`
+* `tool_choice_unsupported`
+* `image_input_not_supported`
+* `conflicting_moderation_model`
+* `inline_moderation_requires_api_key`
+* `empty_moderation_input`
+* `unsupported_moderation_input`
+* `unsupported_input_modality`
+* `unsupported_batch_input`
+
+### Content and context
+
+* `content_policy_violation`
+* `context_length_exceeded`
+* `empty_response`
+
+### Model and routing
+
+* `model_not_found`
+* `model_not_allowed`
+* `model_not_available`
+* `all_fallbacks_failed`
+* `no_fallback_available`
+* `fallback_blocked_for_cache_consistency`
+* `native_web_search_unavailable` (native web search was requested, but the allowed providers cannot run it)
+
+### Balance and payment
+
+* `memory_balance_required`
+* `webSearch_balance_required`
+* `both_balance_required`
+
+### Rate limiting
+
+* `rate_limit_exceeded`
+* `daily_rpd_limit_exceeded`
+* `daily_usd_limit_exceeded`
+
+## Streaming Errors
+
+When using Server-Sent Events (`"stream": true`), errors can happen:
+
+* Before streaming begins (you get a normal JSON error response with an HTTP status code)
+* Mid-stream (you may receive an error frame/chunk, or the connection may terminate)
+
+Example (mid-stream error frame):
+
+```text theme={null}
+data: {"id":"chatcmpl_...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"error"}],"error":{"status":503,"message":"Service temporarily unavailable. Please try again later.","code":"service_unavailable"}}
+data: [DONE]
+```
+
+If an error happens mid-stream, treat it as a failed request:
+
+* Surface/log the error message
+* Log the `X-Request-ID` header if available
+* Retry only when the status/category indicates it is safe to retry (for example 408/429/500/503)
+
+A stream failure does not by itself establish whether a charge was recorded.
+Capture `X-Request-ID` before reading the stream and use [Request Billing](/api-reference/endpoint/request-billing)
+with the same API key to check the original primary charge. Repeating inference
+can create a separate charge; a reused request ID does not deduplicate it.
+
+## Retry Guidance
+
+General retry recommendations:
+
+* Retry: `408`, `429`, `500`, `503` (use exponential backoff and respect `Retry-After`)
+* Do not blindly retry: `400`, `401`, `402`, `403`, `404`, `409`, `413`
+
+Suggested backoff (example):
+
+```text theme={null}
+Attempt 1: 1s
+Attempt 2: 2s
+Attempt 3: 4s
+```
+
+Add jitter to avoid synchronized retries.
+
+**Billing lookup exception:** A `404` from [Request Billing](/api-reference/endpoint/request-billing)
+can mean accounting is still pending. Wait at least its `Retry-After: 30` delay
+plus jitter before looking up the same ID again. Honor larger retry delays on
+`429` and `503`; stop on `200`, permanent errors, or no later than 24 hours after
+the original request. A `404` can also mean expired, absent, or inaccessible
+records, so it never proves zero cost.
+
+If you need current guidance on global rate limits, see [Rate Limits](/api-reference/miscellaneous/rate-limits).
+
+## Daily Per-Key Limit Notes
+
+NanoGPT can enforce optional per-key daily limits (Requests/Day and USD/Day). When a daily limit is exceeded, the API returns `429` and typically includes a `Retry-After` header indicating the number of seconds until the next reset at **00:00 UTC**.
+
+## Balance Errors (402)
+
+Some endpoints return `402 Payment Required` when payment is needed before the request can run. There are two common cases.
+
+### Authenticated Balance Error
+
+```json theme={null}
+{
+  "error": "Insufficient balance",
+  "requiredBalance": 0.0035,
+  "status": 402
+}
+```
+
+This is the ordinary insufficient-balance response for authenticated requests.
+
+### Accountless x402 Payment Challenge
+
+Supported endpoints can also be called without `Authorization` or `x-api-key` when the client explicitly opts in to accountless x402 quote generation. To request an accountless x402 quote, send the API request without `Authorization` or `x-api-key`, and include `x-x402: true`. NanoGPT will return `402 Payment Required` with available payment options and a stable top-level `payment` object plus legacy OpenAI-compatible error fields.
+
+If you receive `401 missing_api_key` immediately, check that the initial quote request includes `x-x402: true`. Without that header, NanoGPT does not enter the x402 quote flow.
+
+Detect accountless x402 by checking for the top-level `payment` object, not a single `error.code` value.
+
+```json theme={null}
+{
+  "error": {
+    "type": "insufficient_quota",
+    "code": "insufficient_quota",
+    "message": "Payment required to complete this request."
+  },
+  "payment": {
+    "version": 1,
+    "paymentId": "pay_...",
+    "requestHash": "sha256:...",
+    "expiresAt": "2026-06-09T12:00:00.000Z",
+    "amountUsd": "0.0714",
+    "statusUrl": "https://nano-gpt.com/api/x402/status/pay_...",
+    "completeUrl": "https://nano-gpt.com/api/x402/complete/pay_...",
+    "accepted": [
+      {
+        "scheme": "nano",
+        "protocolScheme": "nano",
+        "network": "nano-mainnet",
+        "amount": "...",
+        "amountFormatted": "0.17067988 XNO",
+        "amountUsd": "0.0714",
+        "payTo": "nano_...",
+        "paymentId": "pay_...",
+        "statusUrl": "https://nano-gpt.com/api/x402/status/pay_...",
+        "completeUrl": "https://nano-gpt.com/api/x402/complete/pay_..."
+      },
+      {
+        "scheme": "x402-solana-usdc",
+        "protocolScheme": "exact",
+        "network": "solana",
+        "amount": "1500",
+        "amountFormatted": "0.0015 USDC",
+        "amountUsd": "0.0015",
+        "payTo": "<solana treasury address from quote>",
+        "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "feePayer": "<solana facilitator fee payer from quote>",
+        "paymentId": "pay_...",
+        "expiresAt": "2026-06-09T12:00:00.000Z"
+      },
+      {
+        "scheme": "lightning-l402",
+        "protocolScheme": "lightning-l402",
+        "network": "bitcoin-lightning",
+        "amount": "9",
+        "amountFormatted": "9 sats",
+        "amountUsd": "0.0054",
+        "payTo": "lnbc...",
+        "invoice": "lnbc...",
+        "paymentHash": "...",
+        "l402Token": "..."
+      }
+    ]
+  },
+  "x402Version": 1,
+  "accepts": []
+}
+```
+
+The legacy `accepts` array may still appear for backwards-compatible and lower-level protocol clients, but new clients should use `payment.accepted[]`. Exact rails such as `nano-exact`, `x402-exact`, and `x402-solana-usdc` replay the original request with `X-PAYMENT`; polling-style rails such as `nano` and `base-usdc` use `statusUrl` and `completeUrl`; Lightning L402 replays the exact original request with `Authorization: L402 <token>:<preimage>` and does not use `X-PAYMENT` or `completeUrl`. See [Accountless x402 API Payments](/api-reference/miscellaneous/x402) for the complete flow and supported endpoint matrix.
+
+Feature-specific variants may include a structured error `code` such as `memory_balance_required` or `webSearch_balance_required`.
+
+## Content Policy and Empty Responses
+
+* If a request is blocked by safety checks (`content_policy_violation`), the API will return a `400` error and is intended to avoid charging for the blocked generation request. If [Inline Moderation](/api-reference/miscellaneous/inline-moderation) blocked the request, the separate moderation preflight is still charged.
+* If the API returns `empty_response`, the request is intended to avoid charging (common causes: stop sequences, very low `max_tokens`, or filtering).
+
+## BYOK Notes
+
+When using BYOK (Bring Your Own Key), some error messages may reference "your API key" because the upstream credentials belong to you.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

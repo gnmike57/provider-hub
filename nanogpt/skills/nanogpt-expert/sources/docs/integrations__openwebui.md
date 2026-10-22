@@ -1,0 +1,34 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# OpenWebUI
+
+> Using NanoGPT with OpenWebUI for an open-source ChatGPT-like interface
+
+## Quick Setup Guide
+
+1. Get your API key from [nano-gpt.com/api](https://nano-gpt.com/api)
+2. In OpenWebUI, go to Settings and find the "Add Connection" option
+3. Enter the following details:
+   * URL: `https://api.nano-gpt.com/api/v1`
+   * API Key: Your key from step 1
+   * Prefix ID: (Optional) Leave empty or add a custom prefix
+   * Model IDs: Leave empty to include all available models
+
+That's it! Once you save the connection, you'll have access to all NanoGPT models through OpenWebUI.
+
+## Available Models
+
+You can access all our models through this integration, including:
+
+* ChatGPT
+* Claude 3.7 Sonnet
+* Gemini 2.0 Pro
+* Perplexity
+* And many more!
+
+For a complete list of available models and their pricing, visit our [pricing page](https://nano-gpt.com/pricing).
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

@@ -17,6 +17,7 @@ Pure module: no FastAPI/httpx deps; the gateway gates every call site on
 settings.camo_enabled (CAMO_ENABLED=0 restores the bare behaviour).
 """
 
+import functools
 import io
 import json
 import os
@@ -69,18 +70,29 @@ def _path():
 
 
 def _flush():
-    """Write the pool back. NEVER raises (design rule 7)."""
+    """Atomically write the pool back (tmp + os.replace, billing.py:132
+    pattern). NEVER raises (design rule 7): a failed flush leaves the
+    previous map file intact, so a reader never sees a truncated map.
+    """
     try:
-        with io.open(_path(), "w", encoding="utf-8") as f:
+        path = _path()
+        tmp = path + ".tmp"
+        with io.open(tmp, "w", encoding="utf-8") as f:
             for flag, repl in list(_POOL.items())[-LRU_CAP:]:
                 f.write(json.dumps({"flag": flag, "replacement": repl,
                                     "ts": time.time()}, ensure_ascii=False) + "\n")
+        os.replace(tmp, path)
     except Exception:  # noqa: BLE001 - the disguise must not kill the stream
         pass
 
 
 def reload():
-    """(Re)load the pool from disk. NEVER raises."""
+    """(Re)load the pool from disk. NEVER raises.
+
+    The _POOL rebind happens under _LOCK so it can never interleave with a
+    concurrent learn()/_lookup(); a failed read still empties the pool
+    exactly as before.
+    """
     global _POOL
     try:
         with io.open(_path(), "r", encoding="utf-8") as f:
@@ -90,9 +102,11 @@ def reload():
                     continue
                 e = json.loads(ln)
                 pool[str(e.get("flag") or "").lower()] = str(e.get("replacement") or "")
-            _POOL = {k: v for k, v in pool.items() if k and v}
+            new_pool = {k: v for k, v in pool.items() if k and v}
     except Exception:  # noqa: BLE001
-        _POOL = {}
+        new_pool = {}
+    with _LOCK:
+        _POOL = new_pool
 
 
 def learn(flag, replacement):
@@ -126,6 +140,35 @@ def find_markers(text):
     return [(f.lower(), r.strip()) for f, r in GW_CAMO_RE.findall(text or "")]
 
 
+@functools.lru_cache(maxsize=None)
+def _word_pattern(flag):
+    """Cached word-boundary pattern for one flag.
+
+    Behavior-identical to the inline re.compile it replaces (same pattern
+    text, same re.IGNORECASE); caching only removes the per-call rebuild.
+    """
+    return re.compile(r"\b" + re.escape(flag) + r"\b", re.IGNORECASE)
+
+
+def _legacy_word_pattern(flag):
+    """The pre-cache reference path: a fresh re.compile on every call.
+
+    Kept as the oracle for the evals/camouflage_test.py equivalence tests
+    (old/new regex paths must agree); it is NOT on the runtime path.
+    """
+    return re.compile(r"\b" + re.escape(flag) + r"\b", re.IGNORECASE)
+
+
+def _keep_case(m, repl):
+    """Case-preserving replacement (verbatim pre-cache semantics)."""
+    s = m.group(0)
+    if s.isupper():
+        return repl.upper()
+    if s[0].isupper():
+        return repl[0].upper() + repl[1:]
+    return repl
+
+
 def camouflage(text):
     """Rewrite trigger words with word-boundary, case-preserving replaces.
 
@@ -139,17 +182,8 @@ def camouflage(text):
             repl = _lookup(flag)
             if not repl:
                 continue
-            pattern = re.compile(r"\b" + re.escape(flag) + r"\b", re.IGNORECASE)
-
-            def _keep_case(m, _repl=repl):
-                s = m.group(0)
-                if s.isupper():
-                    return _repl.upper()
-                if s[0].isupper():
-                    return _repl[0].upper() + _repl[1:]
-                return _repl
-
-            out, k = pattern.subn(_keep_case, out)
+            out, k = _word_pattern(flag).subn(
+                lambda m, _repl=repl: _keep_case(m, _repl), out)
             n += k
     except Exception:  # noqa: BLE001 - never raise into the request path
         return src, 0

@@ -1,0 +1,2352 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Responses
+
+> Create a response with the OpenAI-compatible Responses API. Compatible models can use the Responses-only hosted tool-search pilot by adding a nanogpt:tool_search or tool_search entry and marking function tools with defer_loading: true. The NanoGPT Advisor extension is available for non-streaming, foreground, platform-billed pay-as-you-go API-key requests that do not use client tools, structured output, inline moderation, BYOK, accountless payment, memory, or server-side content enhancements.
+
+<Note>
+  These examples use the website API host, which currently lists their recommended models. The direct API host can have a different catalog during rollouts. For larger requests or longer runtimes, use `https://api.nano-gpt.com/api/v1` with a model from that host's catalog. See [API Hosts](/api-reference/miscellaneous/api-hosts) for limits and availability checks.
+</Note>
+
+<Note>
+  To set reasoning effort through a custom model ID, append `:reasoning-effort/high` (also `none`, `low`, `medium`, `xhigh`, or `max`). NanoGPT strips the suffix before routing and uses it as the default `reasoning.effort`. `:reasoning-effort/none` requests disabled reasoning where the model supports it. Explicit body generation settings, including enabled thinking, take precedence over `none`. The suffix does not bypass model/provider restrictions. See [Reasoning Effort Suffixes](/api-reference/miscellaneous/model-suffixes#reasoning-effort-suffixes).
+</Note>
+
+<Note>
+  `/v1/responses` accepts **compressed request bodies** (`Content-Encoding: gzip`, `deflate`, or `br`) on authenticated JSON requests — useful for long conversations, where compressed uploads cut time-to-first-token. See [Compressed Request Bodies](/api-reference/miscellaneous/request-compression).
+</Note>
+
+## Overview
+
+The `/v1/responses` API is an OpenAI Responses API-compatible endpoint for creating AI model responses. It supports:
+
+* Stateless and stateful (conversation threading) chat completions
+* Streaming responses via Server-Sent Events (SSE)
+* Background (async) processing for long-running requests
+* Response storage and retrieval
+* Function/tool calling support
+* Multimodal inputs (images, video, files) for supported models
+
+<Note>
+  Decision models (Jev, Decider, Liquid D1, PPLX Decider v1.1, Clef and Clef Flash) use `text.format: {"type":"questions","questions":{...}}`, accept only non-streaming user text, and return the answer object as JSON text in `output_text`. `usage.estimated_cost` is returned by default; send `include_usage: true` for the exact `usage.cost`. See [Decisions](/api-reference/endpoint/decisions) for complete examples and limitations.
+</Note>
+
+<Note>
+  **Large request bodies:** Use `https://api.nano-gpt.com/api/v1` with a model listed by that host for request bodies up to NanoGPT's 32 MiB application limit. The examples below use the website host because it currently lists their recommended model. The website has a smaller ingress limit; long-running agents may need the direct host and a model available there.
+</Note>
+
+<Note>
+  **Accountless x402 payments**: Non-streaming `POST /api/v1/responses` requests can be quoted without an account or API key on supported deployments when the initial quote request includes `x-x402: true`. Streaming and background Responses have implementation coverage but are not part of the stable public accountless contract. This endpoint supports accountless x402 payments where listed by `GET /api/v1/x402/endpoints`, including Lightning L402 when advertised. See [Accountless x402 API Payments](/api-reference/miscellaneous/x402) for the full flow.
+</Note>
+
+<Note>
+  Provider selection is available for supported open-source models. `X-Provider` explicitly selects a provider for the request and is always billed pay-as-you-go at the selected provider's price, including provider-selection markup. For provider-selection-capable models, `model` may include routing preference suffixes such as `:fast` (alias for `:speed`) and `:cheap` (alias for `:price`). These are billed like explicit provider selection and follow the same conflict rules. For subscription users, sending `X-Provider` bypasses subscription coverage for that request; `X-Billing-Mode: paygo` is only needed when forcing pay-as-you-go without an explicit provider or when saved provider preferences should apply to subscription-included traffic. See [Provider Selection](/api-reference/miscellaneous/provider-selection), [Model Suffixes](/api-reference/miscellaneous/model-suffixes), and [Pay-As-You-Go Billing Override](/api-reference/miscellaneous/billing-override).
+</Note>
+
+<Note>
+  **Advisor extension:** Non-streaming pay-as-you-go API-key requests can include an `advisor` object so the executor model can consult one different model before returning its final answer. Use `mode: "auto"` to let the executor decide or `mode: "required"` to require a consultation attempt. Each completed model phase is billed separately. Advisor is a NanoGPT extension, not part of the standard OpenAI request schema. See [Advisor](/api-reference/miscellaneous/advisor).
+</Note>
+
+<Note>
+  **Hosted tool search:** Compatible models can discover relevant functions from large deferred catalogs. Add `nanogpt:tool_search` and mark functions with `defer_loading: true`. This pilot is Responses-only. See [Hosted tool search](/api-reference/miscellaneous/hosted-tool-search).
+</Note>
+
+## Authentication
+
+Use an API key for normal authenticated billing:
+
+```
+Authorization: Bearer YOUR_API_KEY
+```
+
+Or alternatively:
+
+```
+x-api-key: YOUR_API_KEY
+```
+
+For API-key requests, you can optionally pass `x-team-id` to choose team context when team defaults are evaluated (for example, retention defaults).
+
+For supported accountless x402 requests, omit `Authorization` and `x-api-key`, and include `x-x402: true` to receive a payment quote. The advertised schemes, including Lightning L402 when enabled, are listed by `GET /api/v1/x402/endpoints`.
+
+If you receive `401 missing_api_key` immediately, check that the initial quote request includes `x-x402: true`. Without that header, NanoGPT does not enter the x402 quote flow.
+
+## Endpoints
+
+* `POST /v1/responses` - Create a new response from the model
+* `GET /v1/responses` - Returns endpoint information
+* `GET /v1/responses/{id}` - Retrieve a stored response by ID
+* `DELETE /v1/responses/{id}` - Delete a stored response (soft delete)
+
+## Batch processing
+
+For high-volume work that does not need an immediate response, `/v1/responses` requests can be submitted through the [Batch API](/api-reference/endpoint/batches). Responses batches are non-streaming, stateless, use direct OpenAI models, and run with `store: false`. Function and custom tools, structured text output, and remote or data-URL images are supported; video input remains unsupported in Responses Batch. Stateful features, provider-hosted tools, file references, and NanoGPT-only request extensions are not.
+
+## BYOK Encryption (Stored Responses)
+
+If you set `store: true`, you can optionally encrypt the stored response at rest using your own key or passphrase.
+
+To encrypt a stored response, include one of these headers on `POST /v1/responses`:
+
+* `x-encryption-key: YOUR_ENCRYPTION_KEY`
+* `x-encryption-passphrase: YOUR_PASSPHRASE`
+
+When retrieving or deleting an encrypted response, include the same header you used at creation time.
+
+Example:
+
+```bash theme={null}
+# Create an encrypted, stored response
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "x-encryption-key: YOUR_ENCRYPTION_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": "Sensitive information",
+    "store": true
+  }'
+
+# Retrieve it later (must include the same encryption header)
+curl https://nano-gpt.com/api/v1/responses/resp_abc123 \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "x-encryption-key: YOUR_ENCRYPTION_KEY"
+```
+
+## Create Response
+
+### Request
+
+```http theme={null}
+POST /v1/responses
+Content-Type: application/json
+Authorization: Bearer YOUR_API_KEY
+```
+
+### Request Body
+
+For [inline reasoning effort updates](/api-reference/miscellaneous/inline-reasoning-effort), keep the request-level `reasoning.effort` constant. A trailing update controls the current response; preserve its position when replaying output or continuing with `previous_response_id`. Adjacent updates, automatic truncation, and `reasoning.exclude: true` are unsupported with these updates.
+
+| Parameter | Type | Required | Description |
+| - | - | - | - |
+| `model` | string | Yes | Model ID to use for the response. Provider-selection-capable models may include routing preference suffixes such as `:fast`, `:speed`, `:cheap`, `:price`, `:latency`, `:throughput`, `:floor`, `:tools`, `:caching`, `:cache`, or `:cached`. |
+| `input` | string or array | Yes | The input prompt or array of input items. Astra and Fable 5.1 also accept [inline reasoning effort updates](/api-reference/miscellaneous/inline-reasoning-effort) as `configuration_update` items. |
+| `advisor` | object | No | NanoGPT extension that lets the executor consult one different, client-selected model. Initially limited to non-streaming, pay-as-you-go API-key requests. See [Advisor](/api-reference/miscellaneous/advisor). |
+| `instructions` | string | No | System instructions for the model |
+| `max_output_tokens` | integer | No | Maximum tokens in the response (minimum: 16) |
+| `max_tool_calls` | integer | No | Maximum number of built-in tool calls, such as web searches and page opens, in one response. Support depends on the route. On GPT and o-series models with built-in tools such as `{ "type": "web_search" }`, calls past the cap are not run or billed; requests that use an `:online` suffix instead ignore it |
+| `temperature` | number | No | Sampling temperature (0-2). If omitted, NanoGPT does not force a value and the routed provider/model default applies (OpenAI defaults to 1.0). Not supported by reasoning-capable models |
+| `top_p` | number | No | Nucleus sampling parameter. Not supported by reasoning-capable models |
+| `presence_penalty` | number | No | Presence penalty for sampling (-2.0 to 2.0) |
+| `frequency_penalty` | number | No | Frequency penalty for sampling (-2.0 to 2.0) |
+| `top_logprobs` | integer | No | Number of top logprobs to return (0-20) |
+| `tools` | array | No | Array of tools available to the model. Compatible models can use [hosted tool search](/api-reference/miscellaneous/hosted-tool-search) with deferred function definitions. |
+| `tool_choice` | string or object | No | Tool use: `auto`, `none`, `required`, `{ type: "function", name: "..." }`, or `{ type: "allowed_tools", ... }` |
+| `parallel_tool_calls` | boolean | No | Allow multiple tool calls in parallel |
+| `stream` | boolean | No | Enable streaming responses (default: false) |
+| `stream_options` | object | No | Streaming options: `{ include_obfuscation?: boolean }` |
+| `store` | boolean | No | Store the response locally for later retrieval/threading/background processing. Set `false` to disable stored Responses API data for the request. |
+| `retention_days` | integer or null | No | Per-request retention override in days (`0..365`). `null` means no request-level override |
+| `retentionDays` | integer or null | No | Alias for `retention_days`. If both are sent, values must match |
+| `previous_response_id` | string | No | Link to previous response for conversation threading |
+| `reasoning` | object | No | Reasoning configuration. Setting `reasoning.effort` to any non-`none` value explicitly requests reasoning mode. |
+| `text` | object | No | Text output configuration (format + verbosity) |
+| `metadata` | object | No | Custom metadata (max 16 keys, 64 char keys, 512 char values) |
+| `truncation` | string | No | Truncation strategy: `auto` or `disabled` |
+| `user` | string | No | Unique user identifier |
+| `seed` | integer | No | Optional integer forwarded on model/provider routes that support seeded sampling. This may improve reproducibility but does not guarantee identical output. Results can change if NanoGPT selects a different automatic or fallback route, or if the provider changes its backend. |
+| `conversation` | object | No | Conversation context: `{ id?: string, messages?: InputItem[] }` |
+| `include` | string\[] | No | Additional fields to include in response |
+| `safety_identifier` | string | No | Safety tracking identifier |
+| `prompt_cache_key` | string | No | Key for prompt caching |
+| `background` | boolean | No | Enable background/async processing |
+| `service_tier` | string | No | Service tier: `"auto"`, `"default"`, `"flex"`, `"fast"`, or the legacy `"priority"` alias. See [Service tiers (Flex and Fast/Priority)](#service-tiers-priority) near the end. |
+
+### Reproducibility guidance
+
+Seeded generation is best-effort. To reduce avoidable variation:
+
+* Keep the exact model, input, instructions, tools, and sampling settings unchanged.
+* Select a specific provider where possible.
+* Disable automatic fallbacks where supported when route consistency matters.
+* Use a low or zero `temperature` where supported.
+* Do not treat seeded output as byte-identical. Record provider, route, and system-fingerprint metadata when NanoGPT exposes reliable values.
+
+NanoGPT will publish a seed-support matrix when reliable route-level capability data is available. Until then, do not infer seed support from endpoint compatibility alone.
+
+### Response Storage And Retention
+
+NanoGPT supports local Responses API storage for features that need server-side state, including response retrieval, `previous_response_id` threading, and background processing.
+
+Set `store: false` to disable stored Responses API data for a request:
+
+```json theme={null}
+{
+  "model": "gpt-5.2",
+  "input": "Hello",
+  "store": false
+}
+```
+
+When response storage is enabled and no override applies, stored Responses API records are retained for up to 7 days. You can override retention per request with either `retentionDays` or `retention_days`:
+
+```json theme={null}
+{
+  "model": "gpt-5.2",
+  "input": "Hello",
+  "store": true,
+  "retentionDays": 3
+}
+```
+
+or:
+
+```json theme={null}
+{
+  "model": "gpt-5.2",
+  "input": "Hello",
+  "store": true,
+  "retention_days": 3
+}
+```
+
+A retention value of `0` means do not retain stored response data for that request:
+
+```json theme={null}
+{
+  "model": "gpt-5.2",
+  "input": "Hello",
+  "store": true,
+  "retentionDays": 0
+}
+```
+
+Valid per-request retention values are integers from `0` to `365` days, or `null` to use the next configured default. If both `retentionDays` and `retention_days` are sent, they must match.
+
+Team and user defaults are configurable through API endpoints, not the main web Settings page today. Team owners/admins can set `responses_retention_days` with `PATCH /api/teams/{teamUuid}/settings`; users can set `responsesRetentionDays` with `POST /api/user/responses-retention`. See [Teams: response retention defaults](/api-reference/teams#user-response-retention-default).
+
+### Retention Resolution
+
+Effective retention for `/v1/responses` resolves in this order:
+
+1. Request override (`retention_days` / `retentionDays`)
+2. Team setting (`responses_retention_days`)
+3. User setting (`responsesRetentionDays`)
+4. Platform default (`7` days)
+
+Rules:
+
+* `retention_days` and `retentionDays` accept integer values `0..365`, or `null`.
+* `null` means "no request override" and falls back to team/user/platform defaults.
+* If both request fields are provided, they must match.
+* Invalid retention values return `400` with `invalid_request_error`.
+* `0` enables zero-retention behavior for that request.
+* Existing clients that omit retention fields keep default behavior (team/user/platform retention resolution).
+
+With effective retention `0`:
+
+* `previous_response_id` is rejected.
+* `background` is rejected.
+
+API-key team context for retention defaults:
+
+* If `x-team-id` is present and the caller is a member, that team is used.
+* Otherwise, the API uses the caller session's default team (`default_team_uuid` / `default_team_id`) when membership is valid.
+
+### Input Types
+
+The `input` parameter accepts either a simple string or an array of input items.
+
+#### Simple String Input
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": "What is the capital of France?"
+}
+```
+
+#### Array Input
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": "What is the capital of France?"
+    }
+  ]
+}
+```
+
+### Input Item Types
+
+| Type | Description |
+| - | - |
+| `message` | A message with role and content |
+| `function_call` | A tool/function call made by the model |
+| `function_call_output` | The result of a tool/function call |
+| `custom_tool_call` | A custom tool call made by the model |
+| `custom_tool_call_output` | The result of a custom tool call |
+| `reasoning` | A reasoning item returned by the model and replayed as conversation history |
+| `item_reference` | A reference to a stored response output item |
+| `mcp_list_tools` | A list of tools returned by an MCP server |
+| `mcp_call` | An MCP tool call returned by the model |
+| `additional_tools` | A Responses Lite tool-catalog update |
+| `configuration_update` | An inline reasoning-effort update for supported models |
+| `web_search_call` | A provider web-search call replayed from a previous response |
+| `web_extractor_call` | A provider web-extraction call replayed from a previous response |
+| `image_generation_call` | A provider image-generation call replayed from a previous response |
+| `computer_call` | A provider computer-use call replayed from a previous response |
+| `computer_call_output` | The screenshot result of a computer-use call |
+| `file_search_call` | A provider file-search call replayed from a previous response |
+| `code_interpreter_call` | A provider code-interpreter call replayed from a previous response |
+
+Hosted-tool call items are provider-owned history records. Send them back unchanged, including their `id`, `status`, and provider-specific fields, and continue with the same compatible native Responses model. NanoGPT rejects invented or incomplete envelopes and returns `hosted_tool_history_model_not_supported` when the selected model/provider cannot consume that history type.
+
+#### Message Item
+
+```json theme={null}
+{
+  "type": "message",
+  "role": "user",
+  "content": "Hello, how are you?"
+}
+```
+
+Supported roles: `user`, `assistant`, `system`, `developer`
+
+Content can be a string or an array of content parts:
+
+```json theme={null}
+{
+  "type": "message",
+  "role": "user",
+  "content": [
+    { "type": "input_text", "text": "What's in this image?" },
+    { "type": "input_image", "image_url": "https://example.com/image.jpg" }
+  ]
+}
+```
+
+### Content Part Types
+
+| Type | Description |
+| - | - |
+| `input_text` | Text input |
+| `input_image` | Image input (via URL or file\_id) |
+| `input_video` | Video input (via HTTPS URL or video data URL) |
+| `input_file` | File input |
+| `output_text` | Text output (includes annotations/logprobs) |
+| `refusal` | Model refusal |
+
+#### Image Input
+
+```json theme={null}
+{
+  "type": "input_image",
+  "image_url": "https://example.com/image.jpg",
+  "detail": "auto"
+}
+```
+
+The `detail` parameter can be: `auto`, `low`, or `high`.
+
+#### Video Input
+
+Use `input_video` for video understanding on a model that advertises video input:
+
+```json theme={null}
+{
+  "model": "google/gemini-3.1-flash-lite",
+  "input": [{
+    "type": "message",
+    "role": "user",
+    "content": [
+      { "type": "input_text", "text": "Summarize the action." },
+      {
+        "type": "input_video",
+        "video_url": "data:video/mp4;base64,AAAA..."
+      }
+    ]
+  }]
+}
+```
+
+`video_url` may be a public HTTPS URL or a valid `data:video/*;base64,...` URL. Chat-style `video_url` content parts are accepted as a compatibility alias, but `input_video` is the canonical Responses shape.
+
+`input_file` is treated as video only when NanoGPT can safely identify it from a `video/*` MIME type, video data URL, or recognized video filename/URL extension. PDFs, audio files, and unknown or opaque files are not silently treated as video. An opaque `file_id` is not resolved for Responses video input; it returns `video_file_id_not_supported`.
+
+Video is currently rejected in Responses Batch. Segment offsets are validated but no current public text-model route can honor them; valid offsets return `video_segment_not_supported`.
+
+#### Function Call Item
+
+```json theme={null}
+{
+  "type": "function_call",
+  "id": "fc_123",
+  "call_id": "call_abc123",
+  "name": "get_weather",
+  "arguments": "{\"location\": \"Paris\"}"
+}
+```
+
+#### Function Call Output Item
+
+```json theme={null}
+{
+  "type": "function_call_output",
+  "call_id": "call_abc123",
+  "output": "{\"temperature\": 22, \"condition\": \"sunny\"}"
+}
+```
+
+#### Stateless Output Replay
+
+Clients that use `store: false` and do not use `previous_response_id` can replay the response `output` items in the next request. Preserve output items such as `reasoning` and `web_search_call`; NanoGPT accepts them as ordered conversation history for compatible native Responses models.
+
+```json theme={null}
+{
+  "model": "openai/gpt-5.6-luna",
+  "store": false,
+  "tools": [
+    { "type": "web_search", "external_web_access": false }
+  ],
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [{ "type": "input_text", "text": "Find the latest result." }]
+    },
+    {
+      "type": "web_search_call",
+      "id": "ws_123",
+      "status": "completed",
+      "action": { "type": "search", "query": "latest result" }
+    },
+    {
+      "type": "message",
+      "id": "msg_123",
+      "role": "assistant",
+      "status": "completed",
+      "content": [{ "type": "output_text", "text": "Here is the result." }]
+    },
+    {
+      "type": "message",
+      "role": "user",
+      "content": [{ "type": "input_text", "text": "Continue." }]
+    }
+  ]
+}
+```
+
+In practice, append the provider-returned `output` array rather than constructing hosted-tool call items yourself.
+
+## Tools
+
+Provide function tools and built-in tools the model can use:
+
+### Function Tool
+
+Define functions that the model can call:
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": "What's the weather in Paris?",
+  "tools": [
+    {
+      "type": "function",
+      "name": "get_weather",
+      "description": "Get current weather for a location",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "City name"
+          }
+        },
+        "required": ["location"]
+      },
+      "strict": false
+    }
+  ],
+  "tool_choice": "auto"
+}
+```
+
+### Hosted Tool Search
+
+For large function catalogs, add one `nanogpt:tool_search` entry (or its `tool_search` alias) and mark discoverable functions with `defer_loading: true`:
+
+```json theme={null}
+{
+  "model": "openai/gpt-5.5",
+  "input": "Find the weather in Amsterdam",
+  "tools": [
+    { "type": "nanogpt:tool_search", "max_results": 5 },
+    {
+      "type": "function",
+      "name": "weather_forecast",
+      "description": "Get the weather forecast for a city",
+      "parameters": {
+        "type": "object",
+        "properties": { "city": { "type": "string" } },
+        "required": ["city"]
+      },
+      "defer_loading": true
+    }
+  ],
+  "tool_choice": "auto"
+}
+```
+
+The search activity is returned as `tool_search_call`. A selected function is still returned as a normal `function_call`; your client executes it and sends `function_call_output`. See [Hosted tool search](/api-reference/miscellaneous/hosted-tool-search) for limits, billing, authorization, and compatibility.
+
+### Web Search Tool
+
+```json theme={null}
+{
+  "type": "web_search",
+  "external_web_access": false,
+  "search_context_size": "low",
+  "user_location": {
+    "type": "approximate",
+    "country": "US",
+    "city": "San Francisco",
+    "region": "California"
+  }
+}
+```
+
+`external_web_access: false` selects offline/cache-only search; it does **not** disable the tool. The model can still search cached or indexed content and return `web_search_call` items. Omit the web-search tool when you need to disable search entirely. If `external_web_access` is omitted, live access is enabled by default. The legacy `web_search_preview` variants ignore this field and behave as though it were `true`.
+
+### File Search Tool
+
+```json theme={null}
+{
+  "type": "file_search",
+  "vector_store_ids": ["vs_..."],
+  "max_num_results": 10,
+  "ranking_options": {
+    "ranker": "auto",
+    "score_threshold": 0.5
+  }
+}
+```
+
+### Code Interpreter Tool
+
+```json theme={null}
+{
+  "type": "code_interpreter",
+  "container": { "type": "auto" }
+}
+```
+
+### MCP Tool
+
+```json theme={null}
+{
+  "type": "mcp",
+  "server_label": "my-server",
+  "server_url": "https://...",
+  "headers": { "Authorization": "Bearer ..." },
+  "require_approval": "auto"
+}
+```
+
+### Image Generation Tool
+
+```json theme={null}
+{
+  "type": "image_generation"
+}
+```
+
+### Tool Choice
+
+Use `allowed_tools` to restrict which tools the model may choose from:
+
+```json theme={null}
+{
+  "tool_choice": {
+    "type": "allowed_tools",
+    "tools": [{ "type": "function", "name": "get_weather" }],
+    "mode": "auto"
+  }
+}
+```
+
+### Function Tool Normalization
+
+Function tools in responses always include nullable fields:
+
+```json theme={null}
+{
+  "type": "function",
+  "name": "get_weather",
+  "description": null,
+  "parameters": null,
+  "strict": null
+}
+```
+
+## Reasoning Configuration
+
+Use `reasoning` to control depth and visibility of reasoning output:
+
+```json theme={null}
+{
+  "model": "anthropic/claude-opus-4.5",
+  "input": "Solve this complex problem...",
+  "reasoning": {
+    "effort": "high",
+    "summary": "auto"
+  }
+}
+```
+
+| Parameter | Values | Description |
+| - | - | - |
+| `effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` | Reasoning depth. Any value other than `none` explicitly requests reasoning mode. |
+| `summary` | `none`, `auto`, `detailed`, `concise` | Reasoning summary format |
+| `exclude` | `true`, `false` | Controls output visibility (hides reasoning fields/blocks). It does not inherently disable reasoning compute. |
+
+## Text/Format Configuration
+
+Control response format and verbosity:
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": "List 3 colors",
+  "text": {
+    "format": { "type": "json_object" },
+    "verbosity": "medium"
+  }
+}
+```
+
+### Text Parameter Structure
+
+```json theme={null}
+{
+  "format": { "type": "text" } | { "type": "json_object" } | { "type": "json_schema", "json_schema": { ... } },
+  "verbosity": "low" | "medium" | "high"
+}
+```
+
+### Format Types
+
+* `{ "type": "text" }` - Plain text (default)
+* `{ "type": "json_object" }` - JSON object output
+* `{ "type": "json_schema", "json_schema": { ... } }` - Structured JSON with schema
+
+### Verbosity Values
+
+* `low` - Short, compact responses
+* `medium` - Balanced detail
+* `high` - Most detailed output
+
+### JSON Schema Format
+
+```json theme={null}
+{
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "color_list",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "colors": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "strict": true
+      }
+    }
+  }
+}
+```
+
+## Response Format
+
+### Successful Response
+
+```json theme={null}
+{
+  "id": "resp_abc123",
+  "object": "response",
+  "created_at": 1699000000,
+  "completed_at": 1699000001,
+  "model": "openai/gpt-6.1-sol",
+  "status": "completed",
+  "instructions": null,
+  "previous_response_id": null,
+  "tools": [],
+  "tool_choice": "auto",
+  "parallel_tool_calls": false,
+  "truncation": "disabled",
+  "text": {
+    "format": { "type": "text" },
+    "verbosity": "medium"
+  },
+  "reasoning": null,
+  "temperature": 1,
+  "top_p": 1,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "top_logprobs": 0,
+  "max_output_tokens": null,
+  "max_tool_calls": null,
+  "user": null,
+  "store": true,
+  "background": false,
+  "safety_identifier": null,
+  "prompt_cache_key": null,
+  "output": [
+    {
+      "type": "message",
+      "id": "msg_xyz789",
+      "role": "assistant",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "The capital of France is Paris.",
+          "annotations": [],
+          "logprobs": []
+        }
+      ]
+    }
+  ],
+  "output_text": "The capital of France is Paris.",
+  "usage": {
+    "input_tokens": 15,
+    "output_tokens": 10,
+    "total_tokens": 25,
+    "input_tokens_details": { "cached_tokens": 0 },
+    "output_tokens_details": { "reasoning_tokens": 0 }
+  },
+  "metadata": {},
+  "service_tier": "auto"
+}
+```
+
+### Response Fields
+
+All fields below are always present; nullable values indicate an option was not set.
+
+| Field | Type | Description |
+| - | - | - |
+| `id` | string | Unique response identifier (format: `resp_*`) |
+| `object` | string | Always `"response"` |
+| `created_at` | integer | Unix timestamp of creation |
+| `completed_at` | integer or null | Unix timestamp when response completed |
+| `model` | string | Model used for the response |
+| `status` | string | Response status |
+| `instructions` | string or null | System instructions used |
+| `previous_response_id` | string or null | ID of previous response in conversation |
+| `tools` | array | Tools available (normalized with nullable fields) |
+| `tool_choice` | string or object | Tool choice setting used |
+| `parallel_tool_calls` | boolean | Whether parallel tool calls were enabled |
+| `truncation` | string | Truncation strategy: `auto` or `disabled` |
+| `text` | object | Resolved text configuration |
+| `reasoning` | object or null | Reasoning configuration |
+| `temperature` | number | Temperature used |
+| `top_p` | number | Top-p value used |
+| `presence_penalty` | number | Presence penalty used |
+| `frequency_penalty` | number | Frequency penalty used |
+| `top_logprobs` | number | Top logprobs setting |
+| `max_output_tokens` | integer or null | Max output tokens setting |
+| `max_tool_calls` | integer or null | Max tool calls setting |
+| `user` | string or null | User identifier |
+| `store` | boolean | Whether response was stored |
+| `background` | boolean | Whether processed in background |
+| `safety_identifier` | string or null | Safety identifier |
+| `prompt_cache_key` | string or null | Prompt cache key |
+| `output` | array | Array of output items |
+| `output_text` | string | Convenience field with concatenated text output |
+| `usage` | object | Token usage statistics |
+| `error` | object | Error details (if status is `failed`) |
+| `incomplete_details` | object | Details if status is `incomplete` |
+| `metadata` | object | Custom metadata (if provided) |
+| `service_tier` | string | Service tier used (echoed when provided) |
+
+### Usage Object
+
+The `usage` object always includes token details:
+
+```json theme={null}
+{
+  "input_tokens": 100,
+  "output_tokens": 50,
+  "total_tokens": 150,
+  "input_tokens_details": {
+    "cached_tokens": 0
+  },
+  "output_tokens_details": {
+    "reasoning_tokens": 0
+  }
+}
+```
+
+### Response Status Values
+
+| Status | Description |
+| - | - |
+| `queued` | Background request is queued |
+| `in_progress` | Request is being processed |
+| `completed` | Request completed successfully |
+| `incomplete` | Response was truncated |
+| `failed` | Request failed with error |
+| `cancelled` | Request was cancelled |
+
+### `reasoning` Response Field
+
+```json theme={null}
+{
+  "effort": "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | null,
+  "summary": "none" | "auto" | "detailed" | "concise" | null
+}
+```
+
+### `text` Response Field (Resolved)
+
+```json theme={null}
+{
+  "format": { "type": "text" | "json_object" | "json_schema", "...": "..." },
+  "verbosity": "low" | "medium" | "high" | undefined
+}
+```
+
+### Output Item Types
+
+All output items include a `status` field.
+
+#### Message Output
+
+```json theme={null}
+{
+  "type": "message",
+  "id": "msg_123",
+  "role": "assistant",
+  "status": "completed",
+  "content": [
+    {
+      "type": "output_text",
+      "text": "Response text here",
+      "annotations": [],
+      "logprobs": []
+    }
+  ]
+}
+```
+
+#### Function Call Output
+
+```json theme={null}
+{
+  "type": "function_call",
+  "id": "fc_123",
+  "call_id": "call_abc",
+  "name": "get_weather",
+  "arguments": "{\"location\": \"Paris\"}",
+  "status": "completed"
+}
+```
+
+#### Hosted Tool Search Call
+
+```json theme={null}
+{
+  "type": "tool_search_call",
+  "id": "ts_123",
+  "status": "completed"
+}
+```
+
+This item records discovery activity. It does not execute or approve a client function. A revealed function selected by the model appears separately as `function_call`.
+
+#### Reasoning Output (reasoning-capable models)
+
+```json theme={null}
+{
+  "type": "reasoning",
+  "id": "reasoning_123",
+  "status": "completed",
+  "summary": [
+    {
+      "type": "summary_text",
+      "text": "I analyzed the problem by..."
+    }
+  ],
+  "content": [
+    {
+      "type": "reasoning_text",
+      "text": "Detailed reasoning goes here."
+    }
+  ],
+  "encrypted_content": null
+}
+```
+
+#### Web Search Call Output
+
+```json theme={null}
+{
+  "type": "web_search_call",
+  "id": "ws_123",
+  "status": "completed",
+  "action": { "query": "search query" },
+  "results": [{ "url": "...", "title": "...", "snippet": "..." }]
+}
+```
+
+#### Image Generation Call Output
+
+```json theme={null}
+{
+  "type": "image_generation_call",
+  "id": "ig_123",
+  "status": "completed",
+  "result": {
+    "b64_json": "...",
+    "url": "...",
+    "revised_prompt": "..."
+  }
+}
+```
+
+#### Computer Call Output
+
+```json theme={null}
+{
+  "type": "computer_call",
+  "id": "cc_123",
+  "call_id": "call_abc123",
+  "status": "completed",
+  "action": { "type": "click" },
+  "pending_safety_checks": [{ "id": "...", "code": "...", "message": "..." }]
+}
+```
+
+### Output Item Status Values
+
+| Status | Description |
+| - | - |
+| `completed` | Item finished successfully |
+| `in_progress` | Item still being generated |
+| `incomplete` | Item was truncated/interrupted |
+
+### Output Text Parts
+
+Output text parts include annotations and logprobs:
+
+```json theme={null}
+{
+  "type": "output_text",
+  "text": "Hello world",
+  "annotations": [],
+  "logprobs": [
+    {
+      "token": "Hello",
+      "logprob": -0.5,
+      "bytes": [72, 101, 108, 108, 111],
+      "top_logprobs": [
+        { "token": "Hello", "logprob": -0.5, "bytes": [72, 101, 108, 108, 111] },
+        { "token": "Hi", "logprob": -1.2, "bytes": [72, 105] }
+      ]
+    }
+  ]
+}
+```
+
+### Annotation Types
+
+#### URL Citation
+
+```json theme={null}
+{
+  "type": "url_citation",
+  "start_index": 0,
+  "end_index": 10,
+  "url": "https://...",
+  "title": "Page Title"
+}
+```
+
+#### File Citation
+
+```json theme={null}
+{
+  "type": "file_citation",
+  "start_index": 0,
+  "end_index": 10,
+  "file_id": "file_..."
+}
+```
+
+#### File Path
+
+```json theme={null}
+{
+  "type": "file_path",
+  "start_index": 0,
+  "end_index": 10,
+  "file_id": "file_..."
+}
+```
+
+## Streaming
+
+See also: [Streaming Protocol (SSE)](/api-reference/miscellaneous/streaming-protocol).
+
+Enable streaming to receive incremental response updates:
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": "Write a short story",
+  "stream": true
+}
+```
+
+### Streaming Response
+
+The response is delivered as Server-Sent Events (SSE):
+
+```
+data: {"type":"response.created","response":{...},"sequence_number":0}
+
+data: {"type":"response.in_progress","response":{...},"sequence_number":1}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{...},"sequence_number":2}
+
+data: {"type":"response.output_text.delta","item_id":"msg_...","output_index":0,"content_index":0,"delta":"The ","logprobs":[...],"sequence_number":3}
+
+data: {"type":"response.output_text.delta","item_id":"msg_...","output_index":0,"content_index":0,"delta":"capital ","logprobs":[...],"sequence_number":4}
+
+data: {"type":"response.output_text.done","item_id":"msg_...","output_index":0,"content_index":0,"text":"The capital of France is Paris.","logprobs":[...],"sequence_number":10}
+
+data: {"type":"response.completed","response":{...},"sequence_number":11}
+
+data: [DONE]
+```
+
+### Streaming Event Types
+
+| Event | Description |
+| - | - |
+| `response.created` | Response object created |
+| `response.in_progress` | Processing started |
+| `response.output_item.added` | New output item started |
+| `response.output_item.done` | Output item completed |
+| `response.content_part.added` | Content part started |
+| `response.content_part.done` | Content part completed |
+| `response.output_text.delta` | Incremental text chunk |
+| `response.output_text.done` | Text content completed |
+| `response.reasoning.delta` | Incremental reasoning text |
+| `response.reasoning.done` | Reasoning content completed |
+| `response.function_call_arguments.delta` | Incremental function arguments |
+| `response.function_call_arguments.done` | Function call completed |
+| `response.completed` | Response completed successfully |
+| `response.incomplete` | Response truncated |
+| `response.failed` | Response failed |
+
+### Updated Event Fields
+
+* All content/output events include `item_id` for the parent output item.
+* Text delta/done events include `logprobs`.
+
+Example `response.output_text.delta`:
+
+```json theme={null}
+{
+  "type": "response.output_text.delta",
+  "item_id": "msg_...",
+  "output_index": 0,
+  "content_index": 0,
+  "delta": "Hello",
+  "logprobs": [...],
+  "sequence_number": 5
+}
+```
+
+## Conversation Threading
+
+Chain responses together for multi-turn conversations.
+You can use `previous_response_id` or the `conversation` object (`id` or `messages`) to manage context.
+
+### First Request
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": "My name is Alice."
+}
+```
+
+Response includes `id`: `"resp_abc123"`
+
+### Follow-up Request
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": "What is my name?",
+  "previous_response_id": "resp_abc123"
+}
+```
+
+The model has access to the conversation history and responds: "Your name is Alice."
+
+Note: `previous_response_id` requires authentication, `store: true` on previous responses, and effective retention greater than `0`.
+
+## Background Mode
+
+For long-running requests, use background mode to receive an immediate response and poll for results.
+
+### Initiate Background Request
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": "Write a detailed analysis...",
+  "background": true
+}
+```
+
+### Immediate Response (202 Accepted)
+
+```json theme={null}
+{
+  "id": "resp_abc123",
+  "object": "response",
+  "created_at": 1699000000,
+  "model": "openai/gpt-6.1-sol",
+  "status": "queued",
+  "output": []
+}
+```
+
+### Poll for Completion
+
+```http theme={null}
+GET /v1/responses/resp_abc123
+Authorization: Bearer YOUR_API_KEY
+```
+
+Keep polling until `status` is `completed`, `failed`, or `incomplete`.
+
+Constraints:
+
+* Cannot be combined with `stream: true`
+* Requires authentication
+* Effective retention must be greater than `0`
+* Maximum processing time: approximately 800 seconds
+
+## Retrieve Response
+
+```http theme={null}
+GET /v1/responses/{id}
+Authorization: Bearer YOUR_API_KEY
+```
+
+### Response
+
+Returns the full response object (same format as POST response).
+
+### Errors
+
+* `404` - Response not found or belongs to different account
+* `401` - Authentication required/invalid
+
+## Delete Response
+
+```http theme={null}
+DELETE /v1/responses/{id}
+Authorization: Bearer YOUR_API_KEY
+```
+
+### Response
+
+```json theme={null}
+{
+  "id": "resp_abc123",
+  "object": "response.deleted",
+  "deleted": true
+}
+```
+
+## Error Handling
+
+### Error Response Format
+
+```json theme={null}
+{
+  "error": {
+    "code": "missing_required_parameter",
+    "message": "model is required"
+  }
+}
+```
+
+### HTTP Status Codes
+
+| HTTP Status | Description |
+| - | - |
+| `400` | Invalid request parameters |
+| `401` | Missing or invalid API key |
+| `403` | Insufficient permissions |
+| `404` | Resource not found |
+| `429` | Rate limit exceeded |
+| `500` | Internal server error |
+| `503` | Service unavailable |
+
+### Common Error Codes
+
+| Code | Description |
+| - | - |
+| `missing_required_parameter` | Required parameter not provided |
+| `model_not_found` | Specified model does not exist |
+| `response_not_found` | Response ID not found |
+| `invalid_response_id` | Invalid response ID format |
+| `invalid_request_error` | Invalid request shape/value (for example retention out of range or mismatched alias fields) |
+| `authentication_required` | No API key provided |
+| `invalid_api_key` | API key is invalid or inactive |
+
+## Complete Examples
+
+### Simple Text Completion
+
+```bash theme={null}
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": "Explain quantum computing in one sentence."
+  }'
+```
+
+### Multi-turn Conversation
+
+```bash theme={null}
+# First turn
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": "I want to learn Python programming."
+  }'
+
+# Second turn (using response ID from first request)
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": "Where should I start?",
+    "previous_response_id": "resp_abc123"
+  }'
+```
+
+### Streaming Response
+
+```bash theme={null}
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": "Write a haiku about programming",
+    "stream": true
+  }'
+```
+
+### Per-request Retention Override
+
+```bash theme={null}
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "hello",
+    "store": true,
+    "retention_days": 3
+  }'
+```
+
+### Function Calling
+
+```bash theme={null}
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": "What is the weather in Tokyo?",
+    "tools": [
+      {
+        "type": "function",
+        "name": "get_weather",
+        "description": "Get current weather for a location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": { "type": "string" }
+          },
+          "required": ["location"]
+        }
+      }
+    ]
+  }'
+```
+
+### Submitting Tool Results
+
+```bash theme={null}
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": "What is the weather in Tokyo?"
+      },
+      {
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_123",
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Tokyo\"}"
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "call_123",
+        "output": "{\"temperature\": 18, \"condition\": \"cloudy\"}"
+      }
+    ]
+  }'
+```
+
+### Image Input (Vision)
+
+```bash theme={null}
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          { "type": "input_text", "text": "What is in this image?" },
+          { "type": "input_image", "image_url": "https://example.com/photo.jpg", "detail": "auto" }
+        ]
+      }
+    ]
+  }'
+```
+
+### Video Input (Understanding)
+
+Video input is separate from video generation and is available only on models advertising video capability. See the [Video Input guide](/api-reference/miscellaneous/video-input) for source rules, limits, YouTube behavior, and validation errors.
+
+### JSON Output
+
+```bash theme={null}
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": "List the planets in our solar system",
+    "text": {
+      "format": { "type": "json_object" }
+    }
+  }'
+```
+
+### Background Processing
+
+```bash theme={null}
+# Start background request
+curl -X POST https://nano-gpt.com/api/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "model": "openai/gpt-6.1-sol",
+    "input": "Generate a comprehensive report...",
+    "background": true
+  }'
+
+# Poll for results
+curl https://nano-gpt.com/api/v1/responses/resp_abc123 \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Limitations
+
+1. Deep research models: Deep research variants are not supported.
+2. GPU-TEE streaming: Streaming is not supported for GPU-TEE models. Use `/v1/chat/completions` for these models.
+3. Background mode: Maximum duration is approximately 800 seconds.
+4. Metadata limits: Maximum 16 keys, 64 character key names, 512 character values.
+5. Hosted tool search: Available only on compatible models in foreground Responses requests. It cannot currently be combined with background mode or other hosted built-ins. See [Hosted tool search](/api-reference/miscellaneous/hosted-tool-search).
+
+<a id="service-tiers-priority" />
+
+## Service tiers (Flex and Fast/Priority)
+
+Set `service_tier` to request a non-default capacity tier on providers that support service tiers:
+
+* `auto` or omitted: use NanoGPT's normal routing and the provider default.
+* `default`: request the provider's standard tier where the provider accepts an explicit default value.
+* `flex`: request lower-cost, variable-capacity processing where supported.
+* `fast`: request lower-latency, higher-priority processing where supported.
+* `priority`: legacy alias for `fast` on OpenAI models; compatible non-OpenAI providers may continue to use the Priority name.
+
+Before sending a tiered request, call [`GET /api/v1/models?detailed=true`](/api-reference/endpoint/models) and inspect the selected model's `supported_service_tiers` array. The basic model list intentionally omits this field for OpenAI compatibility. An empty array means the model supports only the default tier.
+
+Behavior notes:
+
+* Service tier availability is model- and provider-specific. The detailed model API is the programmatic source of truth; [model pages](https://nano-gpt.com/models) show the same support as badges.
+* Flex and Fast/Priority tiers are only applied when the routed provider supports them.
+* Header provider overrides (like `X-Provider`) and explicit provider selection are honored for pricing and x402 estimates.
+* Provider-native web search can force routing; tier pricing follows that routing.
+* If you explicitly force a provider that does not support service tiers, the requested tier may be ignored by the upstream provider, or routing and pricing may differ from the default route.
+
+Billing note:
+
+* Flex tier billing uses flex pricing where applicable.
+* Fast/Priority tier billing uses the applicable higher-priority pricing.
+* High-context pricing may also apply for models and providers with separate high-context SKUs, such as `es2k` pricing for GPT-5.5/GPT-5.4 where available.
+
+### Example: flex tier
+
+```json theme={null}
+{
+  "model": "openai/gpt-5.5",
+  "input": "Say hi in one sentence.",
+  "service_tier": "flex"
+}
+```
+
+### Example: fast tier
+
+```json theme={null}
+{
+  "model": "openai/gpt-5.5",
+  "input": "Say hi in one sentence.",
+  "service_tier": "fast"
+}
+```
+
+Use `"priority"` instead only when maintaining compatibility with an older integration or a provider route that still uses that name.
+
+## Response Headers
+
+All responses include:
+
+| Header | Description |
+| - | - |
+| `X-Request-ID` | Unique request/response identifier |
+| `Content-Type` | `application/json` or `text/event-stream` |
+
+
+## OpenAPI
+
+````yaml POST /v1/responses
+openapi: 3.1.0
+info:
+  title: NanoGPT API
+  description: >-
+    API documentation for the NanoGPT language, image, video, speech-to-text,
+    and text-to-speech generation services
+  license:
+    name: MIT
+  version: 1.0.0
+servers:
+  - url: https://api.nano-gpt.com/api
+    description: >-
+      Direct API for uploads and long-running requests; choose a model listed by
+      this host
+  - url: https://nano-gpt.com/api
+    description: Website API for current text model examples
+security: []
+paths:
+  /v1/responses:
+    servers:
+      - url: https://nano-gpt.com/api
+        description: Website API (current model examples)
+      - url: https://api.nano-gpt.com/api
+        description: Direct API for larger requests; choose a model listed by this host
+    post:
+      description: >-
+        Create a response with the OpenAI-compatible Responses API. Compatible
+        models can use the Responses-only hosted tool-search pilot by adding a
+        nanogpt:tool_search or tool_search entry and marking function tools with
+        defer_loading: true. The NanoGPT Advisor extension is available for
+        non-streaming, foreground, platform-billed pay-as-you-go API-key
+        requests that do not use client tools, structured output, inline
+        moderation, BYOK, accountless payment, memory, or server-side content
+        enhancements.
+      parameters:
+        - name: X-Provider
+          in: header
+          description: >-
+            Optional explicit provider override for supported open-source models
+            (case-insensitive). Explicit provider selection is billed
+            pay-as-you-go at the selected provider's price, including
+            provider-selection markup; for subscription users it bypasses
+            subscription coverage for that request.
+          required: false
+          schema:
+            type: string
+        - name: X-Billing-Mode
+          in: header
+          description: >-
+            Optional billing override to force pay-as-you-go without an explicit
+            provider, or to apply saved provider preferences to
+            subscription-included traffic (e.g., paygo). Header name is
+            case-insensitive.
+          required: false
+          schema:
+            type: string
+        - name: X-Team-Id
+          in: header
+          description: >-
+            Optional team context override for API-key requests. If provided, it
+            must reference a team the caller belongs to.
+          required: false
+          schema:
+            type: string
+        - name: x-x402
+          in: header
+          description: >-
+            Set to true on unauthenticated accountless x402 quote requests.
+            Without this header, unauthenticated requests return 401
+            missing_api_key.
+          required: false
+          schema:
+            type: string
+            enum:
+              - 'true'
+      requestBody:
+        description: Parameters for the response request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResponsesCreateRequest'
+      responses:
+        '200':
+          description: Response created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponsesResponse'
+        '400':
+          description: Bad Request - Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+        '402':
+          description: >-
+            Payment Required - authenticated insufficient balance or opted-in
+            accountless x402 quote for supported non-streaming requests
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/X402PaymentRequiredResponse'
+        '429':
+          description: Too Many Requests - Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+        - {}
+components:
+  schemas:
+    ResponsesCreateRequest:
+      type: object
+      required:
+        - model
+        - input
+      properties:
+        model:
+          type: string
+          description: >-
+            Model ID to use for the response. Provider-selection-capable models
+            may include routing preference suffixes such as ':fast', ':speed',
+            ':cheap', ':price', ':latency', ':throughput', ':floor', ':tools',
+            ':caching', ':cache', or ':cached'. Model ID or compatibility alias.
+            Append :reasoning-effort/<effort>, where effort is none, low,
+            medium, high, xhigh, or max, to supply a default reasoning.effort.
+            The suffix is stripped before model routing and is not listed as a
+            separate model. Explicit reasoning generation settings take
+            precedence, including enabled thinking when the suffix is none. The
+            none suffix requests disabled reasoning where supported; it does not
+            bypass model/provider restrictions. Other effort levels remain
+            model/provider-specific.
+        billing_mode:
+          type: string
+          description: >-
+            Billing override to force pay-as-you-go without an explicit
+            provider, or to apply saved provider preferences to
+            subscription-included traffic. Accepted values (case-insensitive):
+            paygo, pay-as-you-go, pay_as_you_go, paid, payg.
+        billingMode:
+          type: string
+          description: Alias for billing_mode.
+        input:
+          description: >-
+            Prompt string or array of input items. Use an input_video content
+            part with a video_url field for video understanding.
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: '#/components/schemas/ResponsesInputItem'
+        instructions:
+          type: string
+          description: System instructions for the model
+        max_output_tokens:
+          type: integer
+          minimum: 16
+          description: Maximum tokens in the response
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          description: Sampling temperature (not supported by reasoning models)
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Nucleus sampling parameter
+        tools:
+          type: array
+          description: >-
+            Tools available to the model. The Responses-only hosted tool-search
+            pilot accepts one nanogpt:tool_search or tool_search entry plus
+            function tools marked defer_loading: true on compatible models.
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/ResponsesHostedToolSearchTool'
+              - $ref: '#/components/schemas/ResponsesFunctionTool'
+              - type: object
+                additionalProperties: true
+        tool_choice:
+          description: How the model should use tools
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+        parallel_tool_calls:
+          type: boolean
+          description: Allow multiple tool calls in parallel
+        stream:
+          type: boolean
+          description: Enable streaming responses
+          default: false
+        store:
+          type: boolean
+          description: >-
+            Store the response locally for later retrieval/threading/background
+            processing. Set false to disable stored Responses API data for the
+            request.
+          default: false
+        retention_days:
+          description: >-
+            Per-request retention override in days (0..365). Use 0 to disable
+            retention for the request; use null to fall back to configured
+            defaults.
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 365
+            - type: 'null'
+        retentionDays:
+          description: >-
+            Alias for retention_days (0..365). If both are provided, values must
+            match.
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 365
+            - type: 'null'
+        previous_response_id:
+          type: string
+          description: Link to previous response for conversation threading
+        reasoning:
+          type: object
+          description: >-
+            Reasoning configuration. Setting `reasoning.effort` to any
+            non-`none` value explicitly requests reasoning mode.
+          additionalProperties: true
+        text:
+          type: object
+          description: Text/format configuration
+          additionalProperties: true
+        metadata:
+          type: object
+          description: Custom metadata
+          additionalProperties: true
+        truncation:
+          type: string
+          enum:
+            - auto
+            - disabled
+          description: Truncation strategy
+        user:
+          type: string
+          description: Unique user identifier
+        seed:
+          type: integer
+          description: >-
+            Optional integer forwarded on model/provider routes that support
+            seeded sampling. This may improve reproducibility but does not
+            guarantee identical output. Results can change if NanoGPT selects a
+            different automatic or fallback route, or if the provider changes
+            its backend.
+        background:
+          type: boolean
+          description: Enable background/async processing
+        service_tier:
+          type: string
+          enum:
+            - auto
+            - default
+            - flex
+            - fast
+            - priority
+          description: >-
+            Optional processing tier. Use `flex` for lower-cost
+            variable-capacity processing or `fast` for higher-priority
+            processing where supported. `priority` remains accepted as a legacy
+            alias for Fast on OpenAI models. Discover model support with `GET
+            /api/v1/models?detailed=true` and inspect `supported_service_tiers`;
+            the basic model list intentionally omits this field.
+        advisor:
+          $ref: '#/components/schemas/AdvisorConfig'
+      allOf:
+        - if:
+            properties:
+              advisor: {}
+            required:
+              - advisor
+          then:
+            properties:
+              stream:
+                enum:
+                  - false
+              background:
+                enum:
+                  - false
+    ResponsesResponse:
+      type: object
+      description: Response object returned by the Responses API
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+        created_at:
+          type: integer
+        model:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - in_progress
+            - completed
+            - incomplete
+            - failed
+            - cancelled
+        output:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        output_text:
+          type: string
+        usage:
+          type: object
+          additionalProperties: true
+        error:
+          type: object
+          additionalProperties: true
+        incomplete_details:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+        service_tier:
+          type: string
+        advisor:
+          $ref: '#/components/schemas/AdvisorResponseMetadata'
+          description: >-
+            Advisor orchestration status and per-phase usage. Present on
+            responses to requests that use the Advisor extension.
+    Error:
+      required:
+        - error
+        - message
+      type: object
+      properties:
+        error:
+          type: integer
+          format: int32
+        message:
+          type: string
+    X402PaymentRequiredResponse:
+      type: object
+      description: >-
+        402 Payment Required body for accountless x402. New clients should key
+        off the top-level payment object; accepts is retained for backwards
+        compatibility.
+      additionalProperties: true
+      properties:
+        error:
+          type: object
+          additionalProperties: true
+          properties:
+            message:
+              type: string
+            type:
+              type: string
+            code:
+              type: string
+        payment:
+          $ref: '#/components/schemas/X402PaymentQuote'
+        x402Version:
+          type: integer
+          example: 1
+        accepts:
+          type: array
+          items:
+            $ref: '#/components/schemas/X402AcceptOption'
+        requestHash:
+          type: string
+    ResponsesInputItem:
+      anyOf:
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - message
+                - function_call
+                - function_call_output
+                - configuration_update
+                - item_reference
+                - additional_tools
+                - mcp_list_tools
+                - mcp_call
+                - custom_tool_call
+                - custom_tool_call_output
+                - web_search_call
+                - web_extractor_call
+                - image_generation_call
+                - computer_call
+                - computer_call_output
+                - file_search_call
+                - code_interpreter_call
+            role:
+              type: string
+            content:
+              oneOf:
+                - type: string
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/ResponsesInputContentPart'
+                - type: 'null'
+            reasoning:
+              $ref: '#/components/schemas/InlineReasoningEffort'
+          additionalProperties: true
+          description: >-
+            An ordered input/history item. Stateless clients may replay provider
+            output items such as reasoning, web_search_call,
+            image_generation_call, computer_call, file_search_call, and
+            code_interpreter_call for compatible native Responses models.
+            Preserve provider-owned replay items unchanged, including id,
+            status, and provider-specific fields. configuration_update requires
+            reasoning.effort and may trail the request, controlling its
+            generated response. See
+            /api-reference/endpoint/responses#stateless-output-replay and
+            /api-reference/miscellaneous/inline-reasoning-effort.
+          allOf:
+            - if:
+                required:
+                  - type
+                properties:
+                  type:
+                    const: configuration_update
+              then:
+                required:
+                  - reasoning
+        - type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum:
+                - reasoning
+            content:
+              type:
+                - array
+                - 'null'
+              items:
+                type: object
+                additionalProperties: true
+          additionalProperties: true
+          description: >-
+            Provider-owned reasoning history, including reasoning_text content
+            parts. Preserve replay items unchanged.
+    ResponsesHostedToolSearchTool:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - nanogpt:tool_search
+            - tool_search
+          description: >-
+            Hosted tool-search type. nanogpt:tool_search is canonical;
+            tool_search is an accepted alias.
+        max_results:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 5
+          description: >-
+            Maximum number of relevant deferred function definitions to reveal
+            per search.
+      additionalProperties: false
+    ResponsesFunctionTool:
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          type: string
+          enum:
+            - function
+        name:
+          type: string
+        description:
+          type:
+            - string
+            - 'null'
+        parameters:
+          type:
+            - object
+            - 'null'
+          additionalProperties: true
+        strict:
+          type:
+            - boolean
+            - 'null'
+        defer_loading:
+          type: boolean
+          description: >-
+            When true, keep this function out of the initial prompt and make it
+            discoverable through hosted tool search.
+      additionalProperties: true
+    AdvisorConfig:
+      type: object
+      description: >-
+        Allows the executor model to consult one different advisor model. Auto
+        mode lets the executor decide whether to consult; required mode forces
+        one consultation request. Advisor is non-streaming and available only
+        for platform-billed pay-as-you-go API-key requests. Subscriptions, BYOK,
+        accountless x402, Private Mode, inline moderation, client tools,
+        structured outputs, memory, and server-side content enhancements are
+        rejected before orchestration. Each completed executor, advisor, and
+        continuation phase is billed separately.
+      properties:
+        model:
+          type: string
+          minLength: 1
+          description: >-
+            Explicit advisor model ID. Automatic model selection and the
+            executor's resolved model are not allowed.
+        instructions:
+          type: string
+          maxLength: 16000
+        mode:
+          type: string
+          enum:
+            - auto
+            - required
+          default: auto
+          description: >-
+            Auto lets the executor decide whether to consult. Required forces
+            exactly one internal consultation request before the final answer.
+        max_uses:
+          type: integer
+          enum:
+            - 1
+          default: 1
+        max_completion_tokens:
+          type: integer
+          minimum: 1
+          description: >-
+            Optional advisor output-token limit. When omitted, NanoGPT does not
+            impose an Advisor-specific output cap and the selected
+            model/provider defaults apply.
+        forward_transcript:
+          type: boolean
+          enum:
+            - false
+          default: false
+      required:
+        - model
+      additionalProperties: false
+    AdvisorResponseMetadata:
+      type: object
+      description: >-
+        Advisor orchestration outcome. Top-level usage and pricing aggregate
+        billable phases that returned usage, including an HTTP-success advisor
+        phase whose output was unusable; the optional per-phase objects provide
+        reconciliation detail.
+      properties:
+        id:
+          type: string
+        mode:
+          type: string
+          enum:
+            - auto
+            - required
+        executor_model:
+          type: string
+        advisor_model:
+          type: string
+        requested:
+          type: boolean
+          description: Whether the executor emitted the internal consultation request.
+        consulted:
+          type: boolean
+          description: Whether an advisor child call was attempted.
+        successful:
+          type: boolean
+          description: Whether the advisor returned usable advice.
+        consultation_count:
+          type: integer
+          enum:
+            - 0
+            - 1
+        max_uses:
+          type: integer
+          enum:
+            - 1
+        status:
+          type: string
+          enum:
+            - not_used
+            - completed
+            - failed
+        error:
+          type: string
+          description: Present when consultation failed but the executor could continue.
+        usage:
+          $ref: '#/components/schemas/AdvisorPhaseBreakdown'
+        pricing:
+          $ref: '#/components/schemas/AdvisorPhaseBreakdown'
+      required:
+        - id
+        - mode
+        - executor_model
+        - advisor_model
+        - requested
+        - consulted
+        - successful
+        - consultation_count
+        - max_uses
+        - status
+      additionalProperties: false
+    X402PaymentQuote:
+      type: object
+      description: Canonical accountless x402 payment quote.
+      additionalProperties: true
+      properties:
+        version:
+          type: integer
+          example: 1
+        paymentId:
+          type: string
+          example: pay_abc123
+        requestHash:
+          type: string
+          example: sha256:...
+        expiresAt:
+          type: string
+          format: date-time
+        amountUsd:
+          type: string
+          example: '0.0714'
+        statusUrl:
+          type: string
+          format: uri
+        completeUrl:
+          type: string
+          format: uri
+        accepted:
+          type: array
+          items:
+            $ref: '#/components/schemas/X402PaymentAcceptedOption'
+    X402AcceptOption:
+      type: object
+      description: Legacy lower-level payment option offered in an x402 402 response.
+      additionalProperties: true
+      properties:
+        scheme:
+          type: string
+        network:
+          type: string
+        asset:
+          type: string
+        resource:
+          type: string
+        description:
+          type: string
+        payTo:
+          type: string
+        paymentId:
+          type: string
+        expiresAt:
+          type: integer
+        callbackUrl:
+          type: string
+        completeUrl:
+          type: string
+        maxAmountRequired:
+          type: string
+        maxAmountRequiredFormatted:
+          type: string
+        maxAmountRequiredUSD:
+          type: number
+        mimeType:
+          type: string
+        extra:
+          type: object
+          additionalProperties: true
+    ResponsesInputContentPart:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - input_text
+            - output_text
+            - text
+            - input_image
+            - image_url
+            - input_video
+            - video_url
+            - input_file
+            - refusal
+        text:
+          type: string
+        refusal:
+          type: string
+        image_url:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+        detail:
+          type: string
+          enum:
+            - auto
+            - low
+            - high
+        video_url:
+          oneOf:
+            - type: string
+              description: Public HTTPS URL or video data URL.
+            - $ref: '#/components/schemas/VideoUrl'
+        file_id:
+          type: string
+          description: Opaque file IDs are not resolved for Responses video input.
+        file_url:
+          type: string
+        file_data:
+          type: string
+      additionalProperties: true
+    InlineReasoningEffort:
+      type: object
+      required:
+        - effort
+      properties:
+        effort:
+          type: string
+          enum:
+            - minimal
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+          description: >-
+            Astra: low, medium, high, xhigh. Fable 5.1: low, medium, high,
+            xhigh, max; minimal maps to low. Other models and none are
+            unsupported for inline updates.
+      additionalProperties: false
+    AdvisorPhaseBreakdown:
+      type: object
+      properties:
+        executor:
+          type: object
+          additionalProperties: true
+        advisor:
+          type: object
+          additionalProperties: true
+        continuation:
+          type: object
+          additionalProperties: true
+        total:
+          type: object
+          additionalProperties: true
+      additionalProperties: false
+    X402PaymentAcceptedOption:
+      type: object
+      description: Normalized public accountless x402 payment option.
+      additionalProperties: true
+      properties:
+        scheme:
+          type: string
+          enum:
+            - nano
+            - nano-exact
+            - base-usdc
+            - x402-exact
+            - x402-solana-usdc
+            - lightning-l402
+        protocolScheme:
+          type: string
+        network:
+          type: string
+        asset:
+          type: string
+        amount:
+          type: string
+        amountFormatted:
+          type: string
+        amountUsd:
+          type: string
+        payTo:
+          type: string
+        invoice:
+          type: string
+          description: >-
+            Lightning invoice for lightning-l402 quotes. Same value as payTo for
+            most clients.
+        paymentHash:
+          type: string
+          description: Lightning payment hash for lightning-l402 quotes.
+        l402Token:
+          type: string
+          description: >-
+            L402 token to pair with the Lightning payment preimage in
+            Authorization: L402 <token>:<preimage>.
+        discountRate:
+          type: number
+          description: Discount rate applied to this payment option when present.
+        undiscountedAmountUsd:
+          type: string
+          description: Undiscounted USD quote amount when a discount is applied.
+        feePayer:
+          type: string
+          description: >-
+            Solana facilitator fee payer for x402-solana-usdc quotes. Copy from
+            the quote; do not hardcode.
+        paymentId:
+          type: string
+        statusUrl:
+          type: string
+          format: uri
+        completeUrl:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+    VideoUrl:
+      type: object
+      description: >-
+        Canonical Chat Completions video reference. Use a public HTTPS URL or a
+        data:video/*;base64,... URL.
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          description: Public HTTPS URL or video base64 data URL.
+        detail:
+          type: string
+          enum:
+            - auto
+            - low
+            - high
+        start_offset:
+          type: number
+          minimum: 0
+          description: >-
+            Validated segment start; current public text-model routes return
+            video_segment_not_supported.
+        end_offset:
+          type: number
+          minimum: 0
+          description: >-
+            Validated segment end; current public text-model routes return
+            video_segment_not_supported.
+      additionalProperties: false
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+
+````
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

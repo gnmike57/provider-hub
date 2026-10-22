@@ -1,0 +1,445 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Deposits (Crypto + Fiat)
+
+> Create deposit payment intents and track status programmatically
+
+## Overview
+
+NanoGPT supports multiple deposit methods (crypto, stablecoins, and cards). This page documents the public endpoints you can use to:
+
+* Create a deposit payment intent
+* Check deposit limits
+* Track deposit status (polling or SSE)
+
+Deposits are credited automatically after payment confirmation.
+
+## Supported Payment Methods
+
+Limits vary by method and can change. Use `GET /api/transaction/limits/{ticker}` for the authoritative min/max.
+
+### Crypto (invoice / address)
+
+| Ticker | Name | Provider |
+| - | - | - |
+| `BTC` | Bitcoin | BTCPay |
+| `BTC-LN` | Bitcoin Lightning | BTCPay |
+| `LTC` | Litecoin | BTCPay |
+| `LTC-MWEB` | Litecoin MWEB | BTCPay |
+| `XMR` | Monero | BTCPay |
+| `DOGE` | Dogecoin | BTCPay |
+| `DASH` | Dash | BTCPay |
+| `ZEC` | Zcash | BTCPay |
+| `BCH` | Bitcoin Cash | Prompt.Cash |
+| `BAN` | Banano | Nanswap (legacy) |
+| `KAS` | Kaspa | Nanswap |
+| `TON` | Toncoin | Nanswap |
+| `NEAR` | NEAR Protocol | Nanswap |
+| `EGLD` | MultiversX | Nanswap |
+| `VVV` | VVV | Nanswap |
+| `ZANO` | Zano | Zano proxy |
+| `FUSD` | Freedom Dollar | Zano proxy |
+
+### Stablecoins and multi-chain (Daimo Pay)
+
+These methods settle as USDC and can be paid from multiple chains/wallets.
+
+| Ticker | Name |
+| - | - |
+| `USDC` | USD Coin |
+| `USDT` | Tether |
+| `ETH` | Ethereum |
+| `SOL` | Solana |
+
+### Fiat (card)
+
+| Ticker | Name | Provider |
+| - | - | - |
+| `USD` | US Dollar | Stripe |
+| `EUR` | Euro | Stripe |
+| `GBP` | British Pound | Stripe |
+
+### Nano (direct deposit)
+
+Nano deposits use a direct-send flow to your assigned Nano deposit address (no invoice creation).
+
+See: [Check Balance](/api-reference/endpoint/check-balance) and [Receive Nano](/api-reference/endpoint/receive-nano).
+
+## Authentication
+
+All `/api/transaction/*` endpoints require API key authentication using one of these methods:
+
+```bash theme={null}
+# Method 1: Authorization header
+curl -H "Authorization: Bearer YOUR_API_KEY"
+
+# Method 2: x-api-key header  
+curl -H "x-api-key: YOUR_API_KEY"
+```
+
+## Endpoint Summary
+
+Pick the endpoint based on the payment method:
+
+* Crypto invoice / swap deposits: `POST /api/transaction/create/{ticker}`
+* Daimo Pay (multi-chain): `POST /api/transaction/create/daimo/{ticker}`
+* Card (Stripe): `POST /api/transaction/create/usd`
+* Limits: `GET /api/transaction/limits/{ticker}`
+* Status polling: `GET /api/transaction/status/{ticker}/{txId}`
+* Status SSE: `GET /api/transaction/status/events?ticker={ticker}&txId={txId}`
+* Nano (XNO): send to `nanoDepositAddress` (from [Check Balance](/api-reference/endpoint/check-balance)); optionally call [Receive Nano](/api-reference/endpoint/receive-nano)
+
+<Card title="Create Crypto Deposit" icon="plus" color="#ca8a04">
+  Create an invoice / pay-in address for supported crypto tickers
+</Card>
+
+<ParamField path="ticker" type="string" required>
+  Ticker symbol. Examples: `btc`, `btc-ln`, `ltc`, `zec`, `bch`, `kas`, `vvv`, `zano`, `fusd`
+</ParamField>
+
+<ParamField body="amount" type="number" required>
+  Amount of cryptocurrency to deposit. Must be between minimum and maximum limits.
+</ParamField>
+
+<RequestExample>
+  ```bash cURL theme={null}
+  curl -X POST https://nano-gpt.com/api/transaction/create/btc \
+    -H "Authorization: Bearer YOUR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"amount": 0.001}'
+  ```
+
+  ```javascript JavaScript theme={null}
+  const response = await fetch('https://nano-gpt.com/api/transaction/create/btc', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_KEY',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ amount: 0.001 })
+  });
+
+  const deposit = await response.json();
+  console.log('Send BTC to:', deposit.address);
+  ```
+
+  ```javascript BTC Lightning Example theme={null}
+  // BTC-LN has lower minimum ($0.10)
+  const lnResponse = await fetch('https://nano-gpt.com/api/transaction/create/btc-ln', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_KEY',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ amount: 0.00001 })
+  });
+
+  const lnDeposit = await lnResponse.json();
+  console.log('Lightning invoice:', lnDeposit.paymentLink);
+  ```
+</RequestExample>
+
+<ResponseExample>
+  ```json Success Response theme={null}
+  {
+    "txId": "abc123",
+    "address": "bc1q...",
+    "amount": 0.001,
+    "status": "New",
+    "paymentLink": "bitcoin:bc1q...?amount=0.001",
+    "createdAt": "2026-01-19T12:00:00.000Z",
+    "expiresAt": "2026-01-19T13:00:00.000Z"
+  }
+  ```
+</ResponseExample>
+
+### Response Fields
+
+<ResponseField name="txId" type="string">
+  Unique transaction identifier for tracking
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Deposit address for sending crypto
+</ResponseField>
+
+<ResponseField name="amount" type="number">
+  Requested deposit amount
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Payment status. Common values include: `New`, `Pending`, `Processing`, `Paid`, `Completed`, `Expired`, `Failed`
+</ResponseField>
+
+<ResponseField name="paymentLink" type="string">
+  URI for wallet apps (e.g., `bitcoin:address`)
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO timestamp of creation
+</ResponseField>
+
+<ResponseField name="expiresAt" type="string">
+  ISO timestamp when address expires
+</ResponseField>
+
+<Card title="Check Payment Limits" icon="chart-line" color="#16a34a">
+  Get minimum and maximum deposit amounts for a payment method
+</Card>
+
+<ParamField path="ticker" type="string" required>
+  Payment method ticker symbol (for example: `btc`, `btc-ln`, `zec`, `usdc`, `sol`, `usd`)
+</ParamField>
+
+<RequestExample>
+  ```bash cURL theme={null}
+  curl https://nano-gpt.com/api/transaction/limits/kas \
+    -H "Authorization: Bearer YOUR_API_KEY"
+  ```
+
+  ```javascript JavaScript theme={null}
+  const limitsResponse = await fetch('https://nano-gpt.com/api/transaction/limits/btc', {
+    headers: { 'Authorization': 'Bearer YOUR_API_KEY' }
+  });
+  const limits = await limitsResponse.json();
+
+  // Validate amount before creating deposit
+  if (amount < limits.minimum) {
+    throw new Error(`Minimum deposit is ${limits.minimum} BTC`);
+  }
+  ```
+</RequestExample>
+
+<ResponseExample>
+  ```json Limits Response theme={null}
+  {
+    "minimum": 10.5,
+    "maximum": 5250,
+    "fiatEquivalentMinimum": 1,
+    "fiatEquivalentMaximum": 500,
+    "timestamp": 1705669200
+  }
+  ```
+</ResponseExample>
+
+<Card title="Create Daimo Payment" icon="arrows-repeat" color="#0ea5e9">
+  Create a multi-chain payment (USDC/USDT/ETH/SOL) via Daimo Pay
+</Card>
+
+<ParamField path="ticker" type="string" required>
+  Daimo payment ticker. Common values: `usdc`, `usdt`, `eth`, `sol`
+</ParamField>
+
+<ParamField body="amount" type="number" required>
+  Amount to pay. This is typically treated as a USD/USDC amount (for example, `10` for about \$10).
+</ParamField>
+
+<RequestExample>
+  ```bash cURL theme={null}
+  curl -X POST https://nano-gpt.com/api/transaction/create/daimo/usdc \
+    -H "Authorization: Bearer YOUR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"amount": 10}'
+  ```
+</RequestExample>
+
+<ResponseExample>
+  ```json Success Response theme={null}
+  {
+    "paymentId": "encrypted_payment_id"
+  }
+  ```
+</ResponseExample>
+
+<Card title="Create Card Deposit (Stripe)" icon="credit-card" color="#6366f1">
+  Create a Stripe Checkout session for card deposits
+</Card>
+
+<ParamField body="amount" type="number" required>
+  Amount in the selected fiat currency (for example, `10`).
+</ParamField>
+
+<RequestExample>
+  ```bash cURL theme={null}
+  curl -X POST https://nano-gpt.com/api/transaction/create/usd \
+    -H "Authorization: Bearer YOUR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"amount": 10}'
+  ```
+</RequestExample>
+
+<ResponseExample>
+  ```json Success Response theme={null}
+  {
+    "paymentLink": "https://checkout.stripe.com/c/pay/cs_test_..."
+  }
+  ```
+</ResponseExample>
+
+## Status Tracking
+
+Most deposit methods can be tracked by polling a status endpoint:
+
+```http theme={null}
+GET /api/transaction/status/{ticker}/{txId}
+```
+
+Some methods use provider-specific IDs (for example Stripe session IDs). The create response usually returns the correct `txId` value to use.
+
+Example:
+
+```bash theme={null}
+curl "https://nano-gpt.com/api/transaction/status/btc/abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Real-time status (SSE)
+
+Instead of polling, you can subscribe to Server-Sent Events:
+
+```http theme={null}
+GET /api/transaction/status/events?ticker={ticker}&txId={txId}
+```
+
+Example:
+
+```bash theme={null}
+curl -N "https://nano-gpt.com/api/transaction/status/events?ticker=btc&txId=abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+The server may also return an `x-poll-after` header on status responses to indicate a recommended retry interval (seconds).
+
+## Transaction Lifecycle
+
+Status values can vary slightly by payment method, but a typical lifecycle looks like:
+
+| Status | Meaning |
+| - | - |
+| `New` / `Pending` | Deposit created, awaiting payment |
+| `Processing` | Payment detected and being confirmed/processed |
+| `Paid` | Payment confirmed, crediting pending |
+| `Completed` | Balance credited |
+| `Expired` | Payment window expired (some providers can still credit late payments) |
+| `Failed` | Provider error or processing failure |
+
+Notes:
+
+* `BTC` deposits can take longer to reach `Completed` due to on-chain settlement/confirmations.
+* Some providers may accept payment after an invoice expires; in those cases the deposit can still complete.
+
+## Payment Providers
+
+NanoGPT uses different providers per ticker:
+
+* **BTCPay**: BTC, BTC-LN, LTC, LTC-MWEB, XMR, DOGE, DASH, ZEC
+* **Prompt.Cash**: BCH
+* **Nanswap**: BAN, KAS, TON, NEAR, EGLD, VVV
+* **Zano proxy**: ZANO, FUSD
+* **Daimo Pay**: USDC, USDT, ETH, SOL (multi-chain payments settling as USDC)
+* **Stripe**: card deposits (USD/EUR/GBP)
+* **Native Nano**: XNO direct deposits to your `nanoDepositAddress`
+
+## Pricing Endpoints
+
+These endpoints are commonly used by deposit flows and checkout UIs:
+
+* `GET /api/get-nano-price` (NANO/USD pricing)
+* `GET /api/get-fiat-prices` (fiat FX rates)
+
+Example:
+
+```bash theme={null}
+curl "https://nano-gpt.com/api/get-nano-price"
+curl "https://nano-gpt.com/api/get-fiat-prices"
+```
+
+Example responses:
+
+```json theme={null}
+// GET /api/get-nano-price
+{
+  "pair": "NANOUSD",
+  "latestPrice": 1.23
+}
+```
+
+```json theme={null}
+// GET /api/get-fiat-prices
+{
+  "usdTo": {
+    "USD": 1,
+    "EUR": 0.92,
+    "GBP": 0.79
+  },
+  "currencies": {
+    "USD": "United States Dollar",
+    "EUR": "Euro",
+    "GBP": "British Pound"
+  }
+}
+```
+
+## Bonuses and Discounts
+
+* `BTC-LN`: Lightning deposits may include a bonus on the credited amount (if enabled).
+* `XNO`: Paying with Nano balance may include a usage discount (if enabled).
+* `USDC` via Daimo: USDC stablecoin deposits typically credit close to \$1 per 1 USDC.
+
+## Error Handling
+
+### HTTP Status Codes
+
+| Code | Description |
+| - | - |
+| 200 | Success |
+| 400 | Invalid amount, unsupported ticker, or below/above limits |
+| 401 | Authentication failure |
+| 429 | Rate limited |
+| 500 | Provider unavailable or internal error |
+
+### Common Error Messages
+
+<AccordionGroup>
+  <Accordion title="Amount Validation Errors">
+    * `"No amount specified"` - Missing amount in request body
+    * `"Invalid amount. Must be a positive number."` - Amount validation failed
+    * `"Minimum amount is X"` - Below minimum threshold
+    * `"Maximum amount is X"` - Above maximum threshold
+  </Accordion>
+
+  <Accordion title="Provider Errors">
+    * `"Unsupported ticker"` - Ticker not supported
+    * `"This payment method is currently not available"` - Provider temporarily unavailable
+  </Accordion>
+</AccordionGroup>
+
+## Rate Limits
+
+* **10 requests per 10 minutes** per IP address or API key
+* Rate limit applies to all deposit creation endpoints
+
+## Payment Flow
+
+<Steps>
+  <Step title="Create Invoice">
+    Call `/api/transaction/create/{ticker}` with desired amount
+  </Step>
+
+  <Step title="Get Address">
+    Extract `address` from response
+  </Step>
+
+  <Step title="Send Payment">
+    User sends crypto to the provided address
+  </Step>
+
+  <Step title="Auto-Credit">
+    Account balance automatically updated when payment confirms
+  </Step>
+</Steps>
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

@@ -1,0 +1,115 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# v1/audio/transcriptions (STT)
+
+> OpenAI-compatible speech-to-text transcription endpoint
+
+## Overview
+
+NanoGPT provides a drop-in OpenAI-compatible endpoint for speech-to-text (STT) transcription.
+
+## Endpoint
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/audio/transcriptions
+```
+
+## Authentication
+
+Use either header:
+
+* `Authorization: Bearer YOUR_API_KEY`
+* `x-api-key: YOUR_API_KEY`
+
+## Request Formats
+
+### 1) Multipart upload (OpenAI-compatible)
+
+Send `multipart/form-data` with:
+
+* `file` (required): audio (or video for supported models)
+* `model` (required): STT model ID
+* `language` (optional): language code (default: auto-detect)
+
+```bash theme={null}
+curl -X POST https://api.nano-gpt.com/api/v1/audio/transcriptions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F file=@audio.mp3 \
+  -F model=Whisper-Large-V3 \
+  -F language=en
+```
+
+### 2) JSON with URL
+
+```json theme={null}
+{
+  "model": "Whisper-Large-V3",
+  "file_url": "https://example.com/audio.mp3",
+  "language": "en"
+}
+```
+
+NanoGPT accepts `file_url` or `audio_url` for URL-based transcription.
+
+## Supported Models (Examples)
+
+Model availability changes; use `GET /api/v1/models?detailed=true` for discovery.
+
+| Model | Notes |
+| - | - |
+| `Whisper-Large-V3` | High-accuracy transcription |
+| `Wizper` | Fast processing |
+| `Elevenlabs-STT` | Speaker diarization + audio event tagging |
+| `gpt-4o-mini-transcribe` | Improved accuracy vs Whisper (OpenAI-family) |
+| `openai-whisper-with-video` | Accepts video files (MP4, MOV, etc.) |
+
+### Voice Cloning (via the same endpoint)
+
+Some special model IDs run voice-cloning workflows instead of returning plain transcription text:
+
+* `qwen-voice-clone` — returns a reusable speaker embedding URL
+* `minimax-voice-clone` — returns a reusable custom voice ID (and/or preview output)
+
+## Response
+
+```json theme={null}
+{
+  "text": "The transcribed text goes here.",
+  "language": "en",
+  "duration": 45.2
+}
+```
+
+## Supported Formats
+
+* Audio: MP3, OGG, WAV, M4A, AAC
+* Video (model-dependent): MP4, MOV, AVI, MKV, WEBM
+
+## Example (Python, OpenAI SDK)
+
+```python theme={null}
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://api.nano-gpt.com/api/v1",
+    api_key="YOUR_API_KEY"
+)
+
+with open("audio.mp3", "rb") as audio_file:
+    transcript = client.audio.transcriptions.create(
+        model="Whisper-Large-V3",
+        file=audio_file
+    )
+
+print(transcript.text)
+```
+
+## See Also
+
+* NanoGPT transcription workflows: `api-reference/endpoint/transcribe.mdx`
+* Full STT guide and model list: `api-reference/speech-to-text.mdx`
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

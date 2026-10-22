@@ -1,0 +1,98 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# OpenClaw (ClawdBot)
+
+> Use OpenClaw with NanoGPT to access Claude, GPT, Gemini, and more
+
+export const exampleTextModelName = "GPT 6.1 Sol";
+
+export const exampleTextModel = "openai/gpt-6.1-sol";
+
+<Note>
+  These examples use the website API host, which currently lists their recommended models. The direct API host can have a different catalog during rollouts. For larger requests or longer runtimes, use `https://api.nano-gpt.com/api/v1` with a model from that host's catalog. See [API Hosts](/api-reference/miscellaneous/api-hosts) for limits and availability checks.
+</Note>
+
+## Quick Setup Guide
+
+1. Install OpenClaw (ClawdBot) and skip any default model setup.
+2. Get your API key from [nano-gpt.com/api](https://nano-gpt.com/api).
+3. Open your config (Config -> Models -> Raw, or edit `~/.clawdbot/clawdbot.json`).
+4. Add a NanoGPT provider block like this:
+
+Model limits and per-million-token USD cost estimates below were checked against the NanoGPT catalog on October 2, 2026. Check the [models endpoint](/api-reference/endpoint/models) for current rates.
+
+```json theme={null}
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "nanogpt": {
+        "baseUrl": "https://nano-gpt.com/api/v1",
+        "apiKey": "YOUR_NANOGPT_API_KEY_HERE",
+        "auth": "api-key",
+        "api": "openai-completions",
+        "headers": {},
+        "authHeader": false,
+        "models": [
+          {
+            "id": "anthropic/claude-opus-5.5",
+            "name": "Claude Opus 5.5",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "cost": {
+              "input": 4,
+              "output": 20,
+              "cacheRead": 0.2,
+              "cacheWrite": 5
+            },
+            "contextWindow": 1000000,
+            "maxTokens": 128000
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+5. Replace `YOUR_NANOGPT_API_KEY_HERE` with your actual key.
+6. Restart OpenClaw (or restart the gateway if you are using it).
+
+## Some Models To Try
+
+These are examples only. Use the model IDs returned by the models endpoint below.
+
+* `anthropic/claude-opus-5.5`
+* <code>
+    {exampleTextModel}
+  </code>
+* `google/gemini-flash-latest`
+* `minimax/minimax-m3`
+* `moonshotai/kimi-k3`
+
+## Get The Most Recent Models
+
+```bash theme={null}
+curl https://nano-gpt.com/api/v1/models
+```
+
+If you want filtered lists:
+
+* `https://nano-gpt.com/api/subscription/v1/models` (subscription-only)
+* `https://nano-gpt.com/api/paid/v1/models` (paid-only)
+
+## Verify Your Setup
+
+Once OpenClaw is running, confirm requests are flowing by checking your usage at [nano-gpt.com/usage](https://nano-gpt.com/usage).
+
+## Problems?
+
+Email support at [support@nano-gpt.com](mailto:support@nano-gpt.com) or use the in-app chat.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

@@ -1,0 +1,1432 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Teams
+
+> Complete API reference for the NanoGPT Teams feature
+
+## Overview
+
+The Teams API enables programmatic management of teams, members, invitations, usage tracking, and access control.
+
+**Base URL**: `/api/teams`
+
+**Authentication**: All endpoints require session authentication unless otherwise noted.
+
+**Team Identifiers**: Endpoints accept either UUID (`550e8400-e29b-xxxx-xxxxx-xxxxx`) or numeric ID (`123`).
+
+***
+
+## Default Team Selection
+
+If you belong to multiple teams, you can set a default team. The default team affects which team context is used by the NanoGPT web app and other session-authenticated requests that support team billing and settings.
+
+### Set Default Team
+
+```
+PATCH /api/user/default-team
+```
+
+**Request Body** (all fields optional):
+
+```json theme={null}
+{
+  "team_uuid": "550e8400-e29b-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+Or by numeric ID:
+
+```json theme={null}
+{
+  "team_id": 123
+}
+```
+
+To clear the default team and return to personal billing:
+
+```json theme={null}
+{
+  "team_uuid": null
+}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true,
+  "metadata": {
+    "default_team_uuid": "550e8400-e29b-xxxx-xxxx-xxxxxxxxxxxx"
+  }
+}
+```
+
+***
+
+## User Response Retention Default
+
+Set a user-level default retention for `/v1/responses`. This applies when a request does not provide `retention_days` or `retentionDays` and no team override is active.
+
+This is currently exposed through the API endpoint below, not as a visible control in the main web Settings page.
+
+### Get User Responses Retention
+
+```
+GET /api/user/responses-retention
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "responsesRetentionDays": 0
+}
+```
+
+### Set User Responses Retention
+
+```
+POST /api/user/responses-retention
+```
+
+**Request Body**:
+
+```json theme={null}
+{
+  "responsesRetentionDays": 0
+}
+```
+
+To clear the user-level override and fall back to team/platform defaults:
+
+```json theme={null}
+{
+  "responsesRetentionDays": null
+}
+```
+
+Rules:
+
+* `responsesRetentionDays` accepts integer values `0..365` or `null`.
+* `null` clears the user-level override.
+* The setting is stored in `sessions.metadata.responsesRetentionDays`.
+
+See [Responses: response storage and retention](/api-reference/endpoint/responses#response-storage-and-retention) for per-request `store`, `retentionDays`, and `retention_days` behavior.
+
+***
+
+## Referral Link
+
+Referral links let you share a signup link that is tied to your account.
+
+### Get or Create Referral Link
+
+```
+GET /api/subscription/referral-link
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "code": "AbCdEfGh",
+  "url": "https://nano-gpt.com/subscription/AbCdEfGh"
+}
+```
+
+***
+
+## Error Response Format
+
+All errors return JSON in this format:
+
+```json theme={null}
+{
+  "code": "ERROR_CODE",
+  "message": "Human-readable description",
+  "details": {},
+  "status": 400
+}
+```
+
+**Common Error Codes**:
+
+| Code | Status | Description |
+| - | - | - |
+| `UNAUTHORIZED` | 401 | Session required |
+| `FORBIDDEN` | 403 | Insufficient permissions |
+| `NOT_FOUND` | 404 | Resource not found |
+| `CONFLICT` | 409 | Resource conflict (duplicate, wrong state) |
+| `INVALID_INPUT` | 422 | Validation failed |
+| `RATE_LIMITED` | 429 | Too many requests |
+| `INTERNAL_ERROR` | 500 | Server error |
+
+***
+
+## Teams
+
+### List Teams
+
+Returns all teams the authenticated user belongs to.
+
+```
+GET /api/teams
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "teams": [
+    {
+      "uuid": "550e8400-e29b-xxxx-xxxx-xxxxxxxxxxxx",
+      "name": "Engineering",
+      "status": "active",
+      "role": "owner"
+    }
+  ]
+}
+```
+
+***
+
+### Create Team
+
+```
+POST /api/teams
+```
+
+**Request Body**:
+
+```json theme={null}
+{
+  "name": "Engineering"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `name` | string | Yes | 2-50 characters. Letters, numbers, spaces, hyphens, underscores. |
+
+**Response**:
+
+```json theme={null}
+{
+  "team": {
+    "uuid": "550e8400-e29b-xxxx-xxxx-xxxxxxxxxxxx",
+    "name": "Engineering",
+    "status": "active",
+    "role": "owner"
+  }
+}
+```
+
+**Errors**:
+
+* `409 CONFLICT`: You already have a team with this name
+
+***
+
+### Get Team Details
+
+```
+GET /api/teams/{teamUuid}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "team": {
+    "uuid": "550e8400-e29b-xxxx-xxxx-xxxxxxxxxxxx",
+    "name": "Engineering",
+    "status": "active",
+    "paused_at": null,
+    "suspended_at": null,
+    "invite_link_enabled": true,
+    "invite_link_token": "abc123...",
+    "default_member_usage_limit_usd": 100,
+    "usage_limit_usd": null,
+    "responses_retention_days": 14,
+    "usage_limit_enforced": true,
+    "high_spend_text_discount": false,
+    "balances": {
+      "usd_balance": 250.00,
+      "nano_balance": 1500.00
+    },
+    "role": "owner"
+  }
+}
+```
+
+**Notes**:
+
+* `balances` shows the team owner's account balance
+* `high_spend_text_discount` indicates whether a high-spend discount is currently active for this team (when active, it applies automatically)
+* `responses_retention_days` is the optional team default for `/v1/responses` retention (`0..365` or `null`). It is exposed through the Teams API and is returned by team details; it is not currently shown as a visible control in the team Settings UI.
+* `role` is the requesting user's role in this team
+
+***
+
+### Update Team
+
+```
+PATCH /api/teams/{teamUuid}
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "name": "New Team Name",
+  "status": "paused"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `name` | string | No | 2-50 characters |
+| `status` | string | No | `active`, `paused`, or `suspended` |
+
+**Response**:
+
+```json theme={null}
+{
+  "team": {
+    "uuid": "550e8400-e29b-xxxx-xxxx-xxxxxxxxxxxx",
+    "name": "New Team Name",
+    "status": "paused"
+  }
+}
+```
+
+***
+
+### Delete Team
+
+```
+DELETE /api/teams/{teamUuid}
+```
+
+**Required Role**: Owner
+
+**Request Body**:
+
+```json theme={null}
+{
+  "name": "Engineering"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `name` | string | Yes | Must exactly match team name (confirmation) |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+***
+
+## Members
+
+### List Members
+
+```
+GET /api/teams/{teamUuid}/members
+```
+
+**Query Parameters**:
+
+| Parameter | Type | Default | Description |
+| - | - | - | - |
+| `page` | number | 1 | Page number |
+| `limit` | number | all | Results per page (max 100) |
+
+**Response** (with pagination):
+
+```json theme={null}
+{
+  "members": [
+    {
+      "sessionId": 12345,
+      "sessionUUID": "abc-123-def",
+      "role": "owner",
+      "joinedAt": "2024-01-15T10:30:00Z",
+      "member_name": "Alice",
+      "displayName": "Alice Smith",
+      "email": "alice@company.com",
+      "usage_limit_usd": 150,
+      "usage_limit_enforced": true,
+      "usage_usd_monthly": 45.50
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 45,
+    "totalPages": 3
+  }
+}
+```
+
+***
+
+### Update Member Role
+
+```
+PATCH /api/teams/{teamUuid}/members
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "sessionId": 12345,
+  "role": "admin"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `sessionId` | number | Yes | Target member's session ID |
+| `role` | string | Yes | `admin` or `member` (cannot set `owner`) |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+**Errors**:
+
+* `403 FORBIDDEN`: Cannot change the owner's role
+* `400 INVALID_INPUT`: Cannot change your own role
+
+***
+
+### Update Member Usage Limits
+
+```
+PATCH /api/teams/{teamUuid}/members
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "sessionId": 12345,
+  "usage_limit_usd": 200,
+  "usage_limit_enforced": true
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `sessionId` | number | Yes | Target member's session ID |
+| `usage_limit_usd` | number\|null | No | Monthly limit in USD, or `null` to use team default |
+| `usage_limit_enforced` | boolean | No | Hard-enforce the limit (blocks usage when exceeded) |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+***
+
+### Remove Member
+
+```
+DELETE /api/teams/{teamUuid}/members
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "sessionId": 12345
+}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+**Errors**:
+
+* `403 FORBIDDEN`: Cannot remove the team owner
+* `400 INVALID_INPUT`: Cannot remove yourself (use `/leave`)
+
+***
+
+### Get Own Preferences
+
+Returns the authenticated user's preferences for this team.
+
+```
+GET /api/teams/{teamUuid}/members/self
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "bill_to_team": true,
+  "name": "Alice",
+  "usage_limit_usd": 150,
+  "usage_limit_enforced": true,
+  "default_member_usage_limit_usd": 100,
+  "default_usage_limit_enforced": true,
+  "effective_usage_limit_usd": 150,
+  "effective_usage_limit_enforced": true
+}
+```
+
+**Notes**:
+
+* `effective_*` fields show the resolved limit (member override or team default)
+
+***
+
+### Update Own Preferences
+
+```
+PATCH /api/teams/{teamUuid}/members/self
+```
+
+**Request Body**:
+
+```json theme={null}
+{
+  "bill_to_team": true,
+  "name": "Alice Smith"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `bill_to_team` | boolean | No | Bill usage to team or personal account |
+| `name` | string | No | Display name (1-100 characters) |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true,
+  "preferences": {
+    "bill_to_team": true,
+    "name": "Alice Smith",
+    "usage_limit_usd": 150,
+    "usage_limit_enforced": true
+  }
+}
+```
+
+***
+
+### Leave Team
+
+```
+POST /api/teams/{teamUuid}/leave
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+**Errors**:
+
+* `403 FORBIDDEN`: Owner must transfer ownership before leaving
+
+***
+
+## Invitations
+
+### List Pending Invitations
+
+```
+GET /api/teams/{teamUuid}/invitations
+```
+
+**Required Role**: Owner or Admin
+
+**Response**:
+
+```json theme={null}
+{
+  "invitations": [
+    {
+      "id": "inv-uuid-123",
+      "email": "bob@company.com",
+      "role": "member",
+      "status": "pending",
+      "token": "abc123...",
+      "created_at": "2024-01-15T10:30:00Z",
+      "expires_at": "2024-01-22T10:30:00Z"
+    }
+  ]
+}
+```
+
+***
+
+### Send Invitation
+
+```
+POST /api/teams/{teamUuid}/invitations
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "email": "bob@company.com",
+  "role": "member"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `email` | string | Yes | Valid email address |
+| `role` | string | No | `admin` or `member` (default: `member`) |
+
+**Response**:
+
+```json theme={null}
+{
+  "invitation": {
+    "id": "inv-uuid-123",
+    "email": "bob@company.com",
+    "role": "member",
+    "status": "pending",
+    "token": "abc123..."
+  }
+}
+```
+
+***
+
+### Revoke Invitation
+
+```
+PATCH /api/teams/{teamUuid}/invitations
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "action": "revoke",
+  "id": "inv-uuid-123"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `action` | string | No | Must be `revoke` (default) |
+| `id` | string | No\* | Invitation UUID |
+| `token` | string | No\* | Invitation token (min 16 chars) |
+
+\*Provide either `id` or `token`
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+***
+
+### Accept Invitation
+
+```
+POST /api/teams/invitations/accept
+```
+
+**Request Body**:
+
+```json theme={null}
+{
+  "token": "abc123def456..."
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `token` | string | Yes | Invitation token (min 16 characters) |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+**Errors**:
+
+* `409 CONFLICT`: Invitation is not pending
+* `409 CONFLICT`: Invitation has expired
+
+***
+
+### Lookup Invitation
+
+Public endpoint to check invitation details before accepting.
+
+```
+GET /api/teams/invitations/lookup?token=abc123...
+```
+
+**Authentication**: Not required
+
+**Response** (email invitation):
+
+```json theme={null}
+{
+  "type": "invitation",
+  "email": "bob@company.com",
+  "status": "pending",
+  "teamName": "Engineering"
+}
+```
+
+**Response** (invite link):
+
+```json theme={null}
+{
+  "type": "link",
+  "teamName": "Engineering",
+  "enabled": true
+}
+```
+
+***
+
+## Invite Links
+
+### Get Invite Link Status
+
+```
+GET /api/teams/{teamUuid}/invite-link
+```
+
+**Required Role**: Owner or Admin
+
+**Response**:
+
+```json theme={null}
+{
+  "enabled": true,
+  "token": "abc123def456..."
+}
+```
+
+***
+
+### Enable/Disable Invite Link
+
+```
+POST /api/teams/{teamUuid}/invite-link
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "action": "enable"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `action` | string | No | `enable` (default) or `disable` |
+
+**Response**:
+
+```json theme={null}
+{
+  "enabled": true,
+  "token": "abc123def456..."
+}
+```
+
+***
+
+### Send Invite Link via Email
+
+```
+POST /api/teams/{teamUuid}/invite-link/email
+```
+
+**Required Role**: Owner or Admin
+
+**Rate Limit**: 5 emails per minute
+
+**Request Body**:
+
+```json theme={null}
+{
+  "emails": ["alice@company.com", "bob@company.com"]
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `emails` | string\[] | Yes | 1-10 valid email addresses |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+**Errors**:
+
+* `403 FORBIDDEN`: Invite link is disabled
+* `429 RATE_LIMITED`: Too many emails
+
+***
+
+### Join via Invite Link
+
+```
+POST /api/teams/join
+```
+
+**Request Body**:
+
+```json theme={null}
+{
+  "token": "abc123def456..."
+}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+Or if already a member:
+
+```json theme={null}
+{
+  "ok": true,
+  "alreadyMember": true
+}
+```
+
+***
+
+### Cancel Join Request
+
+```
+DELETE /api/teams/join
+```
+
+**Request Body**:
+
+```json theme={null}
+{
+  "token": "abc123def456..."
+}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+***
+
+## Join Requests
+
+### List Join Requests
+
+```
+GET /api/teams/{teamUuid}/join-requests
+```
+
+**Required Role**: Owner or Admin
+
+**Response**:
+
+```json theme={null}
+{
+  "requests": [
+    {
+      "id": "req-uuid-123",
+      "user_id": 12345,
+      "status": "pending",
+      "created_at": "2024-01-15T10:30:00Z",
+      "name": "Charlie",
+      "email": "charlie@example.com"
+    }
+  ]
+}
+```
+
+***
+
+### Accept/Reject Join Request
+
+```
+PATCH /api/teams/{teamUuid}/join-requests
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "action": "accept",
+  "id": "req-uuid-123"
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `action` | string | No | `accept` (default) or `reject` |
+| `id` | string | Yes | Join request UUID |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+***
+
+### Delete Join Request
+
+Delete a processed (non-pending) join request.
+
+```
+DELETE /api/teams/{teamUuid}/join-requests
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "id": "req-uuid-123"
+}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+**Errors**:
+
+* `409 CONFLICT`: Cannot delete a pending request (must accept/reject first)
+
+***
+
+## Usage & Billing
+
+### Get Team Usage
+
+```
+GET /api/teams/{teamUuid}/usage
+```
+
+**Query Parameters**:
+
+| Parameter | Type | Default | Description |
+| - | - | - | - |
+| `from` | string | - | Start date (ISO format) |
+| `to` | string | - | End date (ISO format) |
+
+**Response**:
+
+```json theme={null}
+{
+  "byActor": [
+    {
+      "actorSessionId": 12345,
+      "displayName": "Alice Smith",
+      "totalAmount": 45.50,
+      "currency": "USD"
+    },
+    {
+      "actorSessionId": 12346,
+      "displayName": "Bob Jones",
+      "totalAmount": 32.25,
+      "currency": "USD"
+    }
+  ],
+  "totals": [
+    {
+      "totalAmount": 77.75,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+***
+
+**Notes**:
+
+* Team-billed usage is charged against the team's balances (shown on `GET /api/teams/{teamUuid}`).
+* Individual members can choose whether to bill to the team or their personal account via `PATCH /api/teams/{teamUuid}/members/self` (`bill_to_team`).
+
+***
+
+### High-Spend Text Discount
+
+Some teams may automatically qualify for discounted pricing on text model usage. When active, `GET /api/teams/{teamUuid}` will show:
+
+```json theme={null}
+{
+  "team": {
+    "high_spend_text_discount": true
+  }
+}
+```
+
+## Settings
+
+### Update Team Settings
+
+```
+PATCH /api/teams/{teamUuid}/settings
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "default_member_usage_limit_usd": 100,
+  "responses_retention_days": 14,
+  "usage_limit_enforced": true
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `default_member_usage_limit_usd` | number\|null | No | Default monthly limit for members |
+| `team_usage_limit_usd` | number\|null | No | Team-wide spending limit |
+| `responses_retention_days` | number\|null | No | Team default retention for `/v1/responses` (`0..365`). Use `null` to clear. API-exposed; not currently shown in the team Settings UI |
+| `usage_limit_enforced` | boolean | No | Hard-enforce limits |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+***
+
+## BYOK (Team Settings & Provider Keys)
+
+Teams can store provider keys and configure how team-billed traffic uses BYOK.
+
+For provider slugs and key formats (including JSON-based credentials like AWS/Azure), see `api-reference/miscellaneous/byok`.
+
+**Rate Limits**:
+
+* Key management (list/add/revoke): 5 operations per minute per team
+* Key validation: 10 requests per minute per team
+
+### Get BYOK Settings
+
+```
+GET /api/teams/{teamUuid}/byok-settings
+```
+
+**Authorization**: Any team member
+
+**Response**:
+
+```json theme={null}
+{
+  "byok_enabled": true,
+  "byok_mode": "prefer_team"
+}
+```
+
+BYOK modes:
+
+| Mode | Behavior |
+| - | - |
+| `disabled` | Team BYOK is off |
+| `prefer_team` | Use team keys when available; otherwise fall back |
+| `require_team` | Require team keys; fail if missing |
+
+### Update BYOK Settings
+
+```
+PATCH /api/teams/{teamUuid}/byok-settings
+```
+
+**Authorization**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "byok_enabled": true,
+  "byok_mode": "prefer_team"
+}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true,
+  "byok_enabled": true,
+  "byok_mode": "prefer_team"
+}
+```
+
+### List Team Provider Keys
+
+```
+GET /api/teams/{teamUuid}/provider-keys
+```
+
+**Authorization**: Any team member
+
+**Response**:
+
+```json theme={null}
+{
+  "keys": [
+    {
+      "id": 42,
+      "provider": "openai",
+      "key_suffix": "abcd",
+      "status": "active",
+      "created_at": "2025-01-15T10:00:00Z",
+      "last_used_at": "2025-01-20T14:30:00Z",
+      "added_by_session_id": 123
+    }
+  ]
+}
+```
+
+### Add or Replace a Team Provider Key
+
+```
+POST /api/teams/{teamUuid}/provider-keys
+```
+
+**Authorization**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "provider": "openai",
+  "key": "sk-..."
+}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "success": true,
+  "id": 43,
+  "provider": "openai",
+  "key_suffix": "abcd"
+}
+```
+
+### Revoke a Team Provider Key
+
+```
+DELETE /api/teams/{teamUuid}/provider-keys?provider=openai
+```
+
+**Authorization**: Owner or Admin
+
+**Response**:
+
+```json theme={null}
+{
+  "success": true
+}
+```
+
+### Validate a Team Provider Key (Optional Preflight)
+
+```
+POST /api/teams/{teamUuid}/provider-keys/validate
+```
+
+**Authorization**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "provider": "openai",
+  "key": "sk-...",
+  "model": "gpt-4o-mini"
+}
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "valid": true,
+  "model": "gpt-4o-mini"
+}
+```
+
+Or on failure:
+
+```json theme={null}
+{
+  "valid": false,
+  "error": "Invalid API key",
+  "model": "gpt-4o-mini"
+}
+```
+
+**Notes**:
+
+* In `prefer_team` mode, team-billed traffic will not use a member's personal BYOK keys unless the client explicitly enables BYOK for the request.
+
+***
+
+## Model Access Control
+
+### Get Allowed Models
+
+```
+GET /api/teams/{teamUuid}/allowed-models
+```
+
+**Response**:
+
+```json theme={null}
+{
+  "allowed_models": {
+    "claude-sonnet-4-5": true,
+    "gpt-5-1": true,
+    "claude-opus-4-5": false
+  },
+  "all_allowed": false
+}
+```
+
+Or if all models are allowed:
+
+```json theme={null}
+{
+  "allowed_models": null,
+  "all_allowed": true
+}
+```
+
+***
+
+### Update Allowed Models
+
+```
+PATCH /api/teams/{teamUuid}/allowed-models
+```
+
+**Required Role**: Owner or Admin
+
+**Request Body**:
+
+```json theme={null}
+{
+  "allowed_models": {
+    "claude-sonnet-4-5": true,
+    "gpt-5-1": true,
+    "claude-opus-4-5": false
+  }
+}
+```
+
+To allow all models:
+
+```json theme={null}
+{
+  "allowed_models": null
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `allowed_models` | object\|null | Yes | Map of model keys to boolean, or `null` for all |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true,
+  "allowed_models": {
+    "claude-sonnet-4-5": true,
+    "gpt-5-1": true,
+    "claude-opus-4-5": false
+  },
+  "all_allowed": false
+}
+```
+
+**Notes**:
+
+* `allowed_models: null` means all models are allowed.
+* When `allowed_models` is an object, only models with a value of `true` are allowed for non-owners. Any missing models (or models with `false`) are blocked.
+* An empty object `{}` blocks all models for non-owners.
+* Team owners are not restricted by the allowlist.
+
+***
+
+## Ownership
+
+### Transfer Ownership
+
+```
+POST /api/teams/{teamUuid}/owner
+```
+
+**Required Role**: Owner
+
+**Request Body**:
+
+```json theme={null}
+{
+  "sessionId": 12345
+}
+```
+
+| Field | Type | Required | Description |
+| - | - | - | - |
+| `sessionId` | number | Yes | New owner's session ID |
+
+**Response**:
+
+```json theme={null}
+{
+  "ok": true
+}
+```
+
+**Side Effects**:
+
+* Current owner becomes admin
+* Target member becomes owner
+
+**Errors**:
+
+* `409 CONFLICT`: Target is already the owner
+* `400 INVALID_INPUT`: Cannot transfer ownership to yourself
+
+***
+
+## Role Reference
+
+| Feature | Owner | Admin | Member |
+| - | - | - | - |
+| View team details | Yes | Yes | Yes |
+| Update team (name/status) | Yes | Yes | No |
+| Delete team | Yes | No | No |
+| List members | Yes | Yes | Yes |
+| Change member roles | Yes | Yes | No |
+| Set member usage limits | Yes | Yes | No |
+| Remove members | Yes | Yes | No |
+| Update own preferences (`/members/self`) | Yes | Yes | Yes |
+| Manage invitations | Yes | Yes | No |
+| Manage invite link | Yes | Yes | No |
+| Send invite link email | Yes | Yes | No |
+| View join requests | Yes | Yes | No |
+| Accept/reject join requests | Yes | Yes | No |
+| Delete processed join requests | Yes | Yes | No |
+| View team usage (`/usage`) | Yes | Yes | Yes |
+| Update team settings (`/settings`) | Yes | Yes | No |
+| View allowed models | Yes | Yes | Yes |
+| Update allowed models | Yes | Yes | No |
+| Transfer ownership | Yes | No | No |
+| View BYOK settings | Yes | Yes | Yes |
+| Update BYOK settings | Yes | Yes | No |
+| List team provider keys | Yes | Yes | Yes |
+| Add/revoke team provider keys | Yes | Yes | No |
+| Validate team provider keys | Yes | Yes | No |
+
+***
+
+## Rate Limits
+
+| Endpoint | Limit |
+| - | - |
+| `POST /api/teams/{teamUuid}/invite-link/email` | 5 emails per minute |
+
+***
+
+## Webhooks (Coming Soon)
+
+Future webhook events:
+
+* `team.member.joined`
+* `team.member.removed`
+* `team.usage.limit_reached`
+* `team.status.changed`
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

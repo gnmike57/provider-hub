@@ -10,7 +10,7 @@ self-hosted LLMs as a **primary** (or as a harness provider).
 | Base URL | `https://api-cdn.thehive.ai/api/v3` (VA1 region: `https://api-va1.thehive.ai/api/v3`) |
 | Endpoint | `POST /chat/completions` |
 | Auth | `Authorization: Bearer <HIVE_SECRET_KEY>` - the **SECRET** key |
-| Models | `deepseek-ai/deepseek-v4.1-flash`, `zai-org/glm-5.3-flash` |
+| Models | `deepseek-ai/deepseek-v4.1-flash-1017`, `zai-org/glm-5.3-flash` |
 | Shape | OpenAI chat-completions; SSE streaming; `reasoning_content` in deltas; tool calling per model |
 | Limits | 5 req/s default; 405 when the org balance is empty |
 

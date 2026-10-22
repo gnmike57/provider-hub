@@ -1,8 +1,8 @@
-# reference-implementation - Interception Gateway
+# provider-hub - Interception Gateway
 
 Production reference for the refusal-interception gateway, the speculative
 hedger, and the deterministic ingress assembler described in
-`docs/architecture.md`. Drop-in OpenAI-compatible proxy + Part IV assembly.
+`refusal-interception/ARCHITECTURE.MD`. Drop-in OpenAI-compatible proxy + Part IV assembly.
 
 ## Results (2026-10-04, Python 3.12, offline CI)
 
@@ -37,7 +37,7 @@ python -m pytest evals/ -p no:warnings -q
 | `speculative_hedge.py` | Speculative dual-dispatch (B9/B11 fixes) | `hedge_stream` |
 | `litellm/routing_callback.py` | Non-streaming repair inside LiteLLM | `RoutingFootnoteCallback` |
 
-**Single-source invariant:** `grep -rn 'ROUTING_RE = ' reference-implementation/`
+**Single-source invariant:** `grep -rn 'ROUTING_RE = ' .` from this folder
 returns exactly one hit (`routing_patterns.py`), and the callback test pins it.
 
 ## Running
@@ -62,7 +62,7 @@ specialist (worker slot), exactly like a plain Frost name.
 
 | Alias | Hive upstream model | Endpoint |
 |---|---|---|
-| `deepfrost max think` | `deepseek-ai/deepseek-v4.1-flash` | `http://gx10.ayu-sidewinder.ts.net:9314/v1` |
+| `deepfrost max think` | `deepseek-ai/deepseek-v4.1-flash-1017` | `http://gx10.ayu-sidewinder.ts.net:9314/v1` |
 | `glmfrost max think` | `zai-org/glm-5.3-flash` | `http://gx10.ayu-sidewinder.ts.net:9315/v1` |
 
 Max-reasoning requests never race the speculative hedge, get a 32768-token
@@ -151,7 +151,7 @@ lists them for Cline/OpenCode pickers (`evals/frost_alias_test.py`):
 
 | Name | Slot | Upstream id |
 |---|---|---|
-| `deepfrost` | primary | `deepseek-ai/deepseek-v4.1-flash` |
+| `deepfrost` | primary | `deepseek-ai/deepseek-v4.1-flash-1017` |
 | `glmfrost` | primary | `zai-org/glm-5.3-flash` |
 | `cyberfrost` | worker | `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw` |
 | `frost-general` | primary | the slot's current default (follows `/v1/switch`) |
@@ -323,7 +323,7 @@ near-white tint plus a faint glow hue:
 ```
 : gw-stage helm zai-org/glm-5.3-flash tint=#edf4fd glow=#3b82f6
 data: {...}                       <- the GLM/DeepSeek reasoning helm
-: gw-stage middle deepseek-ai/deepseek-v4.1-flash tint=#f3effb glow=#8b5cf6
+: gw-stage middle deepseek-ai/deepseek-v4.1-flash-1017 tint=#f3effb glow=#8b5cf6
 data: {...}                       <- the no-reasoning secondary (ladder)
 : gw-stage terminal abliterated-model-large-v2 tint=#fdf0f2 glow=#f43f5e
 data: {...}                       <- the Abliterated V2 Large terminal

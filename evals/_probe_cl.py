@@ -1,4 +1,12 @@
-"""Throwaway probe: does TestClient send content-length: 0 for empty POSTs?"""
+"""Throwaway probe: does TestClient send content-length: 0 for empty POSTs?
+
+Recorded experiment (kept as-is; 2026-10-21 run on this stack):
+    no-body: {'cl': '0'}
+    empty-bytes: {'cl': '0'}
+    json: {'cl': '7'}
+    raw-cl0: {'cl': '0'}
+The asserted regression twin lives in evals/cl_test.py.
+"""
 import sys
 sys.path.insert(0, ".")
 from fastapi import FastAPI, Request

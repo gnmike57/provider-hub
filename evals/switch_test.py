@@ -11,6 +11,7 @@ Run: evals\\run_tests.bat  (offline; no real upstream is contacted)
 
 import asyncio
 import contextlib
+import inspect
 import json
 import threading
 import types
@@ -237,7 +238,7 @@ def test_resolve_frost_name_maps_to_slot_binding():
         s,
     )
     assert got2["url"] == PRIMARY and got2["provider_id"] == "frost:primary"
-    assert got2["model"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert got2["model"] == "deepseek-ai/deepseek-v4.1-flash-1017"
 
 
 def test_resolve_unresolvable_model_is_404():
@@ -400,3 +401,158 @@ def test_perform_switch_verify_failure_still_applies(tmp_path):
 
 
 # ==== PART4 ====
+
+# ---------------------------------------------------------------------------
+# MODEL_SWITCH_ALLOW_RAW kill switch (default: raw overrides stay ALLOWED)
+# ---------------------------------------------------------------------------
+RAW_BODY = {"target": "worker", "url": "http://raw.test/v1", "model": "raw-model"}
+
+
+def test_raw_override_allowed_by_default(monkeypatch):
+    """Unset MODEL_SWITCH_ALLOW_RAW keeps the historical open behavior."""
+    monkeypatch.delenv("MODEL_SWITCH_ALLOW_RAW", raising=False)
+    assert model_switch.raw_override_allowed() is True
+    got = model_switch.resolve_target(
+        model_switch.parse_switch_request(dict(RAW_BODY, key="rk")),
+        _dummy_settings(),
+    )
+    assert got == {"url": "http://raw.test/v1", "key": "rk",
+                   "model": "raw-model", "provider_id": "raw"}
+
+
+def test_raw_override_allowed_when_set_to_1(monkeypatch):
+    """=1 is the explicit opt-in and must behave exactly like unset."""
+    monkeypatch.setenv("MODEL_SWITCH_ALLOW_RAW", "1")
+    assert model_switch.raw_override_allowed() is True
+    got = model_switch.resolve_target(
+        model_switch.parse_switch_request(dict(RAW_BODY, key="rk")),
+        _dummy_settings(),
+    )
+    assert got == {"url": "http://raw.test/v1", "key": "rk",
+                   "model": "raw-model", "provider_id": "raw"}
+
+
+def test_raw_override_rejected_when_set_to_0(monkeypatch):
+    """MODEL_SWITCH_ALLOW_RAW=0 rejects raw overrides with a 403 naming the knob."""
+    monkeypatch.setenv("MODEL_SWITCH_ALLOW_RAW", "0")
+    assert model_switch.raw_override_allowed() is False
+    with pytest.raises(model_switch.SwitchError) as ei:
+        model_switch.resolve_target(
+            model_switch.parse_switch_request(dict(RAW_BODY, key="rk")),
+            _dummy_settings(),
+        )
+    assert ei.value.status_code == 403
+    assert "MODEL_SWITCH_ALLOW_RAW" in str(ei.value)
+
+
+def test_raw_override_kill_switch_does_not_block_registry_targets(tmp_path, monkeypatch):
+    """=0 narrows ONLY the raw override; registry lookups keep working."""
+    monkeypatch.setenv("MODEL_SWITCH_ALLOW_RAW", "0")
+    got = model_switch.resolve_target(
+        model_switch.parse_switch_request({"target": "primary", "provider": "alt",
+                                           "model": "alt"}),
+        _dummy_settings(), registry=_registry_file(tmp_path),
+    )
+    assert got["provider_id"] == "alt" and got["model"] == "alt-upstream"
+
+
+def test_perform_switch_raw_rejected_under_kill_switch(monkeypatch):
+    """Orchestrator level: the knob=0 error surfaces before any probe/apply."""
+    monkeypatch.setenv("MODEL_SWITCH_ALLOW_RAW", "0")
+    s = _dummy_settings()
+    with pytest.raises(model_switch.SwitchError) as ei:
+        asyncio.run(model_switch.perform_switch(
+            dict(RAW_BODY, key="rk"), settings=s, http=_FakeHttp(),
+            request_id="req-raw0", principal="tester", audit_log=""))
+    assert ei.value.status_code == 403
+    assert "MODEL_SWITCH_ALLOW_RAW" in str(ei.value)
+    # rejected BEFORE any mutation: the slot binding is untouched
+    mgr = model_switch._manager_for(s)
+    assert s.fallback_api_url == WORKER and mgr.events == []
+
+
+def test_switch_endpoint_raw_allowed_by_default(script, reg, monkeypatch):
+    """End to end: knob unset -> raw override switch still succeeds (200).
+
+    The suite runs with no ADMIN_API_KEY configured, and the gateway's F9
+    design refuses every mutation then - so the admin key is set + sent here
+    to reach the switch logic itself.
+    """
+    monkeypatch.delenv("MODEL_SWITCH_ALLOW_RAW", raising=False)
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "admin_api_key", "adm-test")
+    script.script("http://raw.test/v1/models", [("json", {"data": []})])
+    with TestClient(proxy_gateway.app) as tc:
+        r = tc.post("/v1/switch", json=dict(RAW_BODY, key="rk"),
+                    headers={"X-Admin-Key": "adm-test"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True and body["switched"] == "worker"
+    assert body["provider_id"] == "raw" and body["url"] == "http://raw.test/v1"
+    assert body["verified"] is True
+
+
+def test_switch_endpoint_raw_rejected_under_kill_switch(script, reg, monkeypatch):
+    """End to end: knob=0 -> the endpoint maps the SwitchError to HTTP 403."""
+    monkeypatch.setenv("MODEL_SWITCH_ALLOW_RAW", "0")
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "admin_api_key", "adm-test")
+    with TestClient(proxy_gateway.app) as tc:
+        r = tc.post("/v1/switch", json=dict(RAW_BODY, key="rk"),
+                    headers={"X-Admin-Key": "adm-test"})
+        assert r.status_code == 403, r.text
+        assert "MODEL_SWITCH_ALLOW_RAW" in r.json()["error"]
+        snap = tc.post("/v1/switch", json={},
+                       headers={"X-Admin-Key": "adm-test"}).json()
+    assert snap["worker"]["url"] == WORKER  # nothing was applied
+
+
+def test_switch_endpoint_raw_rejection_is_admin_gated(script, reg, monkeypatch):
+    """The kill-switch 403 sits BEHIND the admin gate (operator action only)."""
+    monkeypatch.setenv("MODEL_SWITCH_ALLOW_RAW", "0")
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "admin_api_key", "adm-test")
+    with TestClient(proxy_gateway.app) as tc:
+        r = tc.post("/v1/switch", json=dict(RAW_BODY, key="rk"))
+    assert r.status_code == 403, r.text
+    assert "admin key required" in r.json()["error"]
+
+
+def test_record_uses_slot_lock():
+    """record() must take the SAME lock the other slot writers take.
+
+    A concurrent writer holds the real slot lock; record() running in a
+    helper thread may only finish AFTER it is released. With the old
+    unguarded record() the helper completed while the lock was still held
+    (append is microseconds), failing the not-done assertion.
+    """
+    mgr = model_switch.SlotManager(_dummy_settings())
+    done = threading.Event()
+
+    def _record():
+        mgr.record("req-blocked", "tester", "worker", "applied")
+        done.set()
+
+    with mgr._lock:  # hold the slot lock like a concurrent slot writer
+        worker = threading.Thread(target=_record, daemon=True)
+        worker.start()
+        worker.join(0.3)
+        assert not done.is_set(), "record() mutated events without the slot lock"
+    assert done.wait(2), "record() never completed after the lock was released"
+    assert [e.request_id for e in mgr.events] == ["req-blocked"]
+
+
+def test_rollback_record_path_stays_non_reentrant_safe():
+    """rollback() records its event via the lock-held core, not public record().
+
+    Pins the deadlock fix structurally: if a future refactor routes the
+    in-lock rollback bookkeeping back through public record(), the with-lock
+    wrapper would try to re-acquire the non-reentrant threading.Lock and hang
+    the rollback path. grep is the honest check for the internal split.
+    """
+    src = inspect.getsource(model_switch.SlotManager.rollback)
+    assert "self.record(" not in src
+    assert "self._record_locked(" in src
+    record_src = inspect.getsource(model_switch.SlotManager.record)
+    assert "self._record_locked(" in record_src  # public entry goes through the core
+    core_src = inspect.getsource(model_switch.SlotManager._record_locked)
+    assert "self.events.append" in core_src  # the ring logic lives in the core
+    assert (model_switch.SlotManager._record_locked
+            is not model_switch.SlotManager.record)

@@ -66,10 +66,10 @@ FROST_ALIASES = {
     # the same id all three constellations terminate on; REDHANDS on max-
     # offense). They stay on the WORKER slot so an operator-set
     # SPECIALIST_API_URL/KEY override keeps winning.
-    "deepfrost v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
-    "deepfrost-v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
-    "deepfrost-v41": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
-    "deepfrost": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    "deepfrost v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
+    "deepfrost-v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
+    "deepfrost-v41": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
+    "deepfrost": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
     "glmfrost 5.3 flash": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost-5.3-flash": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost": ("primary", "zai-org/glm-5.3-flash"),
@@ -80,8 +80,8 @@ FROST_ALIASES = {
     # Max-think variants (operator request, 2026-10): the SAME upstream models
     # with reasoning pushed to maximum - the gateway injects the knob set and
     # skips the hedge race (see proxy_gateway.wants_max_think / chat_proxy).
-    "deepfrost max think": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
-    "deepfrost-max-think": ("primary", "deepseek-ai/deepseek-v4.1-flash"),
+    "deepfrost max think": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
+    "deepfrost-max-think": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
     "glmfrost max think": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost-max-think": ("primary", "zai-org/glm-5.3-flash"),
     # Frost General: the primary slot's CURRENT default, not a baked-in id -
@@ -102,7 +102,7 @@ MAX_THINK_NAMES = frozenset({
 
 
 def resolve_frost_alias(model: str):
-    """`"DeepFrost v4.1"` -> `("primary", "deepseek-ai/deepseek-v4.1-flash")`.
+    """`"DeepFrost v4.1"` -> `("primary", "deepseek-ai/deepseek-v4.1-flash-1017")`.
 
     Returns None for anything that is not a Frost name, so raw upstream ids and
     every other model keep their existing behaviour.
@@ -132,14 +132,14 @@ CONSTELLATION_CHAINS = {
         "description": "GLM-5.3 max-reasoning helm; DeepSeek blind sub-agent; "
                        "Abliterated V2 Large terminal (REDHANDS on offense).",
         "helm": ("primary", "zai-org/glm-5.3-flash", True),
-        "middle": ("primary", "deepseek-ai/deepseek-v4.1-flash", False),
+        "middle": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", False),
         "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
         "redhands": False,
     },
     "DEEPMAX>GLM>ABLITV2L": {
         "description": "DeepSeek max-reasoning helm; GLM blind sub-agent; "
                        "Abliterated V2 Large terminal (REDHANDS on offense).",
-        "helm": ("primary", "deepseek-ai/deepseek-v4.1-flash", True),
+        "helm": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", True),
         "middle": ("primary", "zai-org/glm-5.3-flash", False),
         "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
         "redhands": False,
@@ -248,7 +248,7 @@ HUB_MODEL_ALIASES = {
     # /team dispatch resolves through resolve_hub_alias, so the legacy
     # "Team" name also reaches the V2 terminal.
     "teamglm": ("hive", "zai-org/glm-5.3-flash", False),
-    "teamdeep": ("hive", "deepseek-ai/deepseek-v4.1-flash", False),
+    "teamdeep": ("hive", "deepseek-ai/deepseek-v4.1-flash-1017", False),
     "teamabliterated": ("ablit.ai", "abliterated-model-large-v2", False),
     "team": ("ablit.ai", "abliterated-model-large-v2", False),
 }
@@ -309,7 +309,7 @@ def _normalize_model_name(model: str) -> str:
 
 
 def resolve_hub_alias(model: str):
-    """`"DeepMaxNano"` -> `("nano", "deepseek-ai/deepseek-v4.1-flash", True)`.
+    """`"DeepMaxNano"` -> `("nano", "deepseek-ai/deepseek-v4.1-flash-1017", True)`.
 
     Returns None for anything that is not a hub alias, so raw upstream ids and
     Frost names keep their existing behaviour.

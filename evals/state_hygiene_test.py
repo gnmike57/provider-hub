@@ -353,7 +353,7 @@ def test_hub_display_is_derived_from_hub_model_aliases():
         "glmablit.ai": ("GLMAblit.ai", "abliterated-model-large-v2", "ablit.ai", False),
         # TEAM routes (always-on /team): derived, not hand-maintained.
         "teamglm": ("TeamGLM", "zai-org/glm-5.3-flash", "hive", False),
-        "teamdeep": ("TeamDeep", "deepseek-ai/deepseek-v4.1-flash", "hive", False),
+        "teamdeep": ("TeamDeep", "deepseek-ai/deepseek-v4.1-flash-1017", "hive", False),
         "teamabliterated": ("TeamAblit.ai", "abliterated-model-large-v2", "ablit.ai", False),
         "team": ("Team", "abliterated-model-large-v2", "ablit.ai", False),
     }

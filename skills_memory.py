@@ -65,23 +65,37 @@ def _keywords(text):
 
 
 def _flush():
-    """Write the pool back. NEVER raises (design rule 7)."""
+    """Atomically write the pool back (tmp + os.replace, billing.py:132
+    pattern). NEVER raises (design rule 7): a failed flush leaves the
+    previous file on disk intact and stages the new rows in the .tmp
+    sibling, so a reader never sees a truncated skills file.
+    """
     try:
-        with io.open(_path(), "w", encoding="utf-8") as f:
+        path = _path()
+        tmp = path + ".tmp"
+        with io.open(tmp, "w", encoding="utf-8") as f:
             for e in _POOL:
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        os.replace(tmp, path)
     except Exception:  # noqa: BLE001 - the memory must not kill the stream
         pass
 
 
 def reload():
-    """(Re)load the pool from disk. NEVER raises."""
+    """(Re)load the pool from disk. NEVER raises.
+
+    The _POOL rebind happens under _LOCK so it can never interleave with a
+    concurrent capture()/relevant() mutation (capture entries are kept; a
+    failed read still empties the pool exactly as before).
+    """
     global _POOL
     try:
         with io.open(_path(), "r", encoding="utf-8") as f:
-            _POOL = [json.loads(ln) for ln in f if ln.strip()]
+            pool = [json.loads(ln) for ln in f if ln.strip()]
     except Exception:  # noqa: BLE001
-        _POOL = []
+        pool = []
+    with _LOCK:
+        _POOL = pool
 
 
 def find_markers(text):

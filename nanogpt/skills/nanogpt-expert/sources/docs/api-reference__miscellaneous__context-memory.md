@@ -1,0 +1,195 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Context Memory
+
+> Lossless, hierarchical episodic memory for unlimited AI conversations
+
+export const exampleTextModelName = "GPT 6.1 Sol";
+
+export const exampleTextModel = "openai/gpt-6.1-sol";
+
+<Note>
+  These examples use the website API host, which currently lists their recommended models. The direct API host can have a different catalog during rollouts. For larger requests or longer runtimes, use `https://api.nano-gpt.com/api/v1` with a model from that host's catalog. See [API Hosts](/api-reference/miscellaneous/api-hosts) for limits and availability checks.
+</Note>
+
+## Overview
+
+Large Language Models are limited by their context window. As conversations grow, models forget details, degrade in quality, or hit hard limits. **Context Memory** solves this with lossless, hierarchical compression of your entire conversation history, enabling unlimited-length coding sessions and conversations while preserving full awareness.
+
+## The Problem
+
+Traditional memory solutions are semantic and store general facts. They miss episodic memory: recalling specific events at the right level of detail. Simple summarization drops critical details, while RAG surfaces isolated chunks without surrounding context.
+
+Without proper episodic memory:
+
+* Important details get lost during summarization
+* Conversations are cut short when context limits are reached
+* Agents lose track of previous work
+
+## How It Works
+
+Context Memory builds a tree where upper levels contain summaries and lower levels preserve verbatim detail. Relevant sections are expanded while others remain compressed:
+
+* High-level summaries provide overall context
+* Mid-level sections explain relationships
+* Verbatim details are retrieved precisely when needed
+
+Example from a coding session:
+
+```
+Token estimation function refactoring
+├── Initial user request
+├── Refactoring to support integer inputs
+├── Error: "exceeds the character limit"
+│   └── Fixed by changing test params from strings to integers
+└── Variable name refactoring
+```
+
+Ask, "What errors did we encounter?" and the relevant section expands automatically—no overload, no missing context.
+
+## Benefits
+
+* **For Developers**: Long coding sessions without losing context; agents learn from past mistakes; documentation retains project-wide context
+* **For Conversations**: Extended discussions with continuity; research that compounds; complex problem-solving with full history
+
+## Use Cases
+
+* **Role‑playing and Storytelling**: Preserve 500k+ tokens of story history while delivering 8k–20k tokens of perfectly relevant context
+* **Software Development**: Summaries keep the big picture; verbatim code snippets are restored only when needed—no overload, no omissions
+
+## Using Context Memory
+
+You can enable Context Memory in the `POST /v1/chat/completions` endpoint in two ways:
+
+* **Model suffix**: Append `:memory` to any model name
+* **Header**: Add `memory: true`
+* **Combine**: Use with web search via `:online:memory`
+
+For complete suffix composition rules, see [Model Suffixes](/api-reference/miscellaneous/model-suffixes).
+
+<CodeGroup>
+  ```python Python theme={null}
+  import requests
+
+  BASE_URL = "https://nano-gpt.com/api/v1"
+  API_KEY = "YOUR_API_KEY"
+
+  headers = {
+      "Authorization": f"Bearer {API_KEY}",
+      "Content-Type": "application/json"
+  }
+
+  # Use the :memory suffix
+  payload = {
+      "model": "openai/gpt-6.1-sol:memory",
+      "messages": [
+          {"role": "user", "content": "Remember our plan and continue from step 3."}
+      ]
+  }
+
+  r = requests.post(f"{BASE_URL}/chat/completions", headers=headers, json=payload)
+  print(r.json())
+  ```
+
+  ```javascript JavaScript theme={null}
+  const BASE_URL = "https://nano-gpt.com/api/v1";
+  const API_KEY = "YOUR_API_KEY";
+
+  // Enable memory via header
+  const res = await fetch(`${BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+      'memory': 'true'
+    },
+    body: JSON.stringify({
+      model: 'openai/gpt-6.1-sol',
+      messages: [{ role: 'user', content: 'Continue the previous discussion but keep all earlier decisions.' }]
+    })
+  });
+
+  const data = await res.json();
+  ```
+
+  ```bash cURL theme={null}
+  # Memory + Web Search combined
+  curl -X POST https://nano-gpt.com/api/v1/chat/completions \
+    -H "Authorization: Bearer YOUR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "model": "openai/gpt-6.1-sol:online:memory",
+      "messages": [
+        {"role": "user", "content": "Research alternatives we discussed and continue our plan."}
+      ]
+    }'
+  ```
+</CodeGroup>
+
+## Retention and Caching
+
+* **Default retention**: 30 days.
+* **Configure via model suffix**: `:memory-<days>` where `<days>` is 1..365
+  * Example: <code>{exampleTextModel}:memory-90</code>
+* **Configure via header**: `memory_expiration_days: <days>` (1..365)
+  * Example:
+    ```bash theme={null}
+    curl -X POST https://nano-gpt.com/api/v1/chat/completions \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -H "memory: true" \
+      -H "memory_expiration_days: 45" \
+      -d '{
+        "model": "openai/gpt-6.1-sol",
+        "messages": [{"role": "user", "content": "Hello"}]
+      }'
+    ```
+* **Precedence**: If both suffix and header are provided, the header value takes precedence for retention.
+* **Data lifecycle**: The compressed chat state is retained server‑side for the configured period (or until you delete the conversation). When you delete conversations locally, no memory data persists on Polychat’s systems.
+* **Caching**: The Context Memory backend may cache portions of repeated prefixes and report them as cached input tokens in usage. Cached input tokens (when present) are billed at the cached input rate (see Pricing below).
+
+## Technical Details
+
+Context Memory is implemented as a B‑tree with lossless compression over message histories. Upper nodes store summaries; leaves retain verbatim excerpts relevant to recent turns. Retrieval returns details contextualized by their summaries—unlike RAG which returns isolated chunks.
+
+Using messages as identifiers supports:
+
+* Natural conversation branching
+* Easy reversion to earlier states
+* No complex indexing
+
+Compression targets 8k–20k tokens of output—about 10% of Claude’s context window—while preserving access to full history.
+
+## Privacy & Partnership
+
+We partner with **Polychat** to provide this technology.
+
+* API usage of Context Memory does not send data to Google Analytics or use cookies
+* Only your conversation messages are sent to Polychat for compression
+* No email, IP address, or other metadata is shared beyond prompts
+* When you delete conversations locally, no memory data persists on Polychat’s systems
+
+See Polychat’s full privacy policy at [https://polychat.co/legal/privacy](https://polychat.co/legal/privacy).
+
+## Pricing
+
+Context Memory is billed as a separate feature, in addition to your model inference costs.
+
+* **Input (non-cached)**: \$3.75 per 1M tokens
+* **Input (cached)**: \$1.00 per 1M tokens
+* **Output**: \$1.25 per 1M tokens
+
+Typical usage is often \~8k–20k tokens per session, but depends on your conversation length and how much needs to be expanded.
+
+## Getting Started
+
+1. Append `:memory` to any model name
+2. Or send the `memory: true` header
+3. Optionally combine with other features like `:online`
+
+Context Memory ensures your AI remembers everything that matters—for coding, research, and long‑form conversations.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

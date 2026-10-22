@@ -11,6 +11,7 @@ Two families of endpoint make up the hub's public surface:
 
   Per-model ports (FROST_REGISTRY / tools/hive/serve_endpoints.py):
     9310 frost-general   9314 deepfrost max think   9315 glmfrost max think
+    9316 team (always-on surface, V2 Large terminal - serve_endpoints.py)
 
 Every port runs the SAME app, so its /healthz and /v1/models answer without
 touching an upstream - a cheap liveness+shape probe. The chat probe is a real
@@ -21,6 +22,9 @@ Usage:
   python tools/hive/verify_endpoints.py --base http://127.0.0.1:9000
   python tools/hive/verify_endpoints.py --ports-host 127.0.0.1
   python tools/hive/verify_endpoints.py --skip-chat           # no upstream spend
+  python tools/hive/verify_endpoints.py --fast                # liveness-only:
+      # --fast implies --skip-chat/--skip-execute and caps --timeout at 2.0s
+      # unless --timeout is given explicitly; a quick "is it all up" sweep.
 
 Exit code 0 only when every probed endpoint passes.
 """
@@ -33,6 +37,7 @@ PORTS = [
     (9310, "frost-general"),
     (9314, "deepfrost max think"),
     (9315, "glmfrost max think"),
+    (9316, "team (always-on)"),
 ]
 
 RESULT = []  # (name, ok, detail)
@@ -55,6 +60,29 @@ def _post(url, body, timeout, headers=None):
 def record(name, ok, detail):
     RESULT.append((name, ok, detail))
     print(f"  [{'PASS' if ok else 'FAIL'}] {name}: {detail}")
+
+
+# Per-request timeout defaults: the historical 8.0s default (DEFAULT_TIMEOUT)
+# and the --fast preset's tighter cap (FAST_TIMEOUT). --timeout always wins.
+DEFAULT_TIMEOUT = 8.0
+FAST_TIMEOUT = 2.0
+
+
+def _apply_fast(args) -> None:
+    """Apply the --fast preset IN PLACE (liveness-only sweep).
+
+    Semantics: --fast implies --skip-chat and --skip-execute (no upstream
+    spend), and shortens the per-request timeout to FAST_TIMEOUT (2.0s) - but
+    only when --timeout was left at its default (DEFAULT_TIMEOUT, 8.0s), so an
+    explicit --timeout 30 always wins. Purely additive: without --fast this is
+    a no-op and every probe behaves exactly as before.
+    """
+    if not getattr(args, "fast", False):
+        return
+    if getattr(args, "timeout", DEFAULT_TIMEOUT) == DEFAULT_TIMEOUT:
+        args.timeout = FAST_TIMEOUT
+    args.skip_chat = True
+    args.skip_execute = True
 
 
 def probe_healthz(base, timeout):
@@ -141,11 +169,16 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--base", default="http://127.0.0.1:9000", help="hub gateway base URL")
     ap.add_argument("--ports-host", default="", help="host for the per-model ports (empty = skip)")
-    ap.add_argument("--timeout", type=float, default=8.0, help="per-request timeout (s)")
+    ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT,
+                    help="per-request timeout (s)")
     ap.add_argument("--skip-chat", action="store_true", help="skip the live chat probe")
     ap.add_argument("--skip-execute", action="store_true", help="skip the /v1/execute probe")
     ap.add_argument("--skip-ports", action="store_true", help="skip the per-model port probes")
+    ap.add_argument("--fast", action="store_true",
+                    help="liveness-only sweep: implies --skip-chat/--skip-execute and "
+                         "defaults --timeout to 2.0s unless --timeout is given")
     args = ap.parse_args()
+    _apply_fast(args)
 
     base = args.base.rstrip("/")
     print(f"== hub gateway: {base} ==")

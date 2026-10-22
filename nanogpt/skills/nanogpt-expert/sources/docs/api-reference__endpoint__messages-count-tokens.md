@@ -1,0 +1,87 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Messages Count Tokens
+
+> Anthropic-compatible token estimate endpoint for planning and cost control
+
+## Overview
+
+Use `POST /api/v1/messages/count_tokens` to estimate the number of input tokens for an Anthropic Messages-format request.
+
+This endpoint is useful for request planning, context budgeting, and cost control. The result is an estimate and may not exactly match a provider tokenizer.
+
+## Endpoint
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/messages/count_tokens
+```
+
+## Authentication
+
+Use either header:
+
+* `Authorization: Bearer YOUR_API_KEY`
+* `x-api-key: YOUR_API_KEY`
+
+## Request Body
+
+```json theme={null}
+{
+  "model": "claude-3-5-sonnet",
+  "system": "You are concise.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello"
+    }
+  ],
+  "tools": [],
+  "tool_choice": null
+}
+```
+
+## Supported Content
+
+The request uses Anthropic message format and supports:
+
+* text blocks
+* image and document-like blocks
+* tool use blocks
+* tool result blocks
+* `system`
+* `tools`
+* `tool_choice`
+
+## Response
+
+```json theme={null}
+{
+  "input_tokens": 123
+}
+```
+
+## Example
+
+```bash theme={null}
+curl -X POST https://api.nano-gpt.com/api/v1/messages/count_tokens \
+  -H "Authorization: Bearer $NANOGPT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-5-sonnet",
+    "system": "You are concise.",
+    "messages": [
+      { "role": "user", "content": "Hello" }
+    ]
+  }'
+```
+
+## Notes
+
+* This is an estimate for planning and cost control.
+* It may not exactly match a provider tokenizer.
+* For generation, use `POST /api/v1/messages`.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

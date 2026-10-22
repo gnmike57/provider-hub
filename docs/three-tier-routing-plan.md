@@ -1,3 +1,23 @@
+> **SUPERSEDED (2026-10-21) — implementation superseded.** This plan's Tier-2/3 model
+> surface (`REASONER_*` via NanoGPT `z-ai/glm-5.3:thinking`, `abliteration-ai/abliterated-model-large-v2`
+> as R3 via the NanoGPT key) was replaced by the 2026-10-21 constellation directive.
+> Successor docs, in order:
+> 1. `docs/single-model-chain-plan.md` (2026-10-20) — the staged `deep*`/`glm*` proposal
+>    that first superseded this plan's §2/§8 option surface (its own SUPERSEDED banner
+>    below explains how that ended).
+> 2. `docs/constellation-hub-plan.md` — **current plan of record**: three hub models
+>    (`providers.py::CONSTELLATION_CHAINS`), REDHANDS terminal persona, 2-key
+>    Abliteration pool (`abliteration_keys.py`).
+>
+> Reconciliation with the code (verified 2026-10-21): the plumbing this plan chose to
+> extend — the `hedge` body-param branch selector, the ring-buffer divert machinery,
+> `should_hedge()`, the B10 status taxonomy, and the Tier-1/2/3 detection concepts —
+> all remain live in `proxy_gateway.py` / `routing_patterns.py` / `speculative_hedge.py`.
+> Stale here: model ids (`z-ai/glm-5.3:thinking`, `abliteration-ai/*` are not in the
+> constellation), the `REASONER_*` env trio (never existed in `proxy_gateway.Settings`),
+> and every `reference-implementation/` path — the modules live at the repo root.
+
+# Plan: Three-Tier Speculative Routing for provider-hub
 # Plan: Three-Tier Speculative Routing for provider-hub
 
 **Tier 1 (default):** thehive.ai `zai-org/glm-5.3-flash`

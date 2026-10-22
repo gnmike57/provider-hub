@@ -1,0 +1,244 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Codex CLI
+
+> Using OpenAI Codex CLI with NanoGPT
+
+export const exampleTextModelName = "GPT 6.1 Sol";
+
+export const exampleTextModel = "openai/gpt-6.1-sol";
+
+<Note>
+  These examples use the website API host, which currently lists their recommended models. The direct API host can have a different catalog during rollouts. For larger requests or longer runtimes, use `https://api.nano-gpt.com/api/v1` with a model from that host's catalog. See [API Hosts](/api-reference/miscellaneous/api-hosts) for limits and availability checks.
+</Note>
+
+# Codex CLI
+
+> Use OpenAI's Codex CLI with NanoGPT to access GPT 6.1 Sol, Claude Opus 5.5, Gemini Flash Latest, and 400+ AI models through a single API key.
+
+<Tip>
+  [Get started with NanoGPT](https://nano-gpt.com/api) for pay-as-you-go pricing with no monthly fees. Add credits and start coding immediately.
+</Tip>
+
+NanoGPT provides an OpenAI API-compatible endpoint that works seamlessly with Codex CLI. This allows you to:
+
+* Use Codex CLI with your NanoGPT credits
+* Access OpenAI models (GPT 6.1 Sol and more) without a separate OpenAI account
+* Route to 400+ other models including Claude Opus 5.5, Gemini Flash Latest, and GLM Latest
+
+## Step 1: Install Codex CLI
+
+<Tabs>
+  <Tab title="Recommended Installation Method">
+    Prerequisites: [Node.js 22 or newer](https://nodejs.org/en/download/)
+
+    ```bash theme={null}
+    # Install Codex CLI
+    npm install -g @openai/codex
+
+    # Navigate to your project
+    cd your-awesome-project
+
+    # Start Codex
+    codex
+    ```
+  </Tab>
+
+  <Tab title="Cursor Guided Installation Method">
+    If you are not familiar with npm but have Cursor, you can enter the command in Cursor, and Cursor will guide you through the installation.
+
+    ```
+    https://developers.openai.com/codex/cli/ Help me install Codex CLI
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  **Note**: If you encounter permission issues during installation, try using `sudo` (macOS/Linux) or running the command prompt as an administrator (Windows) to re-execute the installation command.
+</Note>
+
+## Step 2: Configure NanoGPT
+
+<Steps>
+  <Step title="Get API Key">
+    * Go to [NanoGPT API](https://nano-gpt.com/api)
+    * Create an account or log in
+    * Copy your API key
+  </Step>
+
+  <Step title="Configure Codex">
+    Set up Codex using one of the following methods:
+
+    <Tabs>
+      <Tab title="One-Click Setup (Mac/Linux)">
+        Run this command in your terminal:
+
+        ```bash theme={null}
+        curl -O "https://nano-gpt.com/install/codex_nanogpt.sh" && bash ./codex_nanogpt.sh
+        ```
+
+        The script will:
+
+        1. Prompt for your API key
+        2. Create `~/.codex/config.toml` using a model available to your API key on the configured API host
+        3. Add `NANOGPT_API_KEY` to your shell profile
+
+        The installer now supports browser-based login. When the script starts, choose:
+
+        1. Browser login (recommended) - it will open a verification URL, wait for approval, and then save your key in `~/.codex/config.toml`.
+        2. Paste API key - manual fallback if you prefer.
+
+        If a browser does not open automatically, copy the printed URL into your browser and approve the request.
+
+        For local or self-hosted testing, `NANOGPT_BASE_URL` keeps login and API traffic on the same origin. To override only the Codex API endpoint, set `NANOGPT_API_BASE_URL` to the complete versioned base URL, including `/api/v1` (for example, `https://api.nano-gpt.example/api/v1`).
+
+        For more details on the browser login flow, see [CLI login](https://docs.nano-gpt.com/integrations/cli-login).
+      </Tab>
+
+      <Tab title="Manual Configuration (All Platforms)">
+        **Step 1**: Create `~/.codex/config.toml`:
+
+        ```toml theme={null}
+        model_provider = "nanogpt"
+        model = "openai/gpt-6.1-sol"
+
+        [model_providers.nanogpt]
+        name = "NanoGPT"
+        base_url = "https://nano-gpt.com/api/v1"
+        env_key = "NANOGPT_API_KEY"
+        wire_api = "responses"
+        ```
+
+        Recent Codex CLI versions require `wire_api = "responses"`. Older examples that use `wire_api = "chat"` will fail on current Codex CLI releases.
+
+        This manual configuration uses the website host for the recommended model. For long-running sessions with large payloads, use `https://api.nano-gpt.com/api/v1` and choose a model from that host's catalog. The installer keeps the direct host and chooses the newest recommended Sol model permitted by your API key, or another permitted model with tool support. If no permitted model supports tools, setup stops and asks you to update the key’s model access. It preserves an existing model selection.
+
+        **Step 2**: Set your API key as an environment variable:
+
+        **macOS/Linux** (add to `~/.zshrc` or `~/.bashrc`):
+
+        ```bash theme={null}
+        export NANOGPT_API_KEY="your_nanogpt_api_key"
+        ```
+
+        **Windows Cmd**:
+
+        ```cmd theme={null}
+        setx NANOGPT_API_KEY your_nanogpt_api_key
+        ```
+
+        **Windows PowerShell**:
+
+        ```powershell theme={null}
+        [System.Environment]::SetEnvironmentVariable('NANOGPT_API_KEY', 'your_nanogpt_api_key', 'User')
+        ```
+
+        Replace `your_nanogpt_api_key` with your actual API key. Open a new terminal for changes to take effect.
+      </Tab>
+
+      <Tab title="Environment Variables Only (Quick)">
+        If you just want to override the default OpenAI endpoint without a config file:
+
+        ```bash theme={null}
+        export OPENAI_BASE_URL="https://nano-gpt.com/api/v1"
+        export OPENAI_API_KEY="your_nanogpt_api_key"
+        ```
+
+        This method works but does not persist across terminal sessions unless added to your shell profile.
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Step 3: Start Using Codex
+
+Once configured, start Codex in your terminal:
+
+```bash theme={null}
+codex
+```
+
+Or explicitly use the current recommendation on the website host for one run:
+
+```bash theme={null}
+codex --model openai/gpt-6.1-sol --config 'model_providers.nanogpt.base_url="https://nano-gpt.com/api/v1"'
+```
+
+After one-click setup, plain `codex` uses the model selected from the direct host's catalog. For larger requests, keep that host and select a model it lists; the website override above has a smaller ingress limit.
+
+***
+
+## FAQ
+
+### What Models Can I Use?
+
+NanoGPT supports 400+ models. These recommendations use the manual website configuration above. One-click setup uses the direct host, whose model catalog can differ during a rollout.
+
+| Use Case | Recommended Model | Config |
+| - | - | - |
+| Best overall | <code>{exampleTextModel}</code> | <code>model = "{exampleTextModel}"</code> |
+| Best Claude | `anthropic/claude-opus-5.5` | `model = "anthropic/claude-opus-5.5"` |
+| Fast/cheap | `google/gemini-flash-latest` | `model = "google/gemini-flash-latest"` |
+| Long context | `google/gemini-pro-latest` | `model = "google/gemini-pro-latest"` |
+| Open model | `z-ai/glm-latest` | `model = "z-ai/glm-latest"` |
+
+List available models with `GET https://nano-gpt.com/api/v1/models` for the website configuration, or `GET https://api.nano-gpt.com/api/v1/models` for one-click setup's direct host.
+
+### How Do I Change Models?
+
+**Option 1**: Edit `~/.codex/config.toml`:
+
+```toml theme={null}
+model = "openai/gpt-6.1-sol"
+```
+
+For this recommendation, also set `base_url = "https://nano-gpt.com/api/v1"` in the existing `[model_providers.nanogpt]` section. To retain the direct host, choose a model from its catalog instead.
+
+**Option 2**: Use CLI flag:
+
+```bash theme={null}
+codex --model openai/gpt-6.1-sol --config 'model_providers.nanogpt.base_url="https://nano-gpt.com/api/v1"'
+```
+
+### Configuration Not Working?
+
+1. **Check your API key**: Ensure `NANOGPT_API_KEY` is set
+   ```bash theme={null}
+   echo $NANOGPT_API_KEY
+   ```
+
+2. **Verify config file**: Check `~/.codex/config.toml` exists and has valid TOML syntax
+
+3. **Open a new terminal**: Environment variable changes require a new shell session
+
+4. **Reset configuration**: Delete `~/.codex/config.toml` and run the setup script again
+
+### How Is This Different From Using OpenAI Directly?
+
+| Feature | OpenAI Direct | NanoGPT |
+| - | - | - |
+| Pricing | Monthly subscription or API credits | Pay-as-you-go, no minimums |
+| Models | OpenAI only | OpenAI + Claude + 400 other models |
+| Billing | Separate OpenAI account | Single NanoGPT balance |
+| Rate limits | OpenAI limits | NanoGPT limits |
+
+### Can I Use Both Claude Code and Codex?
+
+Yes. Both can be configured to use NanoGPT simultaneously:
+
+* **Claude Code**: Uses `~/.claude/settings.json` with Anthropic API format
+* **Codex CLI**: Uses `~/.codex/config.toml` with OpenAI API format
+
+Both tools share the same NanoGPT credit balance.
+
+### Need Help?
+
+* Check your balance at [nano-gpt.com/balance](https://nano-gpt.com/balance)
+* View API usage at [nano-gpt.com/usage](https://nano-gpt.com/usage)
+* Create or manage API keys at [nano-gpt.com/api](https://nano-gpt.com/api)
+* Contact support via the chat widget on [nano-gpt.com](https://nano-gpt.com)
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

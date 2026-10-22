@@ -1,0 +1,27 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Pricing and Fees
+
+> Information about API pricing
+
+# Pricing
+
+For full pricing per model see our [dedicated pricing page](https://nano-gpt.com/pricing) with all models listed. We do not charge any minimum fee per query, nor do we charge any fee on deposits.
+
+Pricing examples and model IDs follow the same canonical-ID policy as this documentation: use exact IDs returned by `GET /api/v1/models`, and do not rely on hidden/internal aliases.
+
+If you are (potentially) going to be a large user of our API reach out to us at [support@nano-gpt.com](mailto:support@nano-gpt.com) or our [Discord](https://discord.gg/KaQt8gPG6V) for a discount.
+
+## Look up a recent request charge
+
+[Request Billing](/api-reference/endpoint/request-billing) returns the original
+recorded primary charge and token usage using the response's `X-Request-ID` and
+the same inference API key. It is available for 24 hours from the charge's
+accounting timestamp. The exact cost is a decimal string in USD or XNO; refunds
+and separately billed extras are excluded. For aggregate spend and refund
+totals, use [Usage](/api-reference/endpoint/usage).
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

@@ -1,0 +1,461 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Embeddings
+
+> Complete guide to text embeddings API
+
+## Overview
+
+NanoGPT provides a fully OpenAI-compatible embeddings API that offers access to both OpenAI's industry-leading embedding models and a curated selection of alternative embedding models at competitive prices. Our API supports 20+ embedding models (and this list changes over time); use `GET /api/v1/embedding-models` for the source-of-truth list.
+
+## Quick Start
+
+```python theme={null}
+from openai import OpenAI
+
+# Initialize client pointing to NanoGPT
+client = OpenAI(
+    api_key="YOUR_NANOGPT_API_KEY",
+    base_url="https://api.nano-gpt.com/api/v1"
+)
+
+# Create embedding
+response = client.embeddings.create(
+    input="Your text to embed",
+    model="text-embedding-3-small"
+)
+
+embedding = response.data[0].embedding
+print(f"Embedding has {len(embedding)} dimensions")
+```
+
+## Available Models
+
+### OpenAI Models
+
+| Model | Dimensions | Max Tokens | Price/1M tokens | Features |
+| - | - | - | - | - |
+| `text-embedding-3-small` | 1536 | 8191 | \$0.02 | Dimension reduction support, most cost-effective |
+| `text-embedding-3-large` | 3072 | 8191 | \$0.13 | Dimension reduction support, highest performance |
+| `text-embedding-ada-002` | 1536 | 8191 | \$0.10 | Legacy model, no dimension reduction |
+
+### Alternative Models
+
+#### Multilingual Models
+
+| Model | Dimensions | Price/1M tokens | Description |
+| - | - | - | - |
+| `BAAI/bge-m3` | 1024 | \$0.01 | Excellent multilingual support |
+
+#### Language-Specific Models
+
+| Model | Language | Dimensions | Price/1M tokens |
+| - | - | - | - |
+| `BAAI/bge-base-en-v1.5` | English | 768 | \$0.005 |
+| `BAAI/bge-large-en-v1.5` | English | 1024 | \$0.01 |
+
+#### Specialized Models
+
+| Model | Use Case | Dimensions | Price/1M tokens |
+| - | - | - | - |
+| `Qwen/Qwen3-Embedding-0.6B` | General | 1024 | \$0.01 |
+| `Qwen/Qwen3-Embedding-4B` | General | 2560 | \$0.02 |
+| `Qwen/Qwen3-Embedding-8B` | General | 4096 | \$0.01 |
+| `gemini-embedding-001` | General | 3072 | \$0.15 |
+
+### Zero Data Retention (ZDR)
+
+When ZDR-only routing is on for your account, API key, or team, embedding requests are accepted only for models with a Zero Data Retention route:
+
+* `Qwen/Qwen3-Embedding-0.6B`
+* `Qwen/Qwen3-Embedding-4B`
+* `qwen/qwen3-embedding-8b`
+* `BAAI/bge-m3`
+* `BAAI/bge-large-en-v1.5`
+* `BAAI/bge-base-en-v1.5`
+
+These requests use only providers that declare zero data retention. Other embedding models, including the OpenAI and Gemini models, return HTTP 400 with code `zero_data_retention` while ZDR-only routing is on. Without ZDR-only routing, ZDR-capable models may also be served by providers that retain data. [`GET /api/v1/embedding-models`](/api-reference/endpoint/embedding-models) reports this as `zero_data_retention` on each model.
+
+## API Endpoints
+
+### Create Embeddings
+
+**Endpoint:** `POST https://api.nano-gpt.com/api/v1/embeddings`
+
+Create embeddings for one or more text inputs.
+
+### Discover Embedding Models
+
+**Endpoint:** `GET https://api.nano-gpt.com/api/v1/embedding-models`
+
+List all available embedding models with detailed information.
+
+## Advanced Features
+
+### Batch Processing
+
+Process multiple texts efficiently in a single request:
+
+```python theme={null}
+texts = [
+    "First text to embed",
+    "Second text to embed",
+    "Third text to embed"
+]
+
+response = client.embeddings.create(
+    input=texts,  # Pass array of strings
+    model="text-embedding-3-small"
+)
+
+# Access embeddings by index
+for i, data in enumerate(response.data):
+    print(f"Text {i}: {len(data.embedding)} dimensions")
+```
+
+### Dimension Reduction
+
+Reduce embedding dimensions for faster similarity comparisons (supported models only):
+
+```python theme={null}
+# Reduce dimensions to 256 for faster processing
+response = client.embeddings.create(
+    input="Your text here",
+    model="text-embedding-3-small",
+    dimensions=256  # Reduce from 1536 to 256
+)
+```
+
+Supported models for dimension reduction:
+
+* `text-embedding-3-small`
+* `text-embedding-3-large`
+* `Qwen/Qwen3-Embedding-0.6B`
+
+### Base64 Encoding
+
+For more efficient data transfer, request base64-encoded embeddings:
+
+```python theme={null}
+response = client.embeddings.create(
+    input="Your text here",
+    model="text-embedding-3-small",
+    encoding_format="base64"  # Returns base64-encoded bytes
+)
+```
+
+## Use Cases
+
+### Semantic Search
+
+Build powerful search systems that understand meaning:
+
+```python theme={null}
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Create embeddings for your documents
+documents = ["Document 1 text", "Document 2 text", "Document 3 text"]
+doc_embeddings = []
+
+for doc in documents:
+    response = client.embeddings.create(input=doc, model="text-embedding-3-small")
+    doc_embeddings.append(response.data[0].embedding)
+
+# Create embedding for search query
+query = "Search query text"
+query_response = client.embeddings.create(input=query, model="text-embedding-3-small")
+query_embedding = query_response.data[0].embedding
+
+# Calculate similarities
+similarities = cosine_similarity([query_embedding], doc_embeddings)[0]
+
+# Find most similar documents
+top_matches = np.argsort(similarities)[::-1][:3]
+for idx in top_matches:
+    print(f"Document {idx}: {similarities[idx]:.3f} similarity")
+```
+
+### RAG (Retrieval Augmented Generation)
+
+Enhance LLM responses with relevant context:
+
+```python theme={null}
+# 1. Embed and store your knowledge base
+knowledge_base = [
+    {"text": "Company founded in 2020...", "embedding": None},
+    {"text": "Product features include...", "embedding": None},
+]
+
+for item in knowledge_base:
+    response = client.embeddings.create(
+        input=item["text"], 
+        model="text-embedding-3-small"
+    )
+    item["embedding"] = response.data[0].embedding
+
+# 2. For a user query, find relevant context
+user_query = "When was the company founded?"
+query_response = client.embeddings.create(
+    input=user_query,
+    model="text-embedding-3-small"
+)
+query_embedding = query_response.data[0].embedding
+
+# 3. Find most relevant facts (implement similarity search)
+# relevant_facts = find_similar_texts(query_embedding, knowledge_base, top_k=3)
+
+# 4. Use retrieved context with chat completion
+chat_response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[
+        {"role": "system", "content": f"Use this context to answer: {relevant_facts}"},
+        {"role": "user", "content": user_query}
+    ]
+)
+```
+
+### Clustering & Classification
+
+Group similar texts or classify content:
+
+```python theme={null}
+from sklearn.cluster import KMeans
+
+# Create embeddings for texts
+texts = ["Text 1", "Text 2", "Text 3", ...]
+embeddings = []
+
+for text in texts:
+    response = client.embeddings.create(input=text, model="text-embedding-3-small")
+    embeddings.append(response.data[0].embedding)
+
+# Cluster embeddings
+kmeans = KMeans(n_clusters=5)
+clusters = kmeans.fit_predict(embeddings)
+
+# Each text now has a cluster assignment
+for text, cluster_id in zip(texts, clusters):
+    print(f"'{text}' belongs to cluster {cluster_id}")
+```
+
+### Duplicate Detection
+
+Find similar or duplicate content:
+
+```python theme={null}
+def find_duplicates(texts, threshold=0.95):
+    embeddings = []
+    
+    # Generate embeddings
+    for text in texts:
+        response = client.embeddings.create(
+            input=text,
+            model="text-embedding-3-small"
+        )
+        embeddings.append(response.data[0].embedding)
+    
+    # Calculate pairwise similarities
+    similarities = cosine_similarity(embeddings)
+    
+    # Find duplicates
+    duplicates = []
+    for i in range(len(texts)):
+        for j in range(i+1, len(texts)):
+            if similarities[i][j] > threshold:
+                duplicates.append((i, j, similarities[i][j]))
+    
+    return duplicates
+```
+
+## Model Selection Guide
+
+### By Use Case
+
+| Use Case | Recommended Model | Rationale |
+| - | - | - |
+| General English text | `text-embedding-3-small` | Best price/performance ratio |
+| Maximum accuracy | `text-embedding-3-large` | Highest quality embeddings |
+| Multilingual content | `BAAI/bge-m3` | Excellent cross-language performance |
+| Code embeddings | `qwen/qwen3-embedding-8b` | Strong code retrieval with a 32K-token context |
+| Budget-conscious | `BAAI/bge-large-en-v1.5` | Just \$0.01/1M tokens |
+| Chinese content | `BAAI/bge-m3` | Strong Chinese and multilingual retrieval |
+| Fast similarity search | Models with dimension reduction | Can reduce dimensions for speed |
+
+### By Requirements
+
+**Need fastest search?**
+
+* Use models supporting dimension reduction
+* Reduce to 256-512 dimensions
+* Trade small accuracy loss for 2-4x speed improvement
+
+**Need highest accuracy?**
+
+* Use `text-embedding-3-large`
+* Keep full 3072 dimensions
+* Best for critical applications
+
+**Processing many languages?**
+
+* Use `BAAI/bge-m3` for general multilingual
+* Use `qwen/qwen3-embedding-8b` for higher-quality multilingual retrieval
+
+**Working with code?**
+
+* Use `qwen/qwen3-embedding-8b`
+* Strong code retrieval with a 32K-token context
+
+## Best Practices
+
+### Performance Optimization
+
+1. **Batch Requests**: Send up to 2048 texts in a single request
+2. **Use Dimension Reduction**: Reduce dimensions when exact precision isn't critical
+3. **Cache Embeddings**: Store computed embeddings to avoid re-processing
+4. **Choose Appropriate Models**: Don't use 3072-dimension models if 768 suffices
+
+### Cost Optimization
+
+1. **Monitor Usage**: Track the `usage` field in responses
+2. **Start Small**: Begin with `text-embedding-3-small` before upgrading
+3. **Implement Caching**: Avoid re-embedding identical content
+4. **Batch Processing**: Reduce API call overhead
+
+### Quality Optimization
+
+1. **Preprocess Text**: Clean and normalize text before embedding
+2. **Consider Context**: Include relevant context in the text to embed
+3. **Test Different Models**: Compare performance for your specific use case
+4. **Use Appropriate Similarity Metrics**: Cosine similarity for most cases
+
+## Integration Examples
+
+### JavaScript/TypeScript
+
+```javascript theme={null}
+import OpenAI from 'openai';
+
+// Initialize client
+const openai = new OpenAI({
+    apiKey: 'YOUR_NANOGPT_API_KEY',
+    baseURL: 'https://api.nano-gpt.com/api/v1'
+});
+
+// Create embedding
+const response = await openai.embeddings.create({
+    input: "Your text to embed",
+    model: "text-embedding-3-small"
+});
+
+const embedding = response.data[0].embedding;
+console.log(`Embedding has ${embedding.length} dimensions`);
+```
+
+### cURL
+
+```bash theme={null}
+curl https://api.nano-gpt.com/api/v1/embeddings \
+  -H "Authorization: Bearer YOUR_NANOGPT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "Your text to embed",
+    "model": "text-embedding-3-small"
+  }'
+```
+
+### Direct API Usage
+
+```python theme={null}
+import requests
+import json
+
+headers = {
+    "Authorization": "Bearer YOUR_NANOGPT_API_KEY",
+    "Content-Type": "application/json"
+}
+
+data = {
+    "input": "Your text to embed",
+    "model": "text-embedding-3-small"
+}
+
+response = requests.post(
+    "https://api.nano-gpt.com/api/v1/embeddings",
+    headers=headers,
+    json=data
+)
+
+result = response.json()
+embedding = result["data"][0]["embedding"]
+```
+
+## Rate Limits & Error Handling
+
+### Rate Limits
+
+Rate limits vary by endpoint and account. See [Rate Limits](/api-reference/miscellaneous/rate-limits).
+
+### Error Codes
+
+| Code | Description | Solution |
+| - | - | - |
+| 401 | Invalid or missing API key | Check your API key |
+| 400 | Invalid request parameters | Verify model name and input format |
+| 400 (`zero_data_retention`) | ZDR-only routing is on and the model has no Zero Data Retention route | Use a model with `zero_data_retention: true` |
+| 429 | Rate limit exceeded | Implement exponential backoff |
+| 500 | Server error | Retry with exponential backoff |
+
+### Error Response Format
+
+```json theme={null}
+{
+  "error": {
+    "message": "Invalid model specified",
+    "type": "invalid_request_error",
+    "param": "model",
+    "code": null
+  }
+}
+```
+
+For a general guide across NanoGPT APIs, see [Error Handling](/api-reference/miscellaneous/error-handling).
+
+## Migration from OpenAI
+
+Switching from OpenAI to NanoGPT is seamless:
+
+```python theme={null}
+# OpenAI
+client = OpenAI(api_key="sk-...")
+
+# NanoGPT (just change base_url and api_key)
+client = OpenAI(
+    api_key="YOUR_NANOGPT_API_KEY",
+    base_url="https://api.nano-gpt.com/api/v1"
+)
+
+# All other code remains exactly the same!
+```
+
+## Pricing Summary
+
+| Price Range | Models | Best For |
+| - | - | - |
+| \$0.005-0.02/1M | BAAI models, Qwen3 | Budget applications |
+| \$0.02/1M | text-embedding-3-small | Balanced performance |
+| \$0.10/1M | ada-002 | Legacy compatibility |
+| \$0.13/1M | text-embedding-3-large | Maximum performance |
+| \$0.15-0.20/1M | Gemini embeddings | Image input with Gemini Embedding 2 |
+
+## Additional Resources
+
+* [Embeddings Endpoint Reference](/api-reference/endpoint/embeddings)
+* [Embedding Models List](/api-reference/endpoint/embedding-models)
+* [Text Generation Guide](/api-reference/text-generation)
+* [Quickstart Guide](/quickstart)
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

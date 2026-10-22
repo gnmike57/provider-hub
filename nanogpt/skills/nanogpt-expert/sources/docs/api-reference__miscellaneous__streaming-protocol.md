@@ -1,0 +1,294 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Streaming Protocol (SSE)
+
+> How NanoGPT streams responses over Server-Sent Events across chat completions, messages, and responses.
+
+## Overview
+
+NanoGPT supports streaming responses via Server-Sent Events (SSE). Streaming is available on these endpoints:
+
+| Endpoint | Style | Content-Type |
+| - | - | - |
+| `POST /v1/chat/completions` | OpenAI Chat Completions compatible | `text/event-stream` |
+| `POST /v1/messages` | Anthropic Messages compatible | `text/event-stream` (named SSE events) |
+| `POST /v1/responses` | OpenAI Responses API compatible | `text/event-stream` |
+
+All SSE streams are delivered as a sequence of `data:` frames separated by a blank line. Some endpoints also include an `event:` line to name the event type.
+
+## Recover billing after a disconnect
+
+For Chat Completions, save the server-generated `X-Request-ID` response header
+before reading the stream. If the final usage chunk is lost, use that ID and the
+same inference API key with [Request Billing](/api-reference/endpoint/request-billing)
+to look up the recorded primary charge within its rolling 24-hour window.
+Accounting token counts may be estimated after an interrupted stream.
+
+Billing can take time to appear. A lookup `404` does not mean the request was
+free; honor its `Retry-After: 30` header. Looking up billing does not repeat
+inference. Repeating inference can create another charge, even if you reuse
+`X-Request-ID`: it is a correlation ID, not an idempotency key.
+
+## Enabling Streaming
+
+Set `"stream": true` in the JSON request body.
+
+Chat Completions:
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "messages": [{ "role": "user", "content": "Hello!" }],
+  "stream": true
+}
+```
+
+Messages:
+
+```json theme={null}
+{
+  "model": "claude-sonnet-4-5-20250929",
+  "max_tokens": 1024,
+  "messages": [{ "role": "user", "content": "Hello!" }],
+  "stream": true
+}
+```
+
+Responses:
+
+```json theme={null}
+{
+  "model": "openai/gpt-6.1-sol",
+  "input": "Hello!",
+  "stream": true
+}
+```
+
+If `stream` is omitted or `false`, the endpoint returns a single JSON response.
+
+## Chat Completions Streaming (`/v1/chat/completions`)
+
+Chat Completions streams OpenAI-style `chat.completion.chunk` objects.
+
+### Frame Format
+
+Each SSE frame is a JSON object in a `data:` line:
+
+```text theme={null}
+data: {"id":"chatcmpl_...","object":"chat.completion.chunk","created":1700000000,"model":"...","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
+```
+
+The first chunk often includes `delta.role: "assistant"`. Subsequent chunks typically include only incremental deltas like `delta.content`.
+
+### Finish Reasons
+
+The final chunk has a non-null `finish_reason`:
+
+* `stop`
+* `length`
+* `tool_calls`
+* `content_filter`
+
+### End of Stream
+
+After the final chunk, the stream terminates with:
+
+```text theme={null}
+data: [DONE]
+```
+
+Clients should treat `[DONE]` as a literal string (do not JSON-parse it).
+
+### Reasoning / Thinking Deltas
+
+Some models stream reasoning alongside content. Depending on the endpoint variant you use, the delta field may be `reasoning` or `reasoning_content`.
+
+Example:
+
+```text theme={null}
+data: {"choices":[{"index":0,"delta":{"reasoning":"Thinking..."},"finish_reason":null}]}
+data: {"choices":[{"index":0,"delta":{"content":"Answer text..."},"finish_reason":null}]}
+```
+
+### Tool Call Deltas
+
+Tool calls stream via `delta.tool_calls[]`. Accumulate `function.arguments` across frames for the same `tool_calls[index]`.
+
+### Usage In Streaming
+
+Usage is not included by default in streaming.
+
+To receive usage, set:
+
+```json theme={null}
+{
+  "stream": true,
+  "stream_options": { "include_usage": true }
+}
+```
+
+If enabled, the **final chunk** includes a `usage` field. (Some features, like prompt caching helpers, can cause usage to be included automatically.)
+
+`usage` can include provider-dependent fields beyond basic token counters, including nested details and cache fields:
+
+* `prompt_tokens`
+* `completion_tokens`
+* `total_tokens`
+* `prompt_tokens_details.cached_tokens`
+* `prompt_tokens_details.audio_tokens`
+* `completion_tokens_details.reasoning_tokens`
+* `completion_tokens_details.audio_tokens`
+* `completion_tokens_details.accepted_prediction_tokens`
+* `completion_tokens_details.rejected_prediction_tokens`
+* `reasoning_tokens`
+* `citation_tokens`
+* `num_search_queries`
+* `cache_creation_input_tokens`
+* `cache_read_input_tokens`
+* `input_tokens`
+
+When provider usage is missing or zero, NanoGPT may backfill final usage counts from pricing metadata (`x_nanogpt_pricing.inputTokens` / `x_nanogpt_pricing.outputTokens`) for consistency.
+
+### `x_nanogpt_pricing` In Streaming
+
+`x_nanogpt_pricing` is an extension object:
+
+* In streaming: appears on the **final chunk only**
+* In non-stream JSON responses: appears as a top-level field
+
+Stable/core fields:
+
+* `amount?: number`
+* `currency?: string`
+* `error?: { status?: number; message: string }` (`message` is sanitized)
+
+Common optional fields:
+
+* `cost?: number`
+* `paymentSource?: string`
+* `inputTokens?: number`
+* `outputTokens?: number`
+* `cacheCost?: number`
+* `billedToTeam?: boolean`
+* `billedTeamId?: number | null`
+* `billedTeamName?: string | null`
+
+Compatibility rule: clients must tolerate additional fields and ignore unknown keys.
+
+Example final chunk:
+
+```json theme={null}
+{
+  "id": "chatcmpl_x",
+  "object": "chat.completion.chunk",
+  "created": 1772346058,
+  "model": "gpt-5.1",
+  "choices": [{ "index": 0, "delta": {}, "finish_reason": "stop" }],
+  "usage": {
+    "prompt_tokens": 123,
+    "completion_tokens": 20,
+    "total_tokens": 143,
+    "prompt_tokens_details": { "cached_tokens": 123, "audio_tokens": 0 },
+    "completion_tokens_details": {
+      "reasoning_tokens": 12,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "cache_creation_input_tokens": 123,
+    "cache_read_input_tokens": 123
+  },
+  "x_nanogpt_pricing": {
+    "cost": 0.000169,
+    "inputTokens": 9,
+    "outputTokens": 20,
+    "cacheCost": 0,
+    "paymentSource": "USD",
+    "billedToTeam": false,
+    "billedTeamId": null,
+    "billedTeamName": null
+  }
+}
+```
+
+## Messages Streaming (`/v1/messages`)
+
+The Messages endpoint streams Anthropic-style **named SSE events**. Each event includes an `event:` line and a `data:` line.
+
+Typical sequence:
+
+1. `message_start`
+2. `content_block_start`
+3. `content_block_delta` (repeated)
+4. `content_block_stop`
+5. `message_delta`
+6. `message_stop`
+
+Example (end of stream):
+
+```text theme={null}
+event: message_stop
+data: {"type":"message_stop"}
+```
+
+### Tool Use
+
+Tool calls appear as `tool_use` content blocks. Tool input streams as `input_json_delta` fragments inside `content_block_delta` events.
+
+### Thinking Blocks
+
+Thinking can appear as a separate content block type (`thinking`) before normal text blocks.
+
+### Usage
+
+Usage information is included near the end of the stream (for example on `message_delta`), and includes `input_tokens` and `output_tokens`. When prompt caching is active, cache token fields may also appear.
+
+## Responses Streaming (`/v1/responses`)
+
+Responses streams a sequence of typed objects. NanoGPT emits these as SSE `data:` frames containing JSON with a `type` field (for example `response.created`, `response.output_text.delta`, etc.).
+
+Example:
+
+```text theme={null}
+data: {"type":"response.created","response":{...},"sequence_number":0}
+
+data: {"type":"response.output_text.delta","item_id":"msg_...","output_index":0,"content_index":0,"delta":"Hello","sequence_number":3}
+
+data: {"type":"response.completed","response":{...},"sequence_number":11}
+
+data: [DONE]
+```
+
+Terminal events include:
+
+* `response.completed`
+* `response.incomplete`
+* `response.failed`
+
+### Tool Calls
+
+Tool calls appear as `function_call` output items. Arguments stream via `response.function_call_arguments.delta` frames and finish with `response.function_call_arguments.done`.
+
+### Usage
+
+Usage appears on the terminal event inside the full `response` object (for example `response.completed.response.usage`).
+
+## Error Handling Notes
+
+* If an error happens before streaming begins, you will receive a normal JSON error response with an HTTP status code.
+* If an error happens mid-stream, the stream may end early. Your parser should handle EOF without a terminal marker as an error/retry condition.
+
+For general status-code handling and retry guidance, see [Error Handling](/api-reference/miscellaneous/error-handling).
+
+## Raw SSE Parsing Tips
+
+When parsing SSE manually:
+
+* Events are separated by a blank line (`\\n\\n` or `\\r\\n\\r\\n`).
+* A single event can include multiple `data:` lines; concatenate them with `\\n` before parsing as JSON.
+* Handle `[DONE]` as a sentinel string.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

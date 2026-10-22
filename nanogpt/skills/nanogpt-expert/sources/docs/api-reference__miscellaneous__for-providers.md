@@ -1,0 +1,49 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# For Providers
+
+> Information for model providers
+
+We work with inference providers and model developers that can offer something valuable to NanoGPT users. If you think you would be a good fit, contact us at [support@nano-gpt.com](mailto:support@nano-gpt.com) or through our [Discord](https://discord.gg/KaQt8gPG6V).
+
+## What we look for
+
+We receive many integration requests, so we prioritize providers that give users a clear reason to choose them. That could include:
+
+* Models that are not widely available through other providers
+* A meaningful advantage in price, latency, throughput, reliability, privacy, geographic coverage, or infrastructure
+* A distinctive technical approach, such as specialized hardware or a decentralized backend
+* Sufficient production capacity and operational support to handle sustained traffic reliably
+
+Size alone is not a requirement. A smaller provider can still be a strong fit if it offers a distinctive model or capability. However, if the offering is otherwise similar to providers we already support, we generally expect meaningful operational scale. A single-GPU or single-operator service is unlikely to be a fit unless it offers something genuinely unique.
+
+## Stealth model launches
+
+We are also open to launching models in stealth, including under a temporary or non-public name.
+
+A stealth launch can help providers and model developers learn how people use a model in practice before a broader release—for example, for programming, creative writing, role play, or general conversation.
+
+If you would like to test a model this way, please reach out. We can discuss the scope, duration, presentation, and technical requirements of the launch.
+
+## What to include when contacting us
+
+To help us evaluate your offering, please include:
+
+* Your company name
+* The best way to contact you—we generally prefer email
+* Why you think we should integrate your service
+  * Do you offer models that are difficult to access elsewhere?
+  * Do you have especially competitive pricing or volume discounts?
+  * Do you offer a meaningful technical, privacy, performance, or infrastructure advantage?
+* Your available infrastructure, approximate capacity, regions, and operational support
+* Your rate limits
+* Your privacy policy, including whether prompts are logged and how long they are retained
+* Whether you support credit card payments or automatic invoicing
+* Whether you provide an OpenAI-compatible endpoint
+* Whether you are proposing a public integration or a stealth model launch
+* Any other information that may be relevant
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

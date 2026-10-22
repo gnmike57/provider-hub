@@ -554,9 +554,20 @@ def test_vault_refuses_plaintext_writes_and_roundtrips_encrypted(tmp_path, monke
 # --------------------------------------------------------------------------
 def test_launch_script_pins_encryption_and_admin_keys():
     text = (ROOT / "launch_frost_hub.ps1").read_text(encoding="utf-8")
+    # 2026-10-21 (W0 secret hygiene): the launcher resolves ENCRYPTION_KEY and
+    # ADMIN_API_KEY from process/User scope (Resolve-Secret, -Required boot
+    # preflight) instead of pinning literals in source - secrets must not live
+    # in the repo. New contract: both names MUST be resolved via Resolve-Secret
+    # -Required; a literal pin, when one is present, must still validate as
+    # before (valid Fernet key / >=20 chars).
+    for _name in ("ENCRYPTION_KEY", "ADMIN_API_KEY"):
+        assert f"Resolve-Secret '{_name}' -Required" in text, (
+            f"{_name} must be resolved via Resolve-Secret -Required "
+            "in the launcher (or pinned as a valid literal)")
     m = re.search(r"\$env:ENCRYPTION_KEY\s*=\s*\"([^\"]+)\"", text)
-    assert m and m.group(1).strip(), "ENCRYPTION_KEY must be pinned in the launcher"
-    Fernet(m.group(1).encode())  # must be a valid Fernet key
+    if m and m.group(1).strip():
+        Fernet(m.group(1).encode())  # literal pin, if any: valid Fernet key
     m = re.search(r"\$env:ADMIN_API_KEY\s*=\s*\"([^\"]+)\"", text)
-    assert m and len(m.group(1)) >= 20, "ADMIN_API_KEY must be pinned in the launcher"
+    if m and m.group(1).strip():
+        assert len(m.group(1)) >= 20, "ADMIN_API_KEY literal must be >= 20 chars"
 

@@ -1,0 +1,82 @@
+key_bench: 12 keys x 5 timed samples (+1 warmup each), round-robin interleaved, keep-alive clients
+  skipped: ADMIN_API_KEY (surface unknown)
+  r1 hive-1                   hive         0.59s OK
+  r1 hive-2                   hive         0.48s OK
+  r1 hive-3                   hive         0.50s OK
+  r1 hive-4                   hive         0.55s OK
+  r1 hive-5                   hive         0.61s OK
+  r1 ablit-1                  ablit        1.12s OK
+  r1 ablit-2                  ablit        1.36s OK
+  r1 ablit-3                  ablit        1.73s OK
+  r1 ABLITERATION_ADMIN_KEY   ablit        0.39s AUTH_FAIL
+  r1 HIVE_SECRET_KEY          hive         0.51s OK
+  r1 ABLIT_POOL_KEY_A         ablit        1.52s OK
+  r1 ABLIT_POOL_KEY_B         ablit        2.17s OK
+  r2 hive-1                   hive         0.55s OK
+  r2 hive-2                   hive         0.50s OK
+  r2 hive-3                   hive         0.50s OK
+  r2 hive-4                   hive         0.47s OK
+  r2 hive-5                   hive         0.58s OK
+  r2 ablit-1                  ablit        1.51s OK
+  r2 ablit-2                  ablit        1.16s OK
+  r2 ablit-3                  ablit        1.25s OK
+  r2 ABLITERATION_ADMIN_KEY   ablit        0.44s AUTH_FAIL
+  r2 HIVE_SECRET_KEY          hive         0.52s OK
+  r2 ABLIT_POOL_KEY_A         ablit        1.16s OK
+  r2 ABLIT_POOL_KEY_B         ablit        3.34s OK
+  r3 hive-1                   hive        15.53s OK
+  r3 hive-2                   hive         1.48s OK
+  r3 hive-3                   hive         3.78s OK
+  r3 hive-4                   hive         0.53s OK
+  r3 hive-5                   hive         3.48s OK
+  r3 ablit-1                  ablit        7.78s OK
+  r3 ablit-2                  ablit       22.52s OK
+  r3 ablit-3                  ablit        2.72s OK
+  r3 ABLITERATION_ADMIN_KEY   ablit        3.44s AUTH_FAIL
+  r3 HIVE_SECRET_KEY          hive         0.59s OK
+  r3 ABLIT_POOL_KEY_A         ablit        6.06s OK
+  r3 ABLIT_POOL_KEY_B         ablit        1.59s OK
+  r4 hive-1                   hive         3.72s OK
+  r4 hive-2                   hive         0.66s OK
+  r4 hive-3                   hive         0.53s OK
+  r4 hive-4                   hive         0.47s OK
+  r4 hive-5                   hive         3.66s OK
+  r4 ablit-1                  ablit        2.33s OK
+  r4 ablit-2                  ablit        2.20s OK
+  r4 ablit-3                  ablit        1.00s OK
+  r4 ABLITERATION_ADMIN_KEY   ablit        3.39s AUTH_FAIL
+  r4 HIVE_SECRET_KEY          hive         7.70s OK
+  r4 ABLIT_POOL_KEY_A         ablit        1.99s OK
+  r4 ABLIT_POOL_KEY_B         ablit        2.30s OK
+  r5 hive-1                   hive         0.48s OK
+  r5 hive-2                   hive         0.58s OK
+  r5 hive-3                   hive         1.45s OK
+  r5 hive-4                   hive         0.50s OK
+  r5 hive-5                   hive         1.56s OK
+  r5 ablit-1                  ablit        1.31s OK
+  r5 ablit-2                  ablit        1.11s OK
+  r5 ablit-3                  ablit        1.16s OK
+  r5 ABLITERATION_ADMIN_KEY   ablit        0.39s AUTH_FAIL
+  r5 HIVE_SECRET_KEY          hive         0.50s OK
+  r5 ABLIT_POOL_KEY_A         ablit        1.14s OK
+  r5 ABLIT_POOL_KEY_B         ablit        1.45s OK
+
+==============================================================================
+KEY                     SURFACE       OK FAIL    MIN    MED   MEAN    MAX  VERDICT
+==============================================================================
+ablit-3                 ablit          5    0  1.00   1.25   1.57   2.72  equal (0.82x grp)
+ablit-2                 ablit          5    0  1.11   1.36   5.67  22.52  equal (0.90x grp)
+ablit-1                 ablit          5    0  1.12   1.51   2.81   7.78  equal (1.00x grp)
+ABLIT_POOL_KEY_A        ablit          5    0  1.14   1.52   2.37   6.06  equal (1.00x grp)
+ABLIT_POOL_KEY_B        ablit          5    0  1.45   2.17   2.17   3.34  equal (1.43x grp)
+ABLITERATION_ADMIN_KEY  ablit          0    5      -      -      -      -  DEAD
+  [ablit] group median 1.52s, full spread 1419% of median, 6 keys, 25 ok samples
+hive-4                  hive           5    0  0.47   0.50   0.50   0.55  equal (0.89x grp)
+HIVE_SECRET_KEY         hive           5    0  0.50   0.52   1.97   7.70  equal (0.92x grp)
+hive-3                  hive           5    0  0.50   0.53   1.35   3.78  equal (0.95x grp)
+hive-2                  hive           5    0  0.48   0.58   0.74   1.48  equal (1.03x grp)
+hive-1                  hive           5    0  0.48   0.59   4.17  15.53  equal (1.06x grp)
+hive-5                  hive           5    0  0.58   1.56   1.98   3.66  OUTLIER (2.78x grp)
+  [hive] group median 0.56s, full spread 2678% of median, 6 keys, 30 ok samples
+
+record: C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\key_bench.jsonl

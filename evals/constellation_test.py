@@ -28,7 +28,7 @@ from model_switch import (SwitchError, SlotManager, parse_switch_request,
                            apply_constellation)
 
 import proxy_gateway
-from evals.helpers import PRIMARY, WORKER, chunk, DONE  # noqa: E402
+from evals.helpers import PRIMARY, WORKER, chunk, DONE, Script  # noqa: E402
 
 import billing as billing_mod
 from proxy_gateway import SETTINGS  # noqa: E402
@@ -93,7 +93,7 @@ class FakeRegistry:
     def __init__(self):
         self.providers = {
             "hive": FakeProvider("hive", {
-                "deepfrost-max-think": "deepseek-ai/deepseek-v4.1-flash",
+                "deepfrost-max-think": "deepseek-ai/deepseek-v4.1-flash-1017",
                 "glm-5.3-flash": "zai-org/glm-5.3-flash",
             }),
             "cyberhub": FakeProvider("cyberhub", {
@@ -213,9 +213,9 @@ def test_apply_constellation_full_apply(settings, mgr):
     ))
     assert payload["ok"] is True
     # provider+model resolution returns the UPSTREAM id from the registry
-    assert settings.primary_model == "deepseek-ai/deepseek-v4.1-flash"
+    assert settings.primary_model == "deepseek-ai/deepseek-v4.1-flash-1017"
     assert settings.scout_model == "zai-org/glm-5.3-flash"
-    assert payload["slots"]["primary"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert payload["slots"]["primary"] == "deepseek-ai/deepseek-v4.1-flash-1017"
     assert payload["slots"]["scout"] == "zai-org/glm-5.3-flash"
 
 
@@ -284,73 +284,192 @@ def test_seed_constellations_load():
 
 
 # ---------------------------------------------------------------- continue-with-primary refusal avoidance
-def test_continue_primary_recovers_within_grace(settings, mgr):
-    """Primary emits refusal pre-signal, then self-corrects within grace window.
-    No divert; primary content is streamed to client."""
-    # Simulate: "I can't" -> pre-signal (is_routable=True)
-    # Then " help you with that." -> substantive, not routable -> recovered
+def _wire_gateway(monkeypatch, sc):
+    """Point the gateway at the scripted MockTransport with test-safe knobs
+    (same wiring the specialist swapback probe uses in __main__)."""
+    import proxy_gateway
+
+    def _make():
+        return httpx.AsyncClient(transport=httpx.MockTransport(sc))
+
+    monkeypatch.setattr(proxy_gateway, "make_client", _make)
+    proxy_gateway.BREAKER = proxy_gateway.SpecialistCircuitBreaker()
+    s = proxy_gateway.SETTINGS
+    s.primary_api_url, s.primary_api_key, s.primary_model = PRIMARY, "", "primary"
+    s.fallback_api_url, s.fallback_api_key, s.fallback_model = WORKER, "none", "worker"
+    s.buffer_content_tokens = 10
+    s.buffer_reasoning = 0
+    s.audit_log = ""
+    s.authz_enforced = False
+    s.keepalive_url = ""
+    s.specialist_system_mode = "neutral"
+
+
+def test_continue_primary_recovers_within_grace(settings, mgr, monkeypatch):
+    """REAL stream-level recovery: a refusal pre-signal followed by a TRUE
+    self-correction within the grace window keeps the primary's answer - the
+    specialist must never be called and the recovery text must ship.
+
+    The old version only asserted regex verdicts and fake arithmetic; this
+    fails if the continue-with-primary judge regresses to divert-on-presignal.
+    """
+    import proxy_gateway
+    from fastapi.testclient import TestClient
+    from routing_patterns import is_presignal_recovered
+
+    _wire_gateway(monkeypatch, Script())
+    pg = proxy_gateway
+    sc = pg.make_client()._transport.handler  # the Script behind the mock
+    # ZERO-REFUSAL LAW (2026-10-22): "I can't help you debug that crash."
+    # carries the spoken refusal core - under the law the terminal re-answers.
+    # This pin asserts the PRE-LAW lenient behaviour via the kill switch; the
+    # law's default is pinned in test_continue_primary_recovers_within_grace_
+    # under_zero_refusal below.
+    pg.SETTINGS.zero_refusal = 0
+
+    sc.script(PRIMARY, [("sse", [
+        chunk("I can't"),                       # pre-signal (is_routable: True)
+        # Substantive recovery: the judge sees the STRIPPED tail, so it must
+        # clear min_substantive_chars=20 (26 chars here) and stay refusal-free.
+        chunk(" help you debug that crash.", finish="stop"),
+        DONE,
+    ])])
+    sc.script(WORKER, [("sse", [chunk("specialist answer", finish="stop"), DONE])])
+    # The lexical judge the stream-end decision rests on (kept as a real pin).
+    assert is_presignal_recovered("I can't help you debug that crash."[7:], 20) is True
+
+    with TestClient(pg.app) as tc:
+        resp = tc.post("/v1/chat/completions",
+                       json={"messages": [{"role": "user", "content": "hi"}]})
+    assert resp.status_code == 200
+    # The primary's recovered continuation shipped to the client...
+    assert "help you debug that crash." in resp.text
+    # ...and the specialist was never engaged (no divert, no footnote).
+    assert "taking over" not in resp.text
+    assert not any(c["url"] == WORKER for c in sc.calls)
+    pg.SETTINGS.zero_refusal = 1  # restore the law for the rest of the suite
+
+
+def test_continue_primary_recovers_within_grace_under_zero_refusal(settings, mgr, monkeypatch):
+    """The law's view of the same shape: a self-correction that still SPEAKS
+    the refusal core ("I can't... but here is the answer") is a partial
+    refusal - the terminal re-answers (operator directive 2026-10-22)."""
+    import proxy_gateway
+    from fastapi.testclient import TestClient
+
+    _wire_gateway(monkeypatch, Script())
+    pg = proxy_gateway
+    sc = pg.make_client()._transport.handler
+
+    sc.script(PRIMARY, [("sse", [
+        chunk("I can't"),
+        chunk(" help you debug that crash.", finish="stop"),
+        DONE,
+    ])])
+    sc.script(WORKER, [("sse", [chunk("specialist answer", finish="stop"), DONE])])
+
+    with TestClient(pg.app) as tc:
+        resp = tc.post("/v1/chat/completions",
+                      json={"messages": [{"role": "user", "content": "hi"}]})
+    assert resp.status_code == 200
+    assert "specialist answer" in resp.text
+    assert "taking over" in resp.text
+    assert any(c["url"] == WORKER for c in sc.calls)
+
+
+def test_continue_primary_refusal_confirms_diverts(settings, mgr, monkeypatch):
+    """REAL stream-level confirmation: a pre-signal followed by MORE refusal
+    confirms the dodge at stream end - divert to the specialist, ship its
+    answer plus the provenance footnote, never the refusal text."""
+    import proxy_gateway
+    from fastapi.testclient import TestClient
+    from routing_patterns import is_presignal_recovered
+
+    _wire_gateway(monkeypatch, Script())
+    pg = proxy_gateway
+    sc = pg.make_client()._transport.handler
+
+    sc.script(PRIMARY, [("sse", [
+        chunk("I can't"),                             # pre-signal
+        chunk("I cannot help with that.", finish="stop"),  # still refusing
+        DONE,
+    ])])
+    sc.script(WORKER, [("sse", [chunk("specialist answer", finish="stop"), DONE])])
+    # The judge the [DONE] block rests on: the post-presignal tail still
+    # opens with a refusal -> not recovered -> divert.
+    assert is_presignal_recovered("I cannot help with that.", 20) is False
+
+    with TestClient(pg.app) as tc:
+        resp = tc.post("/v1/chat/completions",
+                       json={"messages": [{"role": "user", "content": "hi"}]})
+    assert resp.status_code == 200
+    assert any(c["url"] == WORKER for c in sc.calls), "confirmed refusal must divert"
+    assert "specialist answer" in resp.text
+    assert "worker taking over..." in resp.text
+    # The refused primary text is replayed as CONTEXT only, never shipped.
+    assert "I cannot help with that." not in resp.text
+
+
+def test_continue_disabled_immediate_divert(settings, mgr, monkeypatch):
+    """CONTINUE_ENABLED=0 restores the pre-continue behaviour: any anchored
+    refusal in the buffer diverts immediately, without a grace window."""
+    import proxy_gateway
+    from fastapi.testclient import TestClient
     from routing_patterns import is_routable
 
-    assert is_routable("I can't") == True  # pre-signal detected
-    assert is_routable("I can't help you with that.") == True  # full string still matches "I can't"
-    assert is_routable(" help you with that.") == False  # post-presignal is clean
+    _wire_gateway(monkeypatch, Script())
+    pg = proxy_gateway
+    monkeypatch.setattr(pg.SETTINGS, "continue_enabled", False)
+    sc = pg.make_client()._transport.handler
 
-    # Simulate grace window logic
-    grace_tokens = 2
-    min_substantive_chars = 5
-    content_tokens = 3  # "I can't" + " help you" + " with that."
-    presignal_tokens = 1  # after "I can't"
+    sc.script(PRIMARY, [("sse", [chunk("I cannot help with that.", finish="stop"), DONE])])
+    sc.script(WORKER, [("sse", [chunk("specialist answer", finish="stop"), DONE])])
+    assert is_routable("I cannot help with that.") is True  # the anchor fires
 
-    assert content_tokens - presignal_tokens >= grace_tokens  # grace expired
-    post_presignal = " help you with that."
-    assert len(post_presignal) >= min_substantive_chars
-    assert not is_routable(post_presignal[:200])  # recovered, not routable
+    with TestClient(pg.app) as tc:
+        resp = tc.post("/v1/chat/completions",
+                       json={"messages": [{"role": "user", "content": "hi"}]})
+    assert resp.status_code == 200
+    assert any(c["url"] == WORKER for c in sc.calls), "disabled continue must divert"
+    assert "worker taking over..." in resp.text
 
 
-def test_continue_primary_refusal_confirms_diverts(settings, mgr):
-    """Primary emits refusal pre-signal, doesn't recover within grace window.
-    Diverts to specialist."""
+def test_no_presignal_normal_stream(settings, mgr, monkeypatch):
+    """A clean stream with no refusal pre-signal relays the primary's answer
+    verbatim and never touches the specialist."""
+    import proxy_gateway
+    from fastapi.testclient import TestClient
     from routing_patterns import is_routable
 
-    assert is_routable("I can't") == True  # pre-signal
-    assert is_routable("I cannot help with that.") == True  # still refusing
+    _wire_gateway(monkeypatch, Script())
+    pg = proxy_gateway
+    sc = pg.make_client()._transport.handler
 
-    grace_tokens = 2
-    content_tokens = 3
-    presignal_tokens = 1
+    sc.script(PRIMARY, [("sse", [chunk("The answer is 42", finish="stop"), DONE])])
+    assert is_routable("The answer is 42") is False  # nothing anchors
 
-    assert content_tokens - presignal_tokens >= grace_tokens
-    post_presignal = "I cannot help with that."
-    assert len(post_presignal) >= 5
-    assert is_routable(post_presignal[:200])  # still refusal -> divert
-
-
-def test_continue_disabled_immediate_divert(settings, mgr):
-    """With continue disabled, any refusal triggers immediate divert."""
-    from routing_patterns import is_routable
-
-    assert is_routable("I can't help") == True  # immediate divert
+    with TestClient(pg.app) as tc:
+        resp = tc.post("/v1/chat/completions",
+                       json={"messages": [{"role": "user", "content": "hi"}]})
+    assert resp.status_code == 200
+    assert "The answer is 42" in resp.text
+    assert "taking over" not in resp.text
+    assert not any(c["url"] == WORKER for c in sc.calls)
 
 
-def test_no_presignal_normal_stream(settings, mgr):
-    """Normal stream with no refusal pre-signal behaves as before."""
-    from routing_patterns import is_routable
+def test_billing_registry_basic(settings, mgr, monkeypatch, tmp_path):
+    """KeyVault, UserBilling, UsageTracker basic operations.
 
-    assert is_routable("The answer is 42") == False
-    assert is_routable("Here is how to do it") == False
-
-
-def test_billing_registry_basic(settings, mgr, monkeypatch):
-    """KeyVault, UserBilling, UsageTracker basic operations."""
-    import tempfile
-    import tempfile as _tempfile
-
+    2026-10-21: the three mktemp() paths became tmp_path fixtures - mktemp
+    returns a name nothing created or cleaned up (deprecated in 3.10+); the
+    tmp_path files live in pytest's managed quarantine instead.
+    """
     # Test KeyVault.  W2 money safety: billing now REFUSES plaintext key
     # writes when no ENCRYPTION_KEY is configured, so pin a test key and
     # force the lazy Fernet to pick it up before exercising the vault.
     monkeypatch.setenv("ENCRYPTION_KEY", "ER9W35oE9l3Hm3V9dEBdeOCht4R5DPiaQJ6BmfFDjiE=")
     billing_mod._FERNET = None
-    kv = billing_mod.KeyVault(path=str(_tempfile.mktemp()))
+    kv = billing_mod.KeyVault(path=str(tmp_path / "keys.jsonl"))
     kv.store_key("user1", "hive", "sk-hive-key-123")
     kv.store_key("user1", "abliteration", "sk-ablit-key-456")
     assert kv.has_key("user1", "hive")
@@ -360,7 +479,7 @@ def test_billing_registry_basic(settings, mgr, monkeypatch):
     assert kv.get_key("user1", "abliteration") == "sk-ablit-key-456"
 
     # Test UserBilling
-    ub = billing_mod.UserBilling(path=str(_tempfile.mktemp()))
+    ub = billing_mod.UserBilling(path=str(tmp_path / "users.jsonl"))
     assert ub.get_balance("user1") == SETTINGS.credit_free_tier
     ub.deduct("user1", 100, 0.20)
     assert ub.get_balance("user1") < SETTINGS.credit_free_tier
@@ -370,7 +489,7 @@ def test_billing_registry_basic(settings, mgr, monkeypatch):
     assert not ub.is_low("user1")
 
     # Test UsageTracker
-    ut = billing_mod.UsageTracker(path=str(_tempfile.mktemp()))
+    ut = billing_mod.UsageTracker(path=str(tmp_path / "usage.jsonl"))
     ut.record("user1", "deepfrost", 50, 30, 0.16, "hive", "req-1")
     usage = ut.user_usage("user1")
     assert usage["total_requests"] == 1

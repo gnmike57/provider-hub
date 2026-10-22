@@ -17,9 +17,9 @@ from helpers import DONE, PRIMARY, WORKER, chunk, script  # noqa: F401
 
 def test_alias_table_covers_both_max_think_names():
     assert providers.resolve_frost_alias("deepfrost max think") == (
-        "primary", "deepseek-ai/deepseek-v4.1-flash")
+        "primary", "deepseek-ai/deepseek-v4.1-flash-1017")
     assert providers.resolve_frost_alias("deepfrost-max-think") == (
-        "primary", "deepseek-ai/deepseek-v4.1-flash")
+        "primary", "deepseek-ai/deepseek-v4.1-flash-1017")
     assert providers.resolve_frost_alias("glmfrost max think") == (
         "primary", "zai-org/glm-5.3-flash")
     assert providers.resolve_frost_alias("glmfrost-max-think") == (
@@ -64,7 +64,7 @@ def test_max_think_deepfrost_uses_the_hive_deepseek_id(script):
                 json={"model": "deepfrost max think",
                       "messages": [{"role": "user", "content": "hi"}]})
     sent = [c for c in script.calls if c["url"] == PRIMARY]
-    assert sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash-1017"
 
 
 def test_max_think_injects_the_knob_set_server_side(script):
@@ -173,7 +173,7 @@ def test_model_list_publishes_both_max_think_endpoints(monkeypatch):
     # Max-reasoning names stay on the Hive primary with the Hive upstream ids.
     assert by_id["deepfrost max think"]["endpoint"].endswith(":9314/v1")
     assert by_id["glmfrost max think"]["endpoint"].endswith(":9315/v1")
-    assert by_id["deepfrost max think"]["root"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert by_id["deepfrost max think"]["root"] == "deepseek-ai/deepseek-v4.1-flash-1017"
     assert by_id["glmfrost max think"]["root"] == "zai-org/glm-5.3-flash"
     assert by_id["deepfrost max think"]["reasoning"] == "max"
     assert by_id["glmfrost max think"]["reasoning"] == "max"

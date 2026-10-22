@@ -82,9 +82,9 @@ def test_primary_model_follows_the_url(monkeypatch):
 
 
 def test_explicit_primary_model_wins_over_hive(monkeypatch):
-    monkeypatch.setenv("PRIMARY_MODEL", "deepseek-ai/deepseek-v4.1-flash")
+    monkeypatch.setenv("PRIMARY_MODEL", "deepseek-ai/deepseek-v4.1-flash-1017")
     monkeypatch.setenv("HIVE_API_BASE", "https://api-cdn.thehive.ai/api/v3")
-    assert proxy_gateway._primary_model() == "deepseek-ai/deepseek-v4.1-flash"
+    assert proxy_gateway._primary_model() == "deepseek-ai/deepseek-v4.1-flash-1017"
 
 
 def test_settings_bridges_when_primary_is_unset(monkeypatch):

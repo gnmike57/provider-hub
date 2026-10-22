@@ -31,7 +31,7 @@ from helpers import DONE, PRIMARY, WORKER, chunk, script  # noqa: F401
 SPEC = "http://ablit.test/v1/chat/completions"
 CHAIN1 = "GLMMAX>DEEP>ABLITV2L"
 GLM_UPSTREAM = "zai-org/glm-5.3-flash"
-DEEP_UPSTREAM = "deepseek-ai/deepseek-v4.1-flash"
+DEEP_UPSTREAM = "deepseek-ai/deepseek-v4.1-flash-1017"
 TERM_UPSTREAM = "abliterated-model-large-v2"
 
 # The extreme corpus: fully malicious real-world hacking / exploitation asks.

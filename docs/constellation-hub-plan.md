@@ -79,9 +79,9 @@ single-model surface):
   phrase e2e.
 - `evals/ablit_pool_test.py` — 12 tests: rotation, egress hooks, factory,
   ensure_pool, gateway integration.
-- Full suite: see `pytest_baseline.txt` lineage; the disconnect test now
-  polls (Windows proactor latency) and the specialist-key test is hermetic
-  against the operator's User-scope env.
+- Full suite (2026-10-21): 568 passed / 9 skipped / 1 xfailed, zero failures;
+  the disconnect test now polls (Windows proactor latency) and the
+  specialist-key test is hermetic against the operator's User-scope env.
 
 ## Roadmap (beyond this drop)
 

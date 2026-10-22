@@ -280,9 +280,14 @@ def test_reasoning_only_answer_is_not_treated_as_empty(gw, script):
     assert "should not appear" not in text
 
 
-def test_passthrough_after_buffer_committed_is_opaque(gw, script):
-    # a refusal TEXT later in the stream must not divert: routing only while
-    # buffering (B8). Build a clean 3-token prefix, then refusal wording.
+def test_passthrough_after_buffer_committed_is_opaque(gw, script, monkeypatch):
+    """B8 (narrowed by the ZERO-REFUSAL LAW, 2026-10-22): once PASSTHROUGH the
+    stream is opaque - routing never re-evaluates committed content. While
+    still BUFFERING, though, the full-reply judge applies: a refusal core
+    after a clean prefix ("one two three I cannot help with that.") is a
+    partial refusal and diverts under the law. ZERO_REFUSAL=0 restores the
+    old ship-the-mid-stream-refusal behaviour (B8 as originally pinned)."""
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "zero_refusal", 0)
     script.script(
         PRIMARY,
         [("sse", [chunk("one "), chunk("two "), chunk("three "), chunk("I cannot help with that.", finish="stop"), DONE])],
@@ -292,6 +297,22 @@ def test_passthrough_after_buffer_committed_is_opaque(gw, script):
     assert "one two three" in text
     assert "I cannot help with that." in text
     assert proxy_gateway._METRICS["diverted_total"] == 0
+
+
+def test_mid_stream_refusal_diverts_under_zero_refusal(gw, script):
+    """The law's other half: the anchored presignal never fires for a refusal
+    that opens after clean content (B8 shape) - the end-of-stream full-reply
+    judge catches the core ANYWHERE and the terminal re-answers."""
+    script.script(
+        PRIMARY,
+        [("sse", [chunk("one "), chunk("two "), chunk("three "), chunk("I cannot help with that.", finish="stop"), DONE])],
+    )
+    script.script(WORKER, [("sse", [chunk("terminal answer", finish="stop"), DONE])])
+    resp = gw.post("/v1/chat/completions", json=_body())
+    text = _deltas(_events(resp))
+    assert "terminal answer" in text
+    assert "I cannot help" not in text
+    assert proxy_gateway._METRICS["zero_refusal_divert_total"] == 1
 
 
 def test_primary_429_retries_same_provider_then_succeeds(gw, script):

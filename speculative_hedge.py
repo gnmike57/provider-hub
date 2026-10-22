@@ -29,6 +29,9 @@ from typing import AsyncGenerator
 
 import httpx
 
+import routing_patterns
+import account_pool
+
 from routing_patterns import classify_status, footnote, is_routable, normalise, should_hedge, stage_comment
 
 import abliteration_keys
@@ -83,7 +86,7 @@ class HedgeSettings:
         # 0.24s (measured at 42.3 tok/s on the gx10).
         self.commit_tokens = _int_env("COMMIT_TOKENS", 10)
         # Output cap, sent as BOTH max_tokens and max_completion_tokens. Hive's
-        # self-hosted models (deepseek-ai/deepseek-v4.1-flash, zai-org/glm-5.3-flash)
+        # self-hosted models (deepseek-ai/deepseek-v4.1-flash-1017, zai-org/glm-5.3-flash)
         # honour only max_completion_tokens: given max_tokens alone they spend the
         # whole budget on hidden reasoning, and glm-5.3-flash returns ZERO content
         # (measured 2026-10-07: max_tokens=2000 -> 0 chars content, finish=length;
@@ -197,8 +200,7 @@ async def hedge_stream(
     ACTIVE ONLY when escalate is wired, so pure-unit callers keep the historic
     drain-and-footnote behaviour."""
     s = settings or SETTINGS
-    from context_formatter import DEFAULT_SYSTEM
-
+    from context_formatter import DEFAULT_SYSTEM  # local: avoids an import cycle
     sid = f"hedge-{uuid.uuid4().hex[:12]}"  # R1: one id for the whole stream
 
     worker_msgs = [
@@ -230,16 +232,20 @@ async def hedge_stream(
 
             worker = None
             try:
+                # Multi-account pool: the worker branch picks its credential
+                # the same way open_fallback does (fail-closed to s.worker_key).
+                _w_headers, _w_acct = account_pool.routed_headers(
+                    {**_auth_header(s.worker_key), "Content-Type": "application/json"},
+                    s.worker_url)
                 worker = await stack.enter_async_context(open_stream(
                     client,
                     "POST",
                     s.worker_url,
                     json=worker_payload,
-                    headers=abliteration_keys.pooled_headers(
-                        {**_auth_header(s.worker_key), "Content-Type": "application/json"},
-                        s.worker_url),
+                    headers=_w_headers,
                 ))
             except httpx.TransportError as exc:
+                account_pool.observe_result(_w_acct, None)
                 worker = None
                 _FAILURES["transport_error"] += 1
                 log.warning("worker %s unreachable: %s", s.worker_model, type(exc).__name__)
@@ -259,20 +265,23 @@ async def hedge_stream(
             attempts = max(1, int(s.max_attempts or 1))
             for attempt in range(1, attempts + 1):
                 try:
+                    _s_headers, _s_acct = account_pool.routed_headers(
+                        {**_auth_header(s.sovereign_key), "Content-Type": "application/json"},
+                        s.sovereign_url)
                     resp = await stack.enter_async_context(open_stream(
                         client,
                         "POST",
                         s.sovereign_url,
                         json=sovereign_payload,
-                        headers=abliteration_keys.pooled_headers(
-                            {**_auth_header(s.sovereign_key), "Content-Type": "application/json"},
-                            s.sovereign_url),
+                        headers=_s_headers,
                     ))
                 except httpx.TransportError as exc:
+                    account_pool.observe_result(_s_acct, None)
                     sovereign = None  # B10: an unreachable sovereign means DIVERT, not fail
                     _FAILURES["transport_error"] += 1
                     log.warning("sovereign %s unreachable: %s", s.sovereign_model, type(exc).__name__)
                     break
+                account_pool.observe_result(_s_acct, resp.status_code)
                 sovereign_class = classify_status(resp.status_code)
                 if sovereign_class == "ok":
                     sovereign = resp
@@ -396,7 +405,7 @@ async def hedge_stream(
             # finishes with ZERO content tokens answered nothing. Measured on
             # zai-org/glm-5.3-flash, whose hidden reasoning can consume the whole
             # output cap and end with finish_reason=length and an empty content
-            # stream (and on deepseek-ai/deepseek-v4.1-flash before the
+            # stream (and on deepseek-ai/deepseek-v4.1-flash-1017 before the
             # max_completion_tokens fix). Committing to that hands the caller a
             # blank page with HTTP 200, no footnote and no signal. Treat it as a
             # failed sovereign and divert to the worker.

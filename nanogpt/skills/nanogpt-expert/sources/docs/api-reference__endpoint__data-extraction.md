@@ -1,0 +1,318 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Data Extraction APIs
+
+> Public data extraction endpoints for web, maps, social, and email/domain intelligence workflows
+
+## Overview
+
+NanoGPT exposes data extraction APIs for web, maps, social, and email/domain intelligence workflows.
+
+For new integrations that need a stable, discoverable entry point across these tools, use the unified [Data API](/api-reference/endpoint/data-api) under `/api/v1/data`. It wraps the direct endpoints documented here without changing their response bodies, billing, validation rules, async behavior, or provider-specific options.
+
+These endpoints require API key authentication. Each request estimates a maximum charge before running. Some endpoints require `maxTotalChargeUsd` when the result count is unbounded.
+
+## Authentication
+
+Use either header:
+
+* `Authorization: Bearer YOUR_API_KEY`
+* `x-api-key: YOUR_API_KEY`
+
+## Shared Billing and Runtime Behavior
+
+* Responses include returned data plus NanoGPT billing metadata.
+* Partial results may still be billed if the extraction job produced usable data before failing.
+* Result limits exist, commonly up to 5,000 returned items for social and data scrapers.
+* Long-running calls can take up to several minutes.
+* For unbounded searches, set `maxTotalChargeUsd` to cap spend.
+* Use `resultLimit`, `resultsLimit`, or endpoint-specific max-count fields to keep runs bounded.
+
+Typical responses include a data payload and billing metadata:
+
+```json theme={null}
+{
+  "data": [],
+  "meta": {
+    "nanogpt": {
+      "costUsd": 0.05,
+      "itemsReturned": 25
+    }
+  }
+}
+```
+
+## Endpoints
+
+| Data API Path | Direct Endpoint | Method | Purpose |
+| - | - | - | - |
+| `/api/v1/data/firecrawl` | `/api/v1/firecrawl` | POST | Web page scraping, site maps, and crawls. |
+| `/api/v1/data/google-maps/search` | `/api/v1/googlemaps` | GET, POST | Google Maps place search and detail extraction. |
+| `/api/v1/data/google-maps/reviews` | `/api/v1/googlemaps/reviews` | POST | Google Maps review extraction. |
+| `/api/v1/data/instagram/profile` | `/api/v1/instagram/profile` | POST | Instagram profile extraction. |
+| `/api/v1/data/instagram/posts` | `/api/v1/instagram/posts` | POST | Instagram post extraction. |
+| `/api/v1/data/instagram/reels` | `/api/v1/instagram/reels` | POST | Instagram Reels extraction. |
+| `/api/v1/data/reddit` | `/api/v1/reddit` | POST | Reddit post, comment, community, and user extraction. |
+| `/api/v1/data/tiktok` | `/api/v1/tiktok` | POST | TikTok hashtag, profile, search, and post extraction. |
+| `/api/v1/data/linkedin/profile` | `/api/v1/linkedin/profile` | POST | LinkedIn profile enrichment. |
+| `/api/v1/data/hunter/{path}` | `/api/v1/hunter/{path}` | GET, POST | Email/domain intelligence pass-through with path selection. |
+| Not in Data API catalog | `/api/v1/facebook/ads` | POST | Facebook/Meta ad library extraction. |
+
+<Note>
+  The direct endpoints remain available. Use the Data API paths when you want endpoint discovery, stable public tool IDs, body-style dispatch for dynamic clients, or response headers identifying both the Data API endpoint and direct endpoint.
+</Note>
+
+## Web Crawling
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/firecrawl
+```
+
+### Body
+
+```json theme={null}
+{
+  "operation": "scrape",
+  "url": "https://example.com",
+  "formats": ["markdown"],
+  "waitForFinishSecs": 120
+}
+```
+
+### Operations
+
+* `scrape`
+* `map`
+* `crawl`
+
+### Important Parameters
+
+| Parameter | Description |
+| - | - |
+| `url` | Required target URL. |
+| `operation` | Operation to run. Must be one of `scrape`, `map`, or `crawl` when provided. |
+| `limit` | Page or item limit for `map` and `crawl`. |
+| `search` | Optional search string for `map`. |
+| `maxReturnedPages` | Maximum pages returned for `crawl`. |
+| `waitForFinishSecs` | Wait time, capped at 240 seconds. |
+
+PDF parsing has max page controls when PDF parsing is enabled.
+
+## Google Maps
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/googlemaps
+```
+
+### Required Input
+
+Provide at least one of:
+
+* `searchStringsArray`
+* `startUrls`
+* `placeIds`
+* scrape-all-places option, when supported
+
+### Important Parameters
+
+* `maxTotalChargeUsd`
+* `resultLimit`
+* `maxCrawledPlacesPerSearch`
+* `scrapePlaceDetailPage`
+* `scrapeContacts`
+* `scrapeSocialMediaProfiles`
+* `maxReviews`
+* `maxImages`
+* filters such as category, rating, website availability, and closed-place handling when supported
+
+## Google Maps Reviews
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/googlemaps/reviews
+```
+
+### Required Input
+
+Provide at least one of:
+
+* `startUrls`
+* `placeIds`
+
+### Important Parameters
+
+* `maxReviews`
+* `reviewsSort`
+* `reviewsStartDate`
+* `maxTotalChargeUsd`
+* `resultLimit`
+
+<Note>
+  If you use `reviewsStartDate`, sort reviews by newest first.
+</Note>
+
+## Facebook Ads
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/facebook/ads
+```
+
+### Required Input
+
+* `startUrls`: at least one Facebook Page URL or Meta Ad Library URL.
+
+### Important Parameters
+
+* `resultsLimit`
+* `activeStatus`: `active` or `inactive`
+* `maxTotalChargeUsd`
+* `resultLimit`
+
+## Instagram Profile
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/instagram/profile
+```
+
+### Required Input
+
+* `username` or `usernames`: Instagram username, profile URL, or profile ID.
+
+### Important Parameters
+
+* `includeAboutSection`
+* `maxTotalChargeUsd`
+* `resultLimit`
+
+## Instagram Posts
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/instagram/posts
+```
+
+### Required Input
+
+* `username`: one or more Instagram usernames, profile URLs, or post URLs.
+
+### Important Parameters
+
+* `resultsLimit`
+* `dataDetailLevel`: `basicData` or `detailedData`
+* `skipPinnedPosts`
+* `maxTotalChargeUsd`
+* `resultLimit`
+
+## Reddit
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/reddit
+```
+
+### Required Input
+
+Provide at least one of:
+
+* `startUrls`: Reddit URLs from `reddit.com` or `redd.it`
+* `searches`: search terms
+
+### Important Parameters
+
+* `maxItems`
+* `maxPostCount`
+* `maxComments`
+* `maxCommunities`
+* `maxUsers`
+* `searchPosts`
+* `searchComments`
+* `searchCommunities`
+* `searchUsers`
+* `maxTotalChargeUsd`
+* `resultLimit`
+
+## TikTok
+
+```text theme={null}
+POST https://api.nano-gpt.com/api/v1/tiktok
+```
+
+### Required Input
+
+Provide at least one of:
+
+* `hashtags`
+* `profiles`
+* `searchQueries`
+* `postURLs`
+
+### Important Parameters
+
+* `resultsPerPage`
+* `maxProfilesPerQuery`
+* `searchSection`
+* transcription options, if exposed
+* `maxTotalChargeUsd`
+* `resultLimit`
+
+## Hunter
+
+Hunter endpoints provide pass-through style email/domain intelligence with NanoGPT billing. Users authenticate with NanoGPT; do not pass a separate Hunter API key.
+
+Supported examples include:
+
+* `domain-search`
+* `email-finder`
+* `email-verifier`
+* `discover`
+
+### Endpoints
+
+```text theme={null}
+GET  https://api.nano-gpt.com/api/v1/hunter/{path}
+POST https://api.nano-gpt.com/api/v1/hunter/{path}
+GET  https://api.nano-gpt.com/api/v1/hunter?endpoint=domain-search
+POST https://api.nano-gpt.com/api/v1/hunter
+```
+
+For `GET`, query params are forwarded except:
+
+* `api_key`
+* `apiKey`
+* `endpoint`
+* `path`
+
+For `POST`, JSON body params are forwarded. Use `endpoint` or `path` to select the target path. A nested `params` object is also supported.
+
+### Response Shape
+
+```json theme={null}
+{
+  "data": {},
+  "meta": {
+    "nanogpt": {
+      "endpoint": "domain-search",
+      "hunterSearchesBilled": 1,
+      "hunterVerificationsBilled": 0,
+      "hunterEnrichmentsBilled": 0,
+      "costUsd": 0.01
+    }
+  }
+}
+```
+
+## Example
+
+```bash theme={null}
+curl -X POST https://api.nano-gpt.com/api/v1/googlemaps \
+  -H "Authorization: Bearer $NANOGPT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "searchStringsArray": ["coffee shops in Amsterdam"],
+    "resultLimit": 25,
+    "maxTotalChargeUsd": 1.00,
+    "scrapePlaceDetailPage": true
+  }'
+```
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

@@ -50,7 +50,7 @@ def stream(model, param, value):
     print(f"      content head: {''.join(content)[:120]!r}")
 
 
-for model in ("deepseek-ai/deepseek-v4.1-flash", "zai-org/glm-5.3-flash"):
+for model in ("deepseek-ai/deepseek-v4.1-flash-1017", "zai-org/glm-5.3-flash"):
     print(f"== {model} (streaming)")
     stream(model, "max_tokens", 2000)
     stream(model, "max_completion_tokens", 2000)

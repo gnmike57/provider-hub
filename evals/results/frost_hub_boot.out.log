@@ -1,2 +1,12 @@
-INFO:     127.0.0.1:46375 - "GET /healthz HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47281 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:13100 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:13578 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14118 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14172 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14373 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+{"ts": 1792630851.838, "request_id": "gw-7fe162cc3e5d", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "abliterated-model-large-v2", "routing_signal": "continue_pre_divert", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1792630855.401, "request_id": "gw-ac2f1b24ebf5", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "zai-org/glm-5.3-flash", "routing_signal": "tier3_refusal", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1792630857.252, "request_id": "gw-ac2f1b24ebf5", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "zai-org/glm-5.3-flash", "routing_signal": "tier3_refusal", "mode": "contract_reask", "artifact_sha256": null, "deliverable_sha256": null, "signal_match": "I don't"}
+INFO:     127.0.0.1:15070 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:15183 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:15210 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:20786 - "GET /healthz HTTP/1.1" 200 OK

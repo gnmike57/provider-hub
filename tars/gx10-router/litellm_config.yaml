@@ -35,14 +35,14 @@ model_list:
 
   - model_name: deep-hop
     litellm_params:
-      model: openai/deepseek-ai/deepseek-v4.1-flash
+      model: openai/deepseek-ai/deepseek-v4.1-flash-1017
       api_key: os.environ/HIVE_SECRET_KEY
       api_base: https://api-cdn.thehive.ai/api/v3
 
   # ---- chain 2: DEEPMAX>GLM>ABLITV2L -------------------------------------
   - model_name: DEEPMAX>GLM>ABLITV2L
     litellm_params:
-      model: openai/deepseek-ai/deepseek-v4.1-flash
+      model: openai/deepseek-ai/deepseek-v4.1-flash-1017
       api_key: os.environ/HIVE_SECRET_KEY
       api_base: https://api-cdn.thehive.ai/api/v3
       max_completion_tokens: 32768

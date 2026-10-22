@@ -1,8 +1,9 @@
 """Wire the corrected Hive provider into both agent harnesses (2026-10-07).
 
 Verified recipe: base https://api-cdn.thehive.ai/api/v3 (+ /chat/completions),
-auth Bearer <HIVE_SECRET_KEY> (SECRET key), models deepseek-ai/deepseek-v4.1-flash
-and zai-org/glm-5.3-flash.
+auth Bearer <HIVE_SECRET_KEY> (SECRET key), models deepseek-ai/deepseek-v4.1-flash-1017
+and zai-org/glm-5.3-flash. The Hive catalog (2026-10-21) lists only the
+deepseek-ai/deepseek-v4.1-flash-1017 deployment - the plain id is gone.
 
 - Cline CLI  : ~/.cline/data/settings/providers.json  (restore the local hub
   entry that `cline auth` clobbered, then add a separate `hive` provider)
@@ -18,7 +19,7 @@ import os
 
 ENV_FILE = r"C:\Users\lnxzf\Desktop\projects\ufo\ufo\ufo.env"
 BASE_URL = "https://api-cdn.thehive.ai/api/v3"
-HIVE_MODELS = ["deepseek-ai/deepseek-v4.1-flash", "zai-org/glm-5.3-flash"]
+HIVE_MODELS = ["deepseek-ai/deepseek-v4.1-flash-1017", "zai-org/glm-5.3-flash"]
 
 
 def hive_env():
@@ -82,8 +83,8 @@ def fix_opencode():
             "chunkTimeout": 180000,
         },
         "models": {
-            "deepseek-ai/deepseek-v4.1-flash": {
-                "name": "DeepSeek 4.1 Flash (1M ctx, vision, tools)",
+            "deepseek-ai/deepseek-v4.1-flash-1017": {
+                "name": "DeepSeek 4.1 Flash 1017 (1M ctx, vision, tools)",
                 "attachment": True,
                 "tool_call": True,
                 "reasoning": True,

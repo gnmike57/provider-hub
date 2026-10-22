@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "nanogpt": {
+      "command": "npx",
+      "args": ["-y", "@nanogpt/mcp"],
+      "env": {
+        "NANOGPT_API_KEY": "YOUR_NANOGPT_API_KEY"
+      }
+    }
+  }
+}

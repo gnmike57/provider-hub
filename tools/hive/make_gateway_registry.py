@@ -3,7 +3,7 @@
 The gateway resolves the client's `model` field through this registry
 (providers.py), so a peer on the tailnet can call:
 
-    model: "deepseek-4.1-flash"   -> hive: deepseek-ai/deepseek-v4.1-flash
+    model: "deepseek-4.1-flash"   -> hive: deepseek-ai/deepseek-v4.1-flash-1017
     model: "glm-5.3-flash"        -> hive: zai-org/glm-5.3-flash
 
 The file holds a live key, so it is gitignored (deployment state, not source).
@@ -34,7 +34,7 @@ doc = {
             "base_url": HIVE_BASE,
             "key": key("HIVE_SECRET_KEY"),
             "models": {
-                "deepseek-4.1-flash": "deepseek-ai/deepseek-v4.1-flash",
+                "deepseek-4.1-flash": "deepseek-ai/deepseek-v4.1-flash-1017",
                 "glm-5.3-flash": "zai-org/glm-5.3-flash",
             },
         },

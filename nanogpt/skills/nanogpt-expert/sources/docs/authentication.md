@@ -1,0 +1,98 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Authentication
+
+> How to authenticate with the NanoGPT API and web app.
+
+## Usage monitoring and API-key management
+
+For subscription quota monitoring, create a **Usage only** [management token](/api-reference/management-api) in Settings → Security. It can read usage without permission to run models or spend your balance.
+
+Management tokens begin with `sk-nano-mgmt-` and authenticate only `/api/management/v1` endpoints. Their permissions are separate from inference API keys. Use only `usage:read` for a monitoring tool; `api_keys:write` can create spending-capable inference keys.
+
+## API Authentication (Recommended for inference)
+
+Most integrations should use an **API key**.
+
+Send API-key requests to `https://api.nano-gpt.com`. Create and manage keys on the [NanoGPT website](https://nano-gpt.com/api); see [API Hosts](/api-reference/miscellaneous/api-hosts) for the correct client base URL.
+
+### API key format
+
+New keys use the format:
+
+```text theme={null}
+sk-nano-<uuid>
+```
+
+Some older accounts may still have **legacy** keys (a plain UUID). Both formats are accepted.
+
+### Send your key (headers)
+
+Use one of these headers on inference API requests:
+
+1. `Authorization: Bearer <API_KEY>` (recommended)
+2. `X-API-Key: <API_KEY>`
+
+Example:
+
+```bash theme={null}
+curl "https://api.nano-gpt.com/api/v1/models" \
+  -H "Authorization: Bearer sk-nano-YOUR_API_KEY"
+```
+
+### Common errors
+
+* `401 Unauthorized`: Missing/invalid/revoked API key (or your key is inactive/expired, if your account has expiration enabled)
+* `403 Forbidden`: API key browser-origin restriction failed (`api_key_origin_not_allowed`)
+* `429 Too Many Requests`: Rate limit exceeded (per-second throughput, or a per-key daily cap if configured)
+
+For rate-limit details, see [Rate Limits](/api-reference/miscellaneous/rate-limits).
+
+### Getting an API key
+
+Create and manage API keys in the NanoGPT dashboard: [https://nano-gpt.com/api](https://nano-gpt.com/api)
+
+## CLI Authentication (Device Login)
+
+If you're building a CLI, use **device login** so users can approve access in a browser and your CLI receives an API key (`sk-nano-...`).
+
+See: [CLI Device Login](/integrations/cli-login)
+
+## OAuth PKCE (Sign in with NanoGPT)
+
+If you're building a third-party app, local tool, coding agent, or generic OAuth client, use **OAuth PKCE** so users can approve access in NanoGPT instead of manually creating and pasting an API key.
+
+OAuth returns an app-specific NanoGPT API key (`sk-nano-...`) that your app sends as:
+
+```http theme={null}
+Authorization: Bearer sk-nano-...
+```
+
+You can also attach your referral link, so users who create a NanoGPT account through your sign-in are referred by you. See [Referral Attribution](/api-reference/miscellaneous/oauth-pkce#referral-attribution).
+
+See: [OAuth PKCE](/api-reference/miscellaneous/oauth-pkce)
+
+## Web App Sign-In (Browser)
+
+If you are using the NanoGPT web app, sign-in is handled via browser sessions. Supported sign-in methods include:
+
+* OAuth (GitHub, Google)
+* Email one-time code (magic link / verification code)
+* Email/password (or username/password, where supported)
+* Passkey (WebAuthn)
+
+If you are calling the API from a backend service, prefer API keys instead of relying on browser cookies.
+
+## API Key Security Best Practices
+
+* Store keys in environment variables (for example: `NANOGPT_API_KEY`).
+* Never commit keys to git or ship them in client-side code.
+* Prefer `Authorization: Bearer ...` over putting keys in URLs.
+* For browser-based apps, set **Allowed browser origins** when creating the API key so the key is only accepted from your app's origin. Prefer backend calls or OAuth PKCE when possible; do not embed unrestricted API keys in client-side code.
+* Use separate keys per app/environment so you can revoke access without breaking everything.
+* Set spending and request limits (if available for your account) to cap blast radius.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

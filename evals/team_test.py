@@ -66,7 +66,7 @@ def test_team_routes_resolve_through_the_hub_alias_table():
     assert providers.resolve_hub_alias("teamglm") == (
         "hive", "zai-org/glm-5.3-flash", False)
     assert providers.resolve_hub_alias("teamdeep") == (
-        "hive", "deepseek-ai/deepseek-v4.1-flash", False)
+        "hive", "deepseek-ai/deepseek-v4.1-flash-1017", False)
 
 
 def test_specialist_key_chain_closes_on_the_abliteration_key(monkeypatch):
@@ -136,7 +136,7 @@ def test_team_deep_uses_the_builtin_hive_brain(script, monkeypatch):
         tc.post(TEAM_URL, json={"team": "deep",
                                 "messages": [{"role": "user", "content": "hi"}]})
     sent = [c for c in script.calls if c["url"] == PRIMARY]
-    assert sent and sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert sent and sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash-1017"
 
 
 def test_team_unknown_name_falls_back_to_the_v2_terminal(script, monkeypatch):

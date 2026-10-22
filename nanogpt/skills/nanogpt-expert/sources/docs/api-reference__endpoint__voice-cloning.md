@@ -1,0 +1,356 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Voice Cloning
+
+> Clone voices from reference audio and reuse them with compatible TTS models
+
+## Overview
+
+NanoGPT supports voice cloning so you can create reusable custom voices from short reference audio clips and then use them in text-to-speech (TTS).
+
+There are two voice-clone providers exposed via NanoGPT:
+
+* **MiniMax voice clone**: creates a reusable `customVoiceId` you can pass as `voice` when using compatible MiniMax Speech TTS models.
+* **Qwen voice clone (1.7B)**: generates a speaker embedding file URL that you can pass to Qwen 3 TTS as `speaker_voice_embedding_file_url`.
+
+Both flows are asynchronous:
+
+1. Submit a clone job, receive a `runId` (HTTP 202).
+2. Poll the status endpoint until `status: "completed"`.
+
+## Authentication
+
+All voice clone endpoints support:
+
+* API key auth: `x-api-key: <your NanoGPT API key>` (or `Authorization: Bearer <key>`)
+* Session auth (web app): browser cookies
+
+## Endpoints
+
+| Provider | Submit | Status |
+| - | - | - |
+| MiniMax | `POST /api/voice-clone/minimax` | `POST /api/voice-clone/minimax/status` |
+| Qwen | `POST /api/voice-clone/qwen` | `POST /api/voice-clone/qwen/status` |
+
+## MiniMax Voice Clone
+
+### Submit a Clone Job
+
+```
+POST /api/voice-clone/minimax
+```
+
+Supports:
+
+* `multipart/form-data` (upload an audio file)
+* `application/json` (provide `audioUrl`)
+
+**JSON request**
+
+```json theme={null}
+{
+  "audioUrl": "https://example.com/reference-audio.mp3",
+  "customVoiceId": "MyVoice001",
+  "voiceCloneModel": "speech-02-hd",
+  "needNoiseReduction": false,
+  "needVolumeNormalization": false,
+  "accuracy": 0.7,
+  "text": "Hello! This is a preview of my cloned voice."
+}
+```
+
+**Form fields**
+
+| Field | Type | Required | Notes |
+| - | - | - | - |
+| `audio` | file | Yes (if no `audioUrl`) | MP3, M4A, WAV |
+| `audioUrl` | string | Yes (if no `audio`) | Hosted audio URL |
+| `customVoiceId` / `custom_voice_id` | string | Yes | Must match `^[A-Za-z][A-Za-z0-9]{7,}$` |
+| `voiceCloneModel` / `model` | string | No | Example values: `speech-02-hd`, `speech-02-turbo` |
+| `needNoiseReduction` / `need_noise_reduction` | boolean | No | Default `false` |
+| `needVolumeNormalization` / `need_volume_normalization` | boolean | No | Default `false` |
+| `accuracy` | number | No | 0 to 1, default `0.7` |
+| `text` / `previewText` | string | No | Preview text |
+
+**Response (202)**
+
+```json theme={null}
+{
+  "status": "pending",
+  "runId": "abc123-def456",
+  "model": "MiniMax-Voice-Clone",
+  "cost": 1.0,
+  "paymentSource": "USD",
+  "isApiRequest": true,
+  "fileName": "reference.mp3",
+  "fileSize": 245000
+}
+```
+
+### Poll Job Status
+
+```
+POST /api/voice-clone/minimax/status
+```
+
+**Request body**
+
+```json theme={null}
+{
+  "runId": "abc123-def456",
+  "cost": 1.0,
+  "paymentSource": "USD",
+  "isApiRequest": true
+}
+```
+
+**Response (in progress)**
+
+```json theme={null}
+{
+  "status": "processing"
+}
+```
+
+**Response (completed)**
+
+```json theme={null}
+{
+  "status": "completed",
+  "audioUrls": ["https://cdn.example.com/preview-audio.mp3"],
+  "metadata": {
+    "model": "MiniMax-Voice-Clone"
+  }
+}
+```
+
+## Qwen Voice Clone (1.7B)
+
+### Submit a Clone Job
+
+```
+POST /api/voice-clone/qwen
+```
+
+Supports:
+
+* `multipart/form-data` (upload an audio file)
+* `application/json` (provide `audioUrl`)
+
+**JSON request**
+
+```json theme={null}
+{
+  "audioUrl": "https://example.com/reference-audio.mp3",
+  "referenceText": "Optional transcript of the reference clip."
+}
+```
+
+**Form fields**
+
+| Field | Type | Required | Notes |
+| - | - | - | - |
+| `audio` | file | Yes (if no `audioUrl`) | MP3, OGG, WAV, M4A, AAC |
+| `audioUrl` / `audio_url` | string | Yes (if no `audio`) | Hosted audio URL |
+| `referenceText` / `reference_text` | string | No | Optional transcript |
+
+**Response (202)**
+
+```json theme={null}
+{
+  "status": "pending",
+  "runId": "vc_run_789",
+  "model": "qwen-voice-clone",
+  "cost": 0.25,
+  "paymentSource": "USD",
+  "isApiRequest": true,
+  "fileName": "audio_file",
+  "fileSize": 0
+}
+```
+
+### Poll Job Status
+
+```
+POST /api/voice-clone/qwen/status
+```
+
+**Request body**
+
+```json theme={null}
+{
+  "runId": "vc_run_789",
+  "cost": 0.25,
+  "paymentSource": "USD",
+  "isApiRequest": true
+}
+```
+
+**Response headers**
+
+While the job is still processing, the response may include an `X-Poll-After` header indicating how many seconds to wait before polling again.
+
+**Response (completed)**
+
+```json theme={null}
+{
+  "status": "completed",
+  "speakerEmbeddingUrl": "https://storage.example.com/speaker-embedding.safetensors",
+  "metadata": {
+    "model": "qwen-voice-clone"
+  }
+}
+```
+
+## Using Cloned Voices with TTS
+
+### MiniMax cloned voice (`customVoiceId`)
+
+Use your `customVoiceId` as the normal `voice` on `POST /api/tts` with a compatible MiniMax Speech TTS model:
+
+```json theme={null}
+{
+  "text": "Text you want spoken in the cloned voice.",
+  "voice": "MyVoice001",
+  "model": "Minimax-Speech-02-HD",
+  "speed": 1
+}
+```
+
+### Qwen cloned voice (`speakerEmbeddingUrl`)
+
+Use `speakerEmbeddingUrl` as `speaker_voice_embedding_file_url` on `POST /api/tts` with `Qwen-3-TTS-1.7B`:
+
+```json theme={null}
+{
+  "text": "Text you want spoken in the cloned voice.",
+  "model": "Qwen-3-TTS-1.7B",
+  "speaker_voice_embedding_file_url": "https://storage.example.com/speaker-embedding.safetensors",
+  "reference_text": "Optional: transcript of the original reference audio.",
+  "language": "Auto"
+}
+```
+
+## Saving MiniMax Voice IDs (Web App)
+
+If you use the NanoGPT web app, you can save and list your MiniMax `customVoiceId` values.
+
+These endpoints are **session-authenticated only** (they do not support API key auth).
+
+### List Saved Voice IDs
+
+```
+GET /api/user/voice-ids
+```
+
+**Response**
+
+```json theme={null}
+{
+  "voiceIds": ["MyVoice001", "MyVoice002"]
+}
+```
+
+### Save a Voice ID
+
+```
+POST /api/user/voice-ids
+```
+
+**Request body**
+
+```json theme={null}
+{
+  "voiceId": "MyVoice001"
+}
+```
+
+**Response**
+
+```json theme={null}
+{
+  "success": true,
+  "voiceIds": ["MyVoice001", "MyVoice002"]
+}
+```
+
+## Voice Clone Storage and Retention
+
+Last verified: February 21, 2026.
+
+Retention depends on the provider behind each voice clone model:
+
+* `minimax-voice-clone` (WaveSpeed + MiniMax):
+  New cloned voice IDs are temporary. If a cloned voice is not used in a real TTS synthesis call within 7 days (168 hours), it is deleted. If it is used at least once in TTS within that window, it is kept long-term. Preview generated during clone creation does not activate or persist the voice.
+* `qwen-voice-clone` (fal.ai):
+  The returned speaker embedding file URL is hosted by fal. fal guarantees hosted generated files for at least 7 days, then they may be removed at any time. Download and store the embedding yourself immediately for long-term reuse.
+* `inworld-voice-clone` (Inworld Voice API, if enabled in your workspace):
+  Inworld does not publish a fixed auto-delete window for cloned voices in public docs. Treat cloned voices as persistent until explicitly deleted from your workspace.
+  Note: Inworld's Zero Data Retention mode explicitly does not apply to voice-cloning audio samples.
+
+## How to Keep and Reuse Voice Clones
+
+### MiniMax / WaveSpeed (`customVoiceId`)
+
+1. Save the returned voice ID (`customVoiceId`; provider docs may also call this `voice_id`).
+2. Run at least one real TTS synthesis with that voice ID within 7 days.
+3. Reuse the same voice ID in later TTS requests.
+
+### Qwen (`speakerEmbeddingUrl`)
+
+1. Save the returned `speakerEmbeddingUrl` (`speaker_embedding_url` in some provider docs).
+2. Download the embedding file right away.
+3. Store it in your own durable storage (S3, R2, etc.).
+4. Use your stored URL later as `speaker_voice_embedding_file_url`.
+
+Example:
+
+```bash theme={null}
+curl -L "$SPEAKER_EMBEDDING_URL" -o my-voice.safetensors
+```
+
+### Inworld (`voice_id`, if enabled)
+
+1. Save the returned `voice_id`.
+2. Reuse it directly for Inworld TTS.
+3. If deleted from Inworld, it must be re-cloned.
+
+## Can I Download the Clone if It Gets Deleted?
+
+* MiniMax / WaveSpeed: no portable voice embedding download is documented; keep the voice ID active by using it in time.
+* Qwen: yes, download the speaker embedding file from `speakerEmbeddingUrl` / `speaker_embedding_url`.
+* Inworld: no documented voice-embedding export endpoint; keep the `voice_id` and avoid accidental deletion.
+
+> **Warning:** Provider retention policies may change. This page reflects provider docs as of February 21, 2026.
+
+### Provider Source Links
+
+* MiniMax voice cloning intro: [https://platform.minimax.io/docs/api-reference/voice-cloning-intro](https://platform.minimax.io/docs/api-reference/voice-cloning-intro)
+* MiniMax voice clone endpoint: [https://platform.minimax.io/docs/api-reference/voice-cloning-clone](https://platform.minimax.io/docs/api-reference/voice-cloning-clone)
+* MiniMax FAQ (voice ID validity, activation, preview behavior): [https://platform.minimax.io/docs/faq/about-apis](https://platform.minimax.io/docs/faq/about-apis)
+* WaveSpeed MiniMax voice clone persistence notes: [https://wavespeed.ai/docs/docs-api/minimax/minimax-voice-clone](https://wavespeed.ai/docs/docs-api/minimax/minimax-voice-clone)
+* fal FAQ (file retention): [https://fal-d8505a2e.mintlify.app/model-apis/faq](https://fal-d8505a2e.mintlify.app/model-apis/faq)
+* fal Queue API (`X-Fal-Object-Lifecycle-Preference`): [https://fal-d8505a2e.mintlify.app/model-apis/mndpoints/queue](https://fal-d8505a2e.mintlify.app/model-apis/mndpoints/queue)
+* Inworld clone voice API: [https://docs.inworld.ai/api-reference/voiceAPI/voiceservice/clone-voice](https://docs.inworld.ai/api-reference/voiceAPI/voiceservice/clone-voice)
+* Inworld list voices: [https://docs.inworld.ai/api-reference/voiceAPI/voiceservice/list-voices](https://docs.inworld.ai/api-reference/voiceAPI/voiceservice/list-voices)
+* Inworld delete voice: [https://docs.inworld.ai/api-reference/voiceAPI/voiceservice/delete-voice](https://docs.inworld.ai/api-reference/voiceAPI/voiceservice/delete-voice)
+* Inworld zero data retention (voice cloning samples excluded): [https://docs.inworld.ai/docs/tts/zero-data-retention](https://docs.inworld.ai/docs/tts/zero-data-retention)
+
+## Pricing
+
+Clone runs are charged as a flat per-run fee:
+
+* MiniMax voice clone: \$1.00 per run
+* Qwen voice clone (1.7B): \$0.25 per run
+
+The submit response includes `cost` and `paymentSource` for the run.
+
+## Limitations
+
+* MiniMax and Qwen clone endpoints are asynchronous; clients must poll status until completion.
+* MiniMax `customVoiceId` must match `^[A-Za-z][A-Za-z0-9]{7,}$`.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

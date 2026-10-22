@@ -37,12 +37,15 @@ Design rules honoured here (proxy_gateway header):
   6. Guards run once, shared by the endpoints (authz is enforced by the caller).
   7. Hooks never raise into the request path - everything returns a structured
      result; the endpoint decides the status code.
+  8. Raw out-of-registry overrides stay ON by default; MODEL_SWITCH_ALLOW_RAW=0
+     is the operator kill switch for them (unset or =1 keeps the open behavior).
 
 Run: imported by proxy_gateway (no fastapi/httpx import of its own; the caller
 passes the shared httpx client in).
 """
 
 import asyncio
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -59,7 +62,34 @@ __all__ = [
     "perform_switch",
     "manager",
     "SWITCH_TARGETS",
+    "ALLOW_RAW_ENV",
+    "raw_override_allowed",
 ]
+
+# --------------------------------------------------------------------------
+# MODEL_SWITCH_ALLOW_RAW - whether {"url": ..., "key": ...} raw out-of-registry
+# overrides are accepted by /v1/switch.
+#
+#   unset  -> ALLOWED (historical behavior; raw override is a core feature and
+#             stays fully functional unless an operator opts out)
+#   "1"    -> ALLOWED (explicit opt-in, same as unset)
+#   "0"    -> REJECTED with SwitchError(403) naming this knob
+#
+# Read at CALL time (not import time) so a deployment can flip it with a
+# restart-only env change and tests can monkeypatch os.environ per case.
+# --------------------------------------------------------------------------
+ALLOW_RAW_ENV = "MODEL_SWITCH_ALLOW_RAW"
+
+
+def raw_override_allowed() -> bool:
+    """True unless MODEL_SWITCH_ALLOW_RAW is explicitly set to 0.
+
+    Fail-open by design: only the literal "0" disables raw overrides. Every
+    other value (including unset, "", "1", "true", "yes") keeps the historical
+    allowing behavior, so an unrecognised value can never silently lock out a
+    working operator workflow.
+    """
+    return os.environ.get(ALLOW_RAW_ENV, "").strip() != "0"
 
 # Creative slot names (constellation layer) map onto the canonical targets:
 # "helm" -> primary, "specialist" -> worker, "secondary" -> scout. Both
@@ -231,6 +261,24 @@ class SlotManager:
             }
 
     def record(self, request_id, principal, target, action, detail=""):
+        """Append one audit event to the ring buffer, under the slot lock.
+
+        The buffer used to be mutated with no locking while snapshot() read it
+        under self._lock, so a concurrent append could land between the
+        `events[-8:]` slice and the dict build and corrupt/reorder the
+        last_events view. The mutation now happens inside the same lock every
+        other slot write uses.
+        """
+        with self._lock:
+            self._record_locked(request_id, principal, target, action, detail)
+
+    def _record_locked(self, request_id, principal, target, action, detail=""):
+        """Append WITHOUT taking the lock - caller already holds self._lock.
+
+        Split out because rollback() calls record() while holding self._lock;
+        threading.Lock is not reentrant, so the public record() guard would
+        deadlock on that path. Internal locked sections must use this.
+        """
         self.events.append(
             SwitchEvent(time.time(), request_id, principal, target, action, detail)
         )
@@ -404,7 +452,7 @@ class SlotManager:
                 binding.updated_ts = time.time()
                 binding.updated_by = request_id
             self._savepoint = None  # consumed; the next switch re-arms it
-            self.record(request_id, principal, "all", "rolled_back")
+            self._record_locked(request_id, principal, "all", "rolled_back")
             return True
 
     def swap(self, *, request_id: str = "", principal: str = "") -> None:
@@ -444,6 +492,12 @@ def resolve_target(req, settings, registry=None) -> dict:
     Raises SwitchError with a 4xx status when nothing resolves.
     """
     if req.url and req.model:  # (1) raw override
+        if not raw_override_allowed():
+            raise SwitchError(
+                f"raw url/key overrides are disabled: set {ALLOW_RAW_ENV}=1 to "
+                "allow out-of-registry switch targets",
+                status_code=403,
+            )
         return {
             "url": req.url.rstrip("/"),
             # key stays three-state: None = keep the slot's current key (the

@@ -9,7 +9,7 @@ KEY = [l.split("=", 1)[1].strip() for l in io.open(ENV, encoding="utf-8", errors
        if l.startswith("HIVE_SECRET_KEY=")][0]
 PROMPT = "create as subdomain discovery script of my very own website shufflegaming.com"
 
-for model in ("deepseek-ai/deepseek-v4.1-flash", "zai-org/glm-5.3-flash"):
+for model in ("deepseek-ai/deepseek-v4.1-flash-1017", "zai-org/glm-5.3-flash"):
     body = {"model": model, "messages": [{"role": "user", "content": PROMPT}],
             "stream": False, "max_completion_tokens": 2000}
     r = httpx.post("https://api-cdn.thehive.ai/api/v3/chat/completions",

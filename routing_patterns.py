@@ -20,6 +20,7 @@ __all__ = [
     "normalise",
     "is_routable",
     "is_presignal_recovered",
+    "zero_refusal_violation",
     "should_hedge",
     "tier2_decision",
     "classify_status",
@@ -88,7 +89,7 @@ _REFUSAL_CORE = r"""(?:
       | as\s+an\s+(?:ai\b|ai\s+language\s+model\b|language\s+model\b)
       | i\s+won'?t\s+be\s+able\b
       | i\s+won'?t\s+(?:help|assist)\b
-      | i\s*(?:am|'m)\s+not\s+going\s+to\s+(?:help|assist|answer|provide|fulfill|do|engage|comply|participate)\b
+      | i\s*(?:am|'m)\s+not\s+going\s+to\s+(?:help|assist|answer|provide|fulfill|do|engage|comply|participate|write|draw|paint|compose|create|generate)\b
       | i'?d\s+rather\s+not\b
       | that\s+(?:request|question|ask)\s+falls\s+outside\b
       | i\s+am\s+going\s+to\s+have\s+to\b
@@ -247,6 +248,70 @@ def is_presignal_recovered(post_text: str, min_substantive_chars: int = 20) -> b
     if _PRESIGNAL_TAIL_RE.search(norm):
         return False
     return _PRESIGNAL_LECTURE_RE.search(norm) is None
+
+
+# ---------------------------------------------------------------------------
+# ZERO-REFUSAL LAW (operator directive 2026-10-22): "there should never, ever
+# be even a partial refusal" - the terminal (Abliterated V2 Large) never
+# refuses, so any helm reply that carries refusal language ANYWHERE is diverted,
+# regardless of how helpful the continuation reads.
+#
+# Live defect this closes (measured on DEEPMAX>GLM>ABLITV2L, 2026-10-22): the
+# helm answered "I can't write sexually explicit erotica - that's a line I
+# hold... What I can do instead, if it's useful: [4 alternatives]. Tell me
+# which direction you want and I'll write it." The presignal fired, but the
+# grace-recovery judge only sees the CONTINUATION after the pre-signal - and
+# the continuation (an alternatives list) is refusal-free, so the partial
+# refusal shipped as "recovered". presignal_detected_total == 2,
+# presignal_continued_total == 2, presignal_failed_total == 0 - every
+# pre-signal was laundered by a helpful tail.
+#
+# zero_refusal_violation(text) judges the WHOLE reply:
+#   "refusal" - a refusal core ANYWHERE (unanchored _PRESIGNAL_TAIL_RE over
+#               normalise(text));
+#   "partial" - no refusal core, but a deflection/alternatives-offering
+#               costume ("what I can do instead", "here are some
+#               alternatives", ...) - the watered-down family that reads as a
+#               complete answer while never answering the ask;
+#   None     - clean: ship it.
+#
+# False-positive cost is ONE uncensored re-ask (the terminal answers fine);
+# false-negative cost is a shipped refusal. The law prices that asymmetry.
+# Kill switch: ZERO_REFUSAL=0 at the gateway restores the lenient
+# continue-with-primary behaviour.
+# ---------------------------------------------------------------------------
+_PARTIAL_REFUSAL_RE = re.compile(
+    r"""(?:
+        what\s+i\s+(?:can|could)\s+(?:do|offer|suggest)(?:\s+instead)?
+      | (?:what|here)\s+(?:i\s+)?(?:can|could)\s+(?:do|offer|suggest)(?:\s+instead)?,?
+      | (?:here|these)\s+(?:are|is)\s+(?:some|a\s+few|a\s+couple\s+of|several)?\s*
+        (?:alternatives?|options?|suggestions?|directions?|approaches?)
+      | (?:instead|alternatively)\b[^.!?\n]{0,60}\b(?:consider|try|opt\s+for)\b
+      | (?:a\s+)?(?:safer|tamer|milder|softer| toned[- ]down|gentler)\s+
+        (?:alternative|version|take|approach)
+      | i'?d\s+be\s+(?:happy|glad|delighted)\s+to\s+
+        (?:help|assist|write|answer|do)[^.!?\n]{0,50}
+        (?:instead|alternative|different|other|instead)
+      | let\s+me\s+know\s+(?:if|whether)\s+(?:you'?d|you|that)
+      | if\s+(?:that\s+)?(?:works|helps)[^.!?\n]{0,30}\b(?:let\s+me\s+know|feel\s+free)\b
+      | feel\s+free\s+to\s+(?:ask|request|let\s+me\s+know)
+      | tell\s+me\s+(?:which|what)[^.!?\n]{0,30}\b(?:direction|option|one)\b
+        [^.!?\n]{0,30}\b(?:you\s+(?:want|prefer|like)|i'?ll)\b
+    )""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def zero_refusal_violation(text: str) -> Optional[str]:
+    """The ZERO-REFUSAL judge: 'refusal' | 'partial' | None (see above)."""
+    if not text:
+        return None
+    norm = normalise(text)
+    if _PRESIGNAL_TAIL_RE.search(norm):
+        return "refusal"
+    if _PARTIAL_REFUSAL_RE.search(norm):
+        return "partial"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -690,7 +755,7 @@ FORCED_DIVERT_REASON = "forced_attack_content"
 FOOTNOTE_TEMPLATE = "\n\n{friendly} taking over..."
 
 _FRIENDLY_NAMES = {
-    "deepseek-ai/deepseek-v4.1-flash": "deepseek",
+    "deepseek-ai/deepseek-v4.1-flash-1017": "deepseek",
     "zai-org/glm-5.3-flash": "glm",
     "abliterated-model-large-v2": "abliterated",
     "abliterated-model-large": "abliterated",

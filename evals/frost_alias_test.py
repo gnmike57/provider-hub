@@ -32,9 +32,9 @@ def fresh_envs(monkeypatch):
 
 def test_alias_table_covers_the_three_systems():
     assert providers.resolve_frost_alias("deepfrost") == (
-        "primary", "deepseek-ai/deepseek-v4.1-flash")
+        "primary", "deepseek-ai/deepseek-v4.1-flash-1017")
     assert providers.resolve_frost_alias("deepfrost-v4.1") == (
-        "primary", "deepseek-ai/deepseek-v4.1-flash")
+        "primary", "deepseek-ai/deepseek-v4.1-flash-1017")
     assert providers.resolve_frost_alias("glmfrost") == (
         "primary", "zai-org/glm-5.3-flash")
     assert providers.resolve_frost_alias("glmfrost-5.3-flash") == (
@@ -49,7 +49,7 @@ def test_alias_table_covers_the_three_systems():
 
 
 def test_raw_ids_and_unknown_models_pass_through():
-    for raw in ("deepseek-ai/deepseek-v4.1-flash", "zai-org/glm-5.3-flash",
+    for raw in ("deepseek-ai/deepseek-v4.1-flash-1017", "zai-org/glm-5.3-flash",
                 "gpt-4o", "cyber35b", "", None):
         assert providers.resolve_frost_alias(raw) is None
 
@@ -64,7 +64,7 @@ def test_deepfrost_name_reaches_the_upstream_with_the_real_id(script):
     assert "ok" in resp.text
     sent = [c for c in script.calls if c["url"] == PRIMARY]
     assert sent, "the primary was never called"
-    assert sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash-1017"
 
 
 def test_glmfrost_name_uses_the_glm_upstream_id(script):
@@ -99,7 +99,7 @@ def test_raw_upstream_id_is_forwarded_unchanged(script):
     script.script(PRIMARY, [("sse", [chunk("ok", finish="stop"), DONE])])
     with TestClient(proxy_gateway.app) as tc:
         tc.post("/v1/chat/completions",
-                json={"model": "deepseek-ai/deepseek-v4.1-flash",
+                json={"model": "deepseek-ai/deepseek-v4.1-flash-1017",
                       "messages": [{"role": "user", "content": "hi"}]})
     sent = [c for c in script.calls if c["url"] == PRIMARY]
-    assert sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash-1017"

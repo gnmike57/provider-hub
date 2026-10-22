@@ -79,10 +79,17 @@ def test_refusal_stream_without_finish_reason_diverts_at_done(gw, script):
     assert proxy_gateway._METRICS["diverted_total"] == 1
 
 
-def test_presignal_recovered_before_done_does_not_divert(gw, script):
+def test_presignal_recovered_before_done_does_not_divert(gw, script, monkeypatch):
     """The mirror case: a refusal pre-signal that self-corrects with
-    substantive content must stream through - the [DONE] check must not
-    over-divert a recovered primary."""
+    substantive content streams through - the [DONE] check must not
+    over-divert a recovered primary.
+
+    ZERO-REFUSAL LAW (2026-10-22) refinement: the reply still CONTAINS the
+    refusal core ("I cannot help with that") - an answer carrying a spoken
+    refusal is a partial refusal, and the operator's law is never-ship-one.
+    Default: diverts. ZERO_REFUSAL=0: the pre-law lenient ship (the [DONE]
+    recovery logic itself is unchanged and still testable)."""
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "zero_refusal", 0)
     script.script(PRIMARY, [("sse", [
         chunk("I cannot help with that, "),
         chunk("but here is the full answer anyway: 42", finish="stop"),
@@ -95,6 +102,23 @@ def test_presignal_recovered_before_done_does_not_divert(gw, script):
     assert "here is the full answer anyway" in text
     assert "never called" not in text
     assert proxy_gateway._METRICS["diverted_total"] == 0
+
+
+def test_self_corrected_with_refusal_core_diverts_under_zero_refusal(gw, script):
+    """The same shape under the LAW (default): the core "I cannot help" in
+    the shipped reply is a partial refusal - the terminal re-answers."""
+    script.script(PRIMARY, [("sse", [
+        chunk("I cannot help with that, "),
+        chunk("but here is the full answer anyway: 42", finish="stop"),
+        DONE,
+    ])])
+    script.script(WORKER, [("sse", [chunk("terminal answer", finish="stop"), DONE])])
+    resp = gw.post("/v1/chat/completions",
+                   json={"messages": [{"role": "user", "content": "hi"}], "stream": True})
+    text = _deltas(resp)
+    assert "terminal answer" in text
+    assert "I cannot help" not in text
+    assert proxy_gateway._METRICS["zero_refusal_divert_total"] == 1
 
 
 # --- 2. CONTINUE_ENABLED=0: inline is_routable check ------------------------
@@ -113,7 +137,7 @@ def test_plain_frost_names_resolve_and_are_published(gw, script, monkeypatch):
     # legacy catalog view: the 3-chain-only default is explicitly opted out
     monkeypatch.setenv("CONSTELLATION_ONLY", "0")
     assert providers.resolve_frost_alias("DeepFrost v4.1") == (
-        "primary", "deepseek-ai/deepseek-v4.1-flash")
+        "primary", "deepseek-ai/deepseek-v4.1-flash-1017")
     assert providers.resolve_frost_alias("GLMFrost 5.3 Flash") == (
         "primary", "zai-org/glm-5.3-flash")
     # CYBER-FROST RETIRED (2026-10-21): the legacy name maps to the

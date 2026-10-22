@@ -1,0 +1,206 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Model Suffixes
+
+> Supported suffixes for web search, memory, PII redaction, caching, reasoning effort and visibility, thinking variants, and provider routing preferences.
+
+export const exampleTextModelName = "GPT 6.1 Sol";
+
+export const exampleTextModel = "openai/gpt-6.1-sol";
+
+# Model Suffixes
+
+Append supported suffixes to the `model` value to request optional behavior for a single request. Most suffixes are stripped before the base model is routed. Model identity suffixes, such as supported `:thinking` variants, are preserved because they identify a distinct model or alias.
+
+Suffix parsing is case-insensitive for provider routing and provider suffixes. Avoid combining multiple suffixes that make conflicting provider-selection requests.
+
+## Provider Routing Preference Suffixes
+
+These apply only to provider-selection-capable models.
+
+| Suffix | Meaning |
+| - | - |
+| `:speed` | Pick the provider with the best estimated completion time, using TTFT plus TPS. |
+| `:fast` | Alias for `:speed`. |
+| `:throughput` | Pick the provider with the highest tokens per second. |
+| `:latency` | Pick the provider with the lowest time to first token. |
+| `:price` | Pick the lowest estimated request cost, based on expected input/output usage and customer-facing rates, including opt-in providers. Stays on Auto routing, billed at the Auto price, when Auto is no more expensive. |
+| `:cheap` | Alias for `:price`. |
+| `:floor` | Alias for `:price`. |
+| `:tools` | Route to a tools-capable provider path for models that support tools provider selection. |
+| `:caching` | Require routing to a cache-capable provider, equivalent to top-level `caching: true`. |
+| `:cache` | Alias for `:caching`. |
+| `:cached` | Alias for `:caching`. |
+
+```json theme={null}
+{ "model": "zai-org/glm-5:fast", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "zai-org/glm-5:cheap", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "moonshotai/kimi-k2.6:thinking:caching", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "moonshotai/kimi-k2.6:tools", "messages": [{ "role": "user", "content": "Hello" }], "tools": [{ "type": "function", "function": { "name": "lookup", "parameters": { "type": "object", "properties": {} } } }] }
+```
+
+Rules:
+
+* Routing preference suffixes only consider user-selectable providers. Internal routing-only providers are excluded.
+* Routing preference suffixes are stripped before model mapping/routing. Non-routing identity suffixes such as `:thinking` are preserved.
+* Do not combine `:speed`, `:fast`, `:throughput`, `:latency`, `:price`, `:cheap`, or `:floor` with `X-Provider`, body `provider`, or a provider model suffix.
+* Do not combine `:tools` with a routing preference suffix, `X-Provider`, body `provider`, a provider model suffix, or `caching: true`.
+* Do not combine `:caching`, `:cache`, or `:cached` with `:tools`, `X-Provider`, body `provider`, a provider model suffix, or another routing preference suffix.
+* Routing preference requests are billed like explicit provider-selection requests.
+* Conflict error codes use the existing `speed_suffix_*` family for API compatibility, even when the suffix is not literally `:speed`.
+
+Price ranking is recalculated for every request and may switch providers, reducing cache reuse. It does not predict future cache hits. See [price routing, caps, and cache reuse](/api-reference/miscellaneous/provider-selection#price-caps-and-cache-reuse).
+
+The caching suffixes are provider-capability routing, not prompt-cache annotation. They do not add Anthropic-style `cache_control` markers, configure cache TTLs, or force a cache write. For details, see [Prompt Caching](/api-reference/miscellaneous/prompt-caching#cache-capable-provider-routing).
+
+## Provider Suffixes
+
+The API accepts a trailing provider suffix for public user-selectable provider IDs:
+
+```json theme={null}
+{ "model": "zai-org/glm-5:cerebras", "messages": [{ "role": "user", "content": "Hello" }] }
+```
+
+Recommended: use `X-Provider` for explicit provider overrides. The API also accepts a trailing provider suffix for user-selectable providers, such as `model-id:cerebras`, but `X-Provider` is clearer and easier to validate against provider-discovery responses.
+
+Provider suffixes must match a public user-selectable provider ID. They are case-insensitive, cannot be combined with routing preference suffixes or `:tools`, and are billed like explicit provider selection.
+
+## Web Search Suffixes
+
+| Suffix | Meaning |
+| - | - |
+| `:online` | Default web search, standard depth. GPT-5+ and o-series models use native search unless a provider is explicit; other models use Linkup. |
+| `:online/native` | The model's own search, on GPT-5+ and o-series, Claude 4+, Gemini 3+, and Grok 4.20+ (not image, multi-agent, or `:free` variants). Other models fall back to Linkup. |
+| `:online/linkup` | Linkup standard. |
+| `:online/linkup-deep` | Linkup deep. |
+| `:online/tavily` | Tavily standard. |
+| `:online/tavily-deep` | Tavily deep. |
+| `:online/brave` | Brave standard. |
+| `:online/brave-deep` | Brave deep. |
+| `:online/sofya` | Sofya search. Returns extracted page content; Sofya currently supports standard depth only. |
+| `:online/exa-fast` | Exa fast. |
+| `:online/exa-auto` | Exa auto. |
+| `:online/exa-neural` | Exa neural. |
+| `:online/exa-deep` | Exa deep. |
+| `:online/exa-deep-reasoning` | Exa deep-reasoning. |
+| `:online/exa-instant` | Exa instant. |
+| `:online/kagi` | Kagi standard search. |
+| `:online/kagi-web` | Kagi standard web. |
+| `:online/kagi-news` | Kagi standard news. |
+| `:online/kagi-search` | Kagi deep search. |
+| `:online/perplexity` | Perplexity standard. |
+| `:online/perplexity-deep` | Perplexity deep. |
+| `:online/valyu` | Valyu standard, all sources. |
+| `:online/valyu-deep` | Valyu deep, all sources. |
+| `:online/valyu-web` | Valyu standard, web only. |
+| `:online/valyu-web-deep` | Valyu deep, web only. |
+| `:online/firecrawl` | Firecrawl standard. |
+| `:online/firecrawl-deep` | Firecrawl deep. |
+
+Web search suffixes can compose with memory and reasoning-exclude suffixes. If request body `web_search.enabled` (or the `webSearch` / legacy `linkup` alias) is true, body configuration takes precedence over model suffix configuration. `web_search: false` does not switch off a suffix's search. See [Web Search](/api-reference/endpoint/chat-completion#web-search).
+
+Search has separate charges: see [hosted web search pricing](/api-reference/endpoint/web-search#pricing-hosted-key). Chat requests also incur model token charges.
+
+## Memory Suffixes
+
+| Suffix | Meaning |
+| - | - |
+| `:memory` | Enable Context Memory with default 30-day retention. |
+| `:memory-<days>` | Enable Context Memory with retention clamped to 1..365 days. |
+
+Header `memory_expiration_days` takes precedence over `:memory-<days>`. `memory: false` in the request body explicitly disables memory even if the model has a memory suffix. Memory can compose with web search, for example <code>{exampleTextModel}:online:memory-90</code>.
+
+## PII Redaction Suffixes
+
+| Suffix | Meaning |
+| - | - |
+| `:redaction` | Enable PII redaction for this request. |
+| `:redacted` | Alias for `:redaction`. |
+| `:piiredaction` | Alias for `:redaction`. |
+| `:piiredacted` | Alias for `:redaction`. |
+
+Redaction suffixes are stripped before model routing and can compose with other supported NanoGPT suffixes, such as `:online`. If a request explicitly enables redaction with a model suffix, redaction remains enabled even if an account-level or API-key default would otherwise be disabled for that request.
+
+For details, pricing, and limitations, see [PII Redaction](/api-reference/miscellaneous/pii-redaction).
+
+## Reasoning Effort Suffixes
+
+If a custom-provider client such as Chatbox or Cherry Studio does not expose a reasoning-effort setting, enter the effort in the model ID:
+
+```json theme={null}
+{
+  "model": "openai/gpt-latest:reasoning-effort/high",
+  "messages": [{ "role": "user", "content": "Analyze the tradeoffs of this design." }]
+}
+```
+
+On Chat Completions, this is equivalent to `model: "openai/gpt-latest"` with `reasoning_effort: "high"`. NanoGPT removes the suffix before model checks and routing, then resolves the base ID or compatibility alias normally. These are request shortcuts, not additional models: they do not appear in the model picker or `/v1/models`. Add the suffixed ID manually in your client; the shortcut does not enable the client's reasoning-setting UI.
+
+| Suffix | Requested effort |
+| - | - |
+| `:reasoning-effort/none` | `none` — request disabled reasoning where supported |
+| `:reasoning-effort/low` | `low` |
+| `:reasoning-effort/medium` | `medium` |
+| `:reasoning-effort/high` | `high` |
+| `:reasoning-effort/xhigh` | `xhigh` |
+| `:reasoning-effort/max` | `max` |
+
+Supported on `/v1/chat/completions`, `/v1/responses`, and `/v1/messages`, for streaming and non-streaming requests. Responses uses `reasoning.effort`; Messages uses `output_config.effort` for enabled reasoning levels. For `none`, Messages instead supplies `thinking: { type: "disabled" }`, because `output_config.effort` does not accept `none`. Tool-call turns and post-tool continuations accept the same suffix; include it on each request where you want the default effort.
+
+Rules:
+
+* Explicit request-body generation settings take precedence, including an effort, thinking budget, or disabled-thinking setting. For `none`, an explicit enabled-thinking setting also takes precedence. The suffix supplies a default only. Existing endpoint rules still determine precedence between body parameters.
+* Reasoning visibility is separate: `reasoning.exclude: true` hides reasoning without cancelling the suffix's requested effort. On endpoints supporting `:reasoning-exclude`, that suffix can also be combined with the effort suffix.
+* `none` requests disabled reasoning; it is not just an output-visibility filter. Models that require reasoning keep their existing restrictions. Use `:reasoning-exclude` where supported if you only want to hide reasoning output.
+* Effort support remains model/provider-specific. A suffix does not add reasoning capability or new effort levels to a model. `max` and `xhigh` are distinct inputs; existing provider-specific mappings still apply.
+* Effort suffixes are case-insensitive and can appear before or after other supported suffixes, such as `:thinking`, `:speed`, or a provider suffix. Other suffixes keep their normal compatibility and billing rules.
+* Use one effort suffix. If repeated, the rightmost recognized effort wins.
+* Unknown effort values are not stripped or silently replaced. They remain part of the model ID and are subject to normal model validation. The suffix shortcut accepts only the six values above; `minimal` remains available only through request-body controls on models that support it.
+
+```json theme={null}
+{ "model": "openai/gpt-latest:reasoning-effort/none", "messages": [{ "role": "user", "content": "Reply briefly." }] }
+{ "model": "openai/gpt-latest:reasoning-effort/high:reasoning-exclude", "messages": [{ "role": "user", "content": "Solve the problem." }] }
+{ "model": "z-ai/glm-5.3-flash:reasoning-effort/max", "messages": [{ "role": "user", "content": "Check this algorithm." }] }
+```
+
+## Reasoning and Thinking Suffixes
+
+| Suffix | Meaning |
+| - | - |
+| `:thinking` | Model-specific thinking/reasoning variant when that exact ID or documented alias exists. |
+| `-thinking` | Legacy alias pattern for some model families only, not universal. |
+| `:<number>` on Anthropic thinking IDs | Thinking budget suffix for mapped Anthropic thinking aliases, for example `claude-sonnet-4-thinking:8192`. |
+| `:reasoning-exclude` | Equivalent to `reasoning: { "exclude": true }`; hides reasoning fields/blocks and strips the suffix before routing. |
+
+`:reasoning-exclude` works on Chat Completions and Text Completions. It composes with other suffixes such as `:thinking`, `:online`, and `:memory`. `:thinking` is model identity, not provider routing, and is not universal.
+
+## Official and Original Route Suffixes
+
+Some model families expose `:official` / `:original` aliases to force the official-provider route. These are model-specific; check the model page or provider-selection docs for supported IDs.
+
+## Conflict Rules
+
+Do not combine conflicting routing directives:
+
+```json theme={null}
+{ "model": "zai-org/glm-5:fast:cerebras" }
+{ "model": "zai-org/glm-5:cheap", "provider": "cerebras" }
+{ "model": "zai-org/glm-5:tools:fast" }
+```
+
+## Examples
+
+```json theme={null}
+{ "model": "zai-org/glm-5:fast", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "zai-org/glm-5:cheap", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "zai-org/glm-5:thinking:fast", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "moonshotai/kimi-k2.6:thinking:caching", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "openai/gpt-6.1-sol:online/exa-instant:memory-30", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "openai/gpt-6.1-sol:redaction:online", "messages": [{ "role": "user", "content": "Hello" }] }
+{ "model": "anthropic/claude-opus-4.6:memory-30:online/linkup-deep:reasoning-exclude", "messages": [{ "role": "user", "content": "Hello" }] }
+```
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

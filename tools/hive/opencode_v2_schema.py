@@ -29,7 +29,7 @@ def main(secret):
         ("111-gx10", "111-gx10 brain (DGX Spark @ cyber.local:8015)", "http://cyber.local:8015/v1",
          "sk-local", ["qwen2.5-72b-abliterated"]),
         ("hive", "Hive (thehive.ai)", BASE, secret,
-         ["deepseek-ai/deepseek-v4.1-flash", "zai-org/glm-5.3-flash"]),
+         ["deepseek-ai/deepseek-v4.1-flash-1017", "zai-org/glm-5.3-flash"]),
     ]
     providers = {}
     for pid, name, url, key, models in local:
@@ -40,14 +40,14 @@ def main(secret):
                          "chunkTimeout": 180000},
             "models": {m: {"name": m} for m in models},
         }
-    providers["hive"]["models"]["deepseek-ai/deepseek-v4.1-flash"]["name"] = \
-        "DeepSeek 4.1 Flash (1M ctx, vision, tools)"
+    providers["hive"]["models"]["deepseek-ai/deepseek-v4.1-flash-1017"]["name"] = \
+        "DeepSeek 4.1 Flash 1017 (1M ctx, vision, tools)"
     providers["hive"]["models"]["zai-org/glm-5.3-flash"]["name"] = \
         "GLM 5.3 Flash (1M ctx, vision/video, tools)"
 
     doc = {
         "$schema": "https://opencode.ai/config.json",
-        "model": {"providerID": "hive", "model": "deepseek-ai/deepseek-v4.1-flash"},
+        "model": {"providerID": "hive", "model": "deepseek-ai/deepseek-v4.1-flash-1017"},
         "small_model": {"providerID": "hive", "model": "zai-org/glm-5.3-flash"},
         "providers": providers,
     }

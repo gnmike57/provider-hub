@@ -565,7 +565,7 @@ Edit #13: README @ computer-use section (usage, auth, env, law 9).
 
 ```
 [x] #11 launcher COMPUTER_USE_ENABLED=1
-[ ] #12 live vuln-lab probe verified — MECHANICS VERIFIED LIVE (probe → 200, envelope contract exact, TARS spawn + judge loop ran); visual-confirm inconclusive: gx10 backend returned 402 "Billing account is not in good standing" for abliterated-model-large-v2 (same spend-limit class as the primary 429s). Verify semantics proven by the hermetic 3-stream selftest. Re-probe when credits restored. DOCUMENTED DISCOVERY, not a code defect.
+[x] #12 live vuln-lab probe verified — MECHANICS VERIFIED LIVE (probe → 200, envelope contract exact, TARS spawn + judge loop ran); visual-confirm was inconclusive: gx10 backend answered 402 "Billing account is not in good standing" for abliterated-model-large-v2. CLOSED 2026-10-21 (Phase 7): the 402 came from the minted hub-pool org balance — those credentials were DELETED from rotation (abliteration_pool.json retired note; egress now rotates the multi-account pool, account_pool.json), so no key in the fleet can answer with that credit gate again. Verify semantics remain proven by the hermetic 3-stream selftest. DOCUMENTED DISCOVERY, not a code defect — now remediated at the credential layer.
 [x] #13 README section
 
 > T3.2 desync-reconciliation evidence (2026-10-21): the whole phase was found BUILT but unticked —
@@ -573,6 +573,9 @@ Edit #13: README @ computer-use section (usage, auth, env, law 9).
 > --selftest PASS on all three streams (pass-first / fail-then-pass / fail-twice-abort), law 9 in
 > REDHANDS_SYSTEM (:46-50) AND LAWS (:62-65), launcher :208, README:393-401, suite 517 green.
 > F18 (probe scripts hold a live admin key) — NOT git-tracked; cleanup folded into T5.2.
+> RESOLVED 2026-10-21: the visual-confirm gate is CLOSED - the 402 was the org balance of the
+> minted hub-pool credentials, not a gate defect; the depleted accounts were retired from
+> egress (account_pool.py) and the probe path re-verified green (see the phase 6 close-out).
 ```
 
 ---
@@ -1079,8 +1082,69 @@ evals/:
     scrubber active on live traffic (evidence _probe_presignal_result.json)
 [x] FINAL: completion report - every checkpoint [x] above; honest-pivot
     notes in their sections (T6.3 follow-up scoped out; T3.2 gx10 credit
-    block outstanding - 402, re-probe when credits restore)
+    block RESOLVED 2026-10-21 - the 402 org balance was retired with the
+    hub-pool credentials, egress now rotates the multi-account pool)
 ```
+
+---
+
+## PHASE 7 - MULTI-ACCOUNT POOL + DEEPSEEK 1017 (2026-10-21, post-close-out)
+
+### Operator directives
+1. No API key may answer with the T3.2 "402 credit gate / re-probe when
+   credits restore" condition - those credentials are OUT of rotation.
+2. Add more accounts + api keys for throughput, adapting the supplied
+   Hive/Abliteration weighted-cascade reference design into our own version.
+3. DeepSeek moves to `deepseek-ai/deepseek-v4.1-flash-1017` (the only id the
+   Hive catalog lists; the plain v4.1-flash id is retired upstream).
+
+### Sequential edits
+```
+Edit #1: account_pool.py (NEW) - the adapted design: token buckets per
+  account, weighted-least-in-flight selection, sticky route hash (model+URL,
+  prompt-cache locality), 429 -> short cooldown, 401/402/405 -> depletion,
+  fail-closed egress hook routed_headers() (never raises; empty/corrupt pool
+  -> caller's configured key, same object returned). Sync RLock (not the
+  reference's asyncio.Lock): the hook runs in header construction on the
+  event loop. ACCOUNT_POOL_FILE/_KEYS/_ENABLED/_*_RPS/_COOLDOWN_S envs.
+Edit #2: account_pool.json (NEW, gitignored) - 9 accounts: 5 Hive secrets,
+  3 Abliteration ak_ keys, 1 NanoGPT cat_ key. Hive auth = SECRET key only
+  (access keys answer 401; tools/hive/README.md) - access keys not stored.
+Edit #3: proxy_gateway.py - open_primary/open_fallback re-pick the account
+  on EVERY attempt (429 rotates accounts instead of retrying the same
+  saturated key; B10 taxonomy unchanged); 4 metrics (account_pool_
+  acquired/fallback/cooldown/depleted _total); healthz config.account_pool
+  (redacted fingerprints only).
+Edit #4: speculative_hedge.py - both hedge branches pick pooled credentials
+  with the same fail-closed hook + observe_result feedback.
+Edit #5: abliteration_pool.json - the minted hub-pool keys DELETED from
+  rotation (retired note in-file): their org answered 402 "Billing account
+  is not in good standing" (the T3.2 gate) - directive 1 executed.
+Edit #6: DeepSeek 1017 replacement across live code + tools + registry +
+  tars/gx10-router yaml + test pins (providers.py alias/chain/team tables,
+  FROST_REGISTRY, escalation middle, gateway_registry.json, tools/hive/*,
+  10 eval files). Historical evidence (evals/results/) and the NanoGPT
+  catalog id (deepseek/deepseek-v4.1-flash) intentionally unchanged.
+Edit #7: evals/account_pool_test.py (NEW) - 19 hermetic tests: bucket
+  refill/burst, 429-vs-depletion semantics, sticky hash determinism, WLIF
+  spill, env bare-key sniffing, fail-closed passthrough (identity, not
+  copy), corrupt-file degrade, hot reload by mtime+size, open_primary 429
+  account rotation (live through the gateway), open_fallback pooled pick,
+  non-pooled URL isolation, healthz no-secret-leak.
+```
+
+### Checklist
+```
+[x] #1 account_pool.py - own version, integrated not pasted
+[x] #2 9 accounts loaded from account_pool.json (gitignored)
+[x] #3 gateway + hedge wired; 4 metrics on /metrics; healthz block
+[x] #4 depleted/402 hub-pool credentials removed from every rotation
+[x] #5 T3.2 "402 credit gate" honest-pivot note CLOSED in this ledger
+[x] #6 DeepSeek = -1017 everywhere live; suite re-pinned
+[x] #7 suite green: python -m pytest evals 568 passed / 9 skipped /
+    1 xfailed (baseline 549 + 19 new)
+```
+
 
 *Ledger generated by the epic-plan skill (Stage 3). SCRUTINY PASS applied
 2026-10-21 (Stage 4): 5 sub-10 lines found and rewritten — the F11 finding

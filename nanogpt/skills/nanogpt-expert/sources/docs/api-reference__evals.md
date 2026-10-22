@@ -1,0 +1,1037 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.nano-gpt.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Evals and Observability
+
+> Run prompt and model experiments, freeze datasets, version scorers, inspect traces, and aggregate eval metrics.
+
+# NanoGPT Evals and Observability API
+
+NanoGPT Evals lets you run durable prompt and model experiments, freeze datasets, version scorers, inspect traces, and aggregate latency, cost, token, error, and score trends. The API is available under `/api/v1/evals/*`.
+
+The same platform powers Prompt Lab at `/prompt-lab`.
+
+## Core Concepts
+
+### Projects
+
+A project groups datasets, experiments, traces, and dashboard metrics. If an experiment is created without a `project_id`, NanoGPT uses a default Prompt Lab project for the authenticated user.
+
+### Datasets and Dataset Versions
+
+A dataset is an editable set of eval rows. A dataset version is a frozen snapshot of the dataset at a point in time. Experiments should use dataset versions when reproducibility matters.
+
+Dataset rows support:
+
+```json theme={null}
+{
+  "input": "User prompt or task",
+  "expected_output": "Optional target answer",
+  "context": "Optional extra context",
+  "metadata": {
+    "case": "optional structured metadata"
+  }
+}
+```
+
+### Scorers
+
+A scorer grades candidate outputs. Scorers are versioned, so an experiment stores the exact scorer snapshot used at run time.
+
+Supported scorer types:
+
+* `exact_match`
+* `contains`
+* `regex`
+* `json_schema`
+* `threshold`
+* `llm_judge`
+* `pairwise_llm`
+
+<Note>
+  This version does not run arbitrary JavaScript or Python scorers.
+</Note>
+
+### Experiments
+
+An experiment compares one or more candidates over a dataset or inline rows. Experiments are asynchronous and durable.
+
+Experiment statuses:
+
+* `queued`
+* `in_progress`
+* `completed`
+* `failed`
+* `cancelled`
+
+Experiments store candidate prompt, model, and config snapshots, scorer snapshots, progress, traces, scores, errors, and cost and usage metadata.
+
+### Traces
+
+A trace records a generation or scoring call. Traces store metadata, timings, usage, cost, status, and errors. Prompt and output content is not stored unless explicitly requested.
+
+### Privacy Defaults
+
+By default, traces are metadata-only.
+
+NanoGPT stores prompt and output content only when:
+
+* a user explicitly saves Prompt Lab dataset or experiment content
+* an API caller passes a content-storage opt-in such as `nanogpt_eval_store_content: true`
+
+Requested content storage can be suppressed when content is not safe or not available to store. When suppression happens, trace metadata includes `content_suppressed_reason`.
+
+Current suppression reasons include:
+
+| Reason | Description |
+| - | - |
+| `pii_redaction_enabled` | Redaction was enabled for the request. |
+| `output_content_unavailable` | Content storage was requested, but no output text was available to persist. |
+
+## Authentication
+
+Use the same authentication as the NanoGPT API. For API callers, pass your API key in the `Authorization` header:
+
+```http theme={null}
+Authorization: Bearer $NANOGPT_API_KEY
+```
+
+All eval objects are scoped to the authenticated session, team, and API key context.
+
+## Limits
+
+Current experiment limits:
+
+* up to 100 eval items per dataset or inline run
+* up to 5 candidates per experiment
+* up to 10 scorers per experiment
+* up to 100 generation and scoring work units per experiment
+
+Work units are calculated as:
+
+```text theme={null}
+items * candidates * max(1, scorer_count + 1)
+```
+
+Eval run and item rate limits are applied to normal runs and reruns. Rate-limited responses return HTTP `429` with `Retry-After`.
+
+## Object Shapes
+
+### Project
+
+```json theme={null}
+{
+  "id": "project_...",
+  "object": "eval.project",
+  "name": "Support Bot",
+  "description": "Support prompt evaluation",
+  "settings": {},
+  "created_at": "2026-05-15T12:00:00.000Z",
+  "updated_at": "2026-05-15T12:00:00.000Z"
+}
+```
+
+### Dataset Version
+
+```json theme={null}
+{
+  "id": "datasetv_...",
+  "object": "eval.dataset_version",
+  "dataset_id": "evaldataset_...",
+  "version": 3,
+  "item_count": 25,
+  "items": [
+    {
+      "id": "evalitem_...",
+      "dataset_item_id": "evalitem_...",
+      "input": "Explain rate limits",
+      "expected_output": "Mentions quotas and retry behavior",
+      "context": null,
+      "metadata": { "topic": "billing" },
+      "metadata_index": 0
+    }
+  ],
+  "source": "manual",
+  "created_at": "2026-05-15T12:00:00.000Z"
+}
+```
+
+### Scorer
+
+```json theme={null}
+{
+  "id": "scorer_...",
+  "object": "eval.scorer",
+  "version_id": "scorerv_...",
+  "version": 1,
+  "name": "Helpful Judge",
+  "description": "Scores helpfulness from 0 to 1",
+  "scorer_type": "llm_judge",
+  "config": {},
+  "prompt": "Evaluate the response. Return {\"score\": number, \"reasoning\": string}.",
+  "judge_model": "openai/gpt-5.4-mini",
+  "created_at": "2026-05-15T12:00:00.000Z"
+}
+```
+
+### Experiment
+
+```json theme={null}
+{
+  "id": "experiment_...",
+  "object": "eval.experiment",
+  "project_id": "project_...",
+  "name": "Support answer comparison",
+  "description": null,
+  "dataset_version_id": "datasetv_...",
+  "status": "in_progress",
+  "progress": {
+    "total_items": 10,
+    "total_traces": 20,
+    "completed_traces": 8,
+    "failed_traces": 0,
+    "total_scores": 40,
+    "completed_scores": 12,
+    "failed_scores": 0
+  },
+  "candidates": [],
+  "scorers": [],
+  "settings": {
+    "store_content": true,
+    "redaction": false
+  },
+  "error": null,
+  "created_at": "2026-05-15T12:00:00.000Z",
+  "started_at": "2026-05-15T12:00:02.000Z",
+  "completed_at": null,
+  "cancelled_at": null,
+  "expires_at": "2026-06-14T12:00:00.000Z"
+}
+```
+
+### Trace
+
+```json theme={null}
+{
+  "id": "trace_...",
+  "object": "eval.trace",
+  "project_id": "project_...",
+  "experiment_id": "experiment_...",
+  "experiment_item_id": "experimentitem_...",
+  "trace_type": "generation",
+  "source": "prompt_lab_experiment",
+  "group_id": "experiment_...",
+  "parent_trace_id": null,
+  "status": "completed",
+  "model": "openai/gpt-5.4-mini",
+  "provider": "nanogpt",
+  "store_content": false,
+  "input_content": null,
+  "output_content": null,
+  "metadata": {
+    "candidate_id": "candidate_1"
+  },
+  "usage": {
+    "prompt_tokens": 120,
+    "completion_tokens": 80
+  },
+  "cost_usd": 0.0004,
+  "latency_ms": 1200,
+  "error": null,
+  "started_at": "2026-05-15T12:00:00.000Z",
+  "completed_at": "2026-05-15T12:00:01.200Z",
+  "expires_at": "2026-06-14T12:00:00.000Z"
+}
+```
+
+## Quick Start
+
+### 1. Create a dataset
+
+```bash theme={null}
+curl -X POST "https://api.nano-gpt.com/api/v1/evals/datasets" \
+  -H "Authorization: Bearer $NANOGPT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Support QA",
+    "items": [
+      {
+        "input": "Explain API rate limits to a non-technical founder.",
+        "expected_output": "Mentions quotas, retry behavior, and practical next steps.",
+        "metadata": { "topic": "api" }
+      }
+    ]
+  }'
+```
+
+### 2. Freeze a dataset version
+
+```bash theme={null}
+curl -X POST "https://api.nano-gpt.com/api/v1/evals/datasets/evaldataset_abc123/versions" \
+  -H "Authorization: Bearer $NANOGPT_API_KEY"
+```
+
+### 3. Create a scorer
+
+```bash theme={null}
+curl -X POST "https://api.nano-gpt.com/api/v1/evals/scorers" \
+  -H "Authorization: Bearer $NANOGPT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Helpful Judge",
+    "scorer_type": "llm_judge",
+    "judge_model": "openai/gpt-5.4-mini",
+    "prompt": "Evaluate whether the response is helpful. Input: {{input}}\nResponse: {{output}}\nExpected: {{expected_output}}\nReturn only JSON: {\"score\": number, \"reasoning\": string}."
+  }'
+```
+
+### 4. Create an async experiment
+
+```bash theme={null}
+curl -X POST "https://api.nano-gpt.com/api/v1/evals/experiments" \
+  -H "Authorization: Bearer $NANOGPT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Support QA prompt comparison",
+    "dataset_version_id": "datasetv_abc123",
+    "candidates": [
+      {
+        "id": "baseline",
+        "name": "Baseline",
+        "model": "openai/gpt-5.4-mini",
+        "system": "You are concise and practical.",
+        "prompt": "{{input}}"
+      },
+      {
+        "id": "detailed",
+        "name": "Detailed",
+        "model": "openai/gpt-5.4-mini",
+        "system": "You are clear, practical, and include examples.",
+        "prompt": "{{input}}"
+      }
+    ],
+    "scorer_ids": ["scorer_abc123"],
+    "settings": {
+      "store_content": true,
+      "redaction": false
+    }
+  }'
+```
+
+The response returns an experiment with status `queued` or `in_progress`. Poll the experiment until status is terminal.
+
+### 5. Poll the experiment
+
+```bash theme={null}
+curl "https://api.nano-gpt.com/api/v1/evals/experiments/experiment_abc123" \
+  -H "Authorization: Bearer $NANOGPT_API_KEY"
+```
+
+### 6. Read output items
+
+```bash theme={null}
+curl "https://api.nano-gpt.com/api/v1/evals/experiments/experiment_abc123/output_items" \
+  -H "Authorization: Bearer $NANOGPT_API_KEY"
+```
+
+## API Reference
+
+### Projects
+
+#### List projects
+
+```http theme={null}
+GET /api/v1/evals/projects
+```
+
+Returns:
+
+```json theme={null}
+{
+  "object": "list",
+  "data": []
+}
+```
+
+#### Create project
+
+```http theme={null}
+POST /api/v1/evals/projects
+```
+
+Body:
+
+```json theme={null}
+{
+  "name": "Support Bot",
+  "description": "Optional description",
+  "settings": {}
+}
+```
+
+#### Get project
+
+```http theme={null}
+GET /api/v1/evals/projects/{project_id}
+```
+
+#### Update project
+
+```http theme={null}
+PATCH /api/v1/evals/projects/{project_id}
+```
+
+Body fields:
+
+```json theme={null}
+{
+  "name": "New name",
+  "description": "New description",
+  "settings": {}
+}
+```
+
+#### Delete project
+
+```http theme={null}
+DELETE /api/v1/evals/projects/{project_id}
+```
+
+Returns:
+
+```json theme={null}
+{
+  "deleted": true,
+  "id": "project_..."
+}
+```
+
+### Datasets
+
+#### List datasets
+
+```http theme={null}
+GET /api/v1/evals/datasets
+```
+
+#### Create dataset
+
+```http theme={null}
+POST /api/v1/evals/datasets
+```
+
+Body:
+
+```json theme={null}
+{
+  "id": "evaldataset_optional_custom_id",
+  "name": "Dataset name",
+  "description": "Optional description",
+  "items": [
+    {
+      "input": "Required input",
+      "output": "Optional existing output",
+      "system": "Optional system message",
+      "expected_output": "Optional expected output",
+      "context": "Optional context",
+      "metadata": {}
+    }
+  ]
+}
+```
+
+Custom dataset IDs must start with `evaldataset_` and contain 6 to 80 letters, numbers, underscores, or dashes after the prefix.
+
+#### Get dataset
+
+```http theme={null}
+GET /api/v1/evals/datasets/{dataset_id}
+```
+
+Returns the dataset and its current items.
+
+#### Delete dataset
+
+```http theme={null}
+DELETE /api/v1/evals/datasets/{dataset_id}
+```
+
+Deletes the dataset by marking it deleted. Historical runs and versions keep their snapshots.
+
+### Dataset Versions
+
+#### List dataset versions
+
+```http theme={null}
+GET /api/v1/evals/datasets/{dataset_id}/versions
+```
+
+#### Create dataset version
+
+```http theme={null}
+POST /api/v1/evals/datasets/{dataset_id}/versions
+```
+
+Freezes the current dataset rows into a new immutable version.
+
+### Scorers
+
+#### List scorers
+
+```http theme={null}
+GET /api/v1/evals/scorers
+```
+
+Includes built-in scorers, legacy custom evaluators, and versioned scorers.
+
+#### Create scorer
+
+```http theme={null}
+POST /api/v1/evals/scorers
+```
+
+Body:
+
+```json theme={null}
+{
+  "id": "optional_scorer_id",
+  "scorer_id": "optional_scorer_id",
+  "name": "Scorer name",
+  "description": "Optional description",
+  "scorer_type": "llm_judge",
+  "config": {},
+  "prompt": "Required for llm_judge",
+  "judge_model": "openai/gpt-5.4-mini"
+}
+```
+
+For `llm_judge`, `prompt` is required.
+
+If both `id` and `scorer_id` are omitted, NanoGPT generates a scorer ID.
+
+#### Get latest scorer
+
+```http theme={null}
+GET /api/v1/evals/scorers/{scorer_id}
+```
+
+#### Delete scorer
+
+```http theme={null}
+DELETE /api/v1/evals/scorers/{scorer_id}
+```
+
+Deletes all stored versions for the scorer ID.
+
+## Scorer Configuration
+
+### exact\_match
+
+Compares output to `expected_output`.
+
+Config:
+
+```json theme={null}
+{
+  "case_sensitive": false
+}
+```
+
+### contains
+
+Checks whether output contains a configured value or `expected_output`.
+
+Config:
+
+```json theme={null}
+{
+  "value": "required substring",
+  "case_sensitive": false
+}
+```
+
+### regex
+
+Checks whether output matches a regular expression.
+
+Config:
+
+```json theme={null}
+{
+  "pattern": "success|passed",
+  "flags": "i"
+}
+```
+
+If `pattern` is omitted, the scorer uses `expected_output` as the pattern.
+
+### json\_schema
+
+Parses output as JSON and validates a supported JSON-schema subset.
+
+Config:
+
+```json theme={null}
+{
+  "schema": {
+    "type": "object",
+    "required": ["answer"],
+    "properties": {
+      "answer": {
+        "type": "string",
+        "minLength": 2
+      }
+    }
+  }
+}
+```
+
+Supported schema fields:
+
+* `type`
+* `required`
+* `properties`
+* `items`
+* `enum`
+* `minimum`
+* `maximum`
+* `minLength`
+* `maxLength`
+
+Nested properties and items validation is capped at 10 levels.
+
+### threshold
+
+Converts a value to a number and passes if it is greater than or equal to a threshold.
+
+Config:
+
+```json theme={null}
+{
+  "source": "metadata.score",
+  "threshold": 0.7
+}
+```
+
+Supported sources:
+
+* `output`
+* `expected_output`
+* `metadata.score`
+
+### llm\_judge
+
+Calls a judge model and expects JSON:
+
+```json theme={null}
+{
+  "score": 0.8,
+  "reasoning": "The response directly answers the user."
+}
+```
+
+The score is clamped to `0..1`.
+
+Prompt templates may reference:
+
+* `{{input}}`
+* `{{output}}`
+* `{{expected_output}}`
+* `{{context}}`
+* `{{system}}`
+* `{{metadata.some_key}}`
+
+### pairwise\_llm
+
+Compares a challenger candidate against a baseline candidate with an LLM judge. A score of `1` means the challenger is better, `0` means the baseline is better, and `0.5` means a tie.
+
+Config:
+
+```json theme={null}
+{
+  "baseline_candidate_id": "baseline"
+}
+```
+
+If no baseline is configured, the first candidate is used.
+
+## Experiments
+
+### List experiments
+
+```http theme={null}
+GET /api/v1/evals/experiments
+```
+
+Query parameters:
+
+| Parameter | Description |
+| - | - |
+| `project_id` | Optional project filter. |
+| `limit` | Default `50`, maximum `100`. |
+
+### Create experiment
+
+```http theme={null}
+POST /api/v1/evals/experiments
+```
+
+Body:
+
+```json theme={null}
+{
+  "project_id": "project_...",
+  "name": "Experiment name",
+  "description": "Optional description",
+  "dataset_id": "evaldataset_...",
+  "dataset_version_id": "datasetv_...",
+  "data": [
+    {
+      "input": "Inline row",
+      "expected_output": "Optional expected output",
+      "context": "Optional context",
+      "metadata": {}
+    }
+  ],
+  "candidates": [
+    {
+      "id": "baseline",
+      "name": "Baseline",
+      "model": "openai/gpt-5.4-mini",
+      "system": "Optional system message",
+      "prompt": "{{input}}",
+      "config": {
+        "temperature": 0
+      }
+    }
+  ],
+  "scorer_ids": ["scorer_..."],
+  "settings": {
+    "store_content": true,
+    "redaction": false,
+    "trace_group": "optional-group",
+    "judge_model": "openai/gpt-5.4-mini"
+  }
+}
+```
+
+Use one data source:
+
+* `dataset_id`
+* `dataset_version_id`
+* inline `data` or `items`
+
+Do not pass both `dataset_id` and `dataset_version_id`.
+
+For inline experiments, content storage must be enabled because the experiment needs row snapshots to run asynchronously.
+
+Candidate fields:
+
+| Field | Description |
+| - | - |
+| `id` | Optional. Defaults to `candidate_1`, `candidate_2`, and so on. |
+| `name` | Optional candidate name. |
+| `model` | Required model ID. |
+| `system` | Optional system message. |
+| `prompt` | Optional. Defaults to `{{input}}`. |
+| `config` | Optional generation config. `model`, `messages`, and `stream` are ignored if included. |
+
+The endpoint returns `202 Accepted` and an experiment object.
+
+### Get experiment
+
+```http theme={null}
+GET /api/v1/evals/experiments/{experiment_id}
+```
+
+Use this endpoint to poll status and progress.
+
+### Cancel experiment
+
+```http theme={null}
+POST /api/v1/evals/experiments/{experiment_id}/cancel
+```
+
+Only queued or in-progress experiments can be cancelled.
+
+### Rerun experiment
+
+```http theme={null}
+POST /api/v1/evals/experiments/{experiment_id}/rerun
+```
+
+Creates a new experiment from the original experiment snapshot and schedules it asynchronously.
+
+### List experiment output items
+
+```http theme={null}
+GET /api/v1/evals/experiments/{experiment_id}/output_items
+```
+
+Query parameters:
+
+| Parameter | Description |
+| - | - |
+| `redact_content` | Set to `true` to hide stored input and output content in the response. |
+
+Response:
+
+```json theme={null}
+{
+  "experiment": {},
+  "items": [],
+  "data": [
+    {
+      "id": "trace_...",
+      "object": "eval.trace",
+      "status": "completed",
+      "output_content": "Stored output if store_content was true",
+      "scores": [
+        {
+          "id": "score_...",
+          "scorer_id": "scorer_...",
+          "score": 0.8,
+          "reasoning": "Good answer",
+          "status": "completed"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Traces
+
+### List traces
+
+```http theme={null}
+GET /api/v1/evals/traces
+```
+
+Query parameters:
+
+| Parameter | Description |
+| - | - |
+| `project_id` | Optional project filter. |
+| `experiment_id` | Optional experiment filter. |
+| `model` | Optional model filter. |
+| `provider` | Optional routing label. Public responses use generic NanoGPT routing labels rather than internal provider names. |
+| `status` | Optional status filter. |
+| `source` | Optional source filter. |
+| `limit` | Default `50`, maximum `200`. |
+
+### Get trace
+
+```http theme={null}
+GET /api/v1/evals/traces/{trace_id}
+```
+
+Returns the trace plus attached scores.
+
+## Dashboard
+
+```http theme={null}
+GET /api/v1/evals/dashboard
+```
+
+Query parameters:
+
+| Parameter | Description |
+| - | - |
+| `project_id` | Optional project filter. |
+| `experiment_id` | Optional experiment filter. |
+
+Returns aggregate metrics:
+
+```json theme={null}
+{
+  "trace_count": 100,
+  "cost_usd": 0.42,
+  "prompt_tokens": 10000,
+  "completion_tokens": 5000,
+  "avg_latency_ms": 1200,
+  "p50_latency_ms": 900,
+  "p95_latency_ms": 2400,
+  "error_count": 2,
+  "error_rate": 0.02,
+  "model_provider_breakdown": [],
+  "scorer_trends": []
+}
+```
+
+## Opt-in Chat Completion Tracing
+
+Normal `/v1/chat/completions` requests do not create eval traces.
+
+To trace a normal API request, add `metadata.nanogpt_eval_trace: true` to the chat completion request.
+
+Example:
+
+```bash theme={null}
+curl -X POST "https://api.nano-gpt.com/v1/chat/completions" \
+  -H "Authorization: Bearer $NANOGPT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-5.4-mini",
+    "messages": [
+      { "role": "user", "content": "Explain API rate limits." }
+    ],
+    "metadata": {
+      "nanogpt_eval_trace": true,
+      "nanogpt_eval_project_id": "project_...",
+      "nanogpt_eval_trace_group": "docs-example",
+      "nanogpt_eval_store_content": false,
+      "customer_request_id": "kept-and-forwarded"
+    }
+  }'
+```
+
+Supported eval metadata keys:
+
+| Key | Description |
+| - | - |
+| `nanogpt_eval_trace` | Boolean. Must be `true` to create a trace. |
+| `nanogpt_eval_project_id` | Optional project ID. |
+| `nanogpt_eval_experiment_id` | Optional experiment ID. |
+| `nanogpt_eval_trace_group` | Optional group ID. |
+| `nanogpt_eval_store_content` | Boolean. Stores prompt and output content only when `true`. |
+
+NanoGPT strips only `metadata.nanogpt_eval_*` keys before provider dispatch. Other metadata keys remain untouched.
+
+If `nanogpt_eval_store_content` is omitted or `false`, the trace stores metadata, usage, cost, latency, status, and errors, but not prompt or output content.
+
+If `nanogpt_eval_store_content` is `true` but the request does not produce output text available to the trace recorder, NanoGPT keeps the trace metadata-only and records `content_suppressed_reason: "output_content_unavailable"` in trace metadata.
+
+## Legacy Evaluator Endpoints
+
+The original evaluator API remains available for compatibility.
+
+### List legacy evaluators
+
+```http theme={null}
+GET /api/v1/evals
+```
+
+### Create legacy evaluator
+
+```http theme={null}
+POST /api/v1/evals
+```
+
+Body:
+
+```json theme={null}
+{
+  "id": "eval_optional_custom_id",
+  "name": "Helpfulness",
+  "description": "Optional",
+  "prompt": "Evaluate this response. Return JSON with score and reasoning.",
+  "judge_model": "openai/gpt-5.4-mini"
+}
+```
+
+Custom evaluator IDs must start with `eval_` and contain 6 to 80 letters, numbers, underscores, or dashes after the prefix.
+
+### Run legacy evaluator
+
+```http theme={null}
+POST /api/v1/evals/{eval_id}/runs
+```
+
+Body:
+
+```json theme={null}
+{
+  "dataset_id": "evaldataset_...",
+  "data": [
+    {
+      "input": "Question",
+      "output": "Candidate answer",
+      "expected_output": "Expected answer",
+      "context": "Optional context",
+      "metadata": {}
+    }
+  ],
+  "store": true,
+  "judge_model": "openai/gpt-5.4-mini",
+  "redaction": false,
+  "concurrency": 4,
+  "metadata": {}
+}
+```
+
+Use either `dataset_id` or inline `data`.
+
+### Get stored legacy run
+
+```http theme={null}
+GET /api/v1/evals/{eval_id}/runs/{run_id}
+```
+
+### Get stored legacy run output items
+
+```http theme={null}
+GET /api/v1/evals/{eval_id}/runs/{run_id}/output_items
+```
+
+## Retention
+
+Default retention is 30 days. Trace records, stored trace content, jobs, and old experiment artifacts are cleaned up by the eval cleanup job. Projects, datasets, dataset versions, and scorers are durable until deleted.
+
+## Error Responses
+
+Validation errors return HTTP `400`:
+
+```json theme={null}
+{
+  "error": "name is required"
+}
+```
+
+Missing resources return HTTP `404`:
+
+```json theme={null}
+{
+  "error": "Experiment not found"
+}
+```
+
+Rate limits return HTTP `429`:
+
+```json theme={null}
+{
+  "error": {
+    "message": "Too many eval runs. Please slow down and try again later.",
+    "type": "rate_limit_error",
+    "code": "rate_limit_exceeded"
+  }
+}
+```
+
+Unexpected server failures return HTTP `500`:
+
+```json theme={null}
+{
+  "error": "Internal Server Error"
+}
+```
+
+## Operational Notes
+
+The eval platform stores durable project, dataset, scorer, experiment, trace, and score records in dedicated tables, including:
+
+* `eval_projects`
+* `eval_dataset_versions`
+* `eval_scorer_versions`
+* `eval_experiments`
+* `eval_experiment_items`
+* `eval_traces`
+* `eval_trace_scores`
+
+The migration also ensures the legacy eval tables exist.
+
+Async experiment execution uses NanoGPT's background scheduler. Stale queued or in-progress experiments are retried, and the cleanup job removes expired legacy runs, traces, and experiments.
+
+
+This documentation is built and hosted on [Mintlify](https://mintlify.com), a developer documentation platform.

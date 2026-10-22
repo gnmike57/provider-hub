@@ -18,7 +18,7 @@ R = ROOT / "evals" / "results"
 DESK = Path(os.path.expanduser("~")) / "Desktop"
 
 FROST = {
-    "deepseek-ai/deepseek-v4.1-flash": "DeepFrost v4.1",
+    "deepseek-ai/deepseek-v4.1-flash-1017": "DeepFrost v4.1",
     "zai-org/glm-5.3-flash": "GLMFrost 5.3 Flash",
     "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw": "CyberFrost 3.8 SAGE",
 }
@@ -112,10 +112,10 @@ def endpoints_section(L):
     L.append("| port | model field | Frost name | backend |")
     L.append("| --- | --- | --- | --- |")
     L.append("| 9310 | any Frost name or raw id | general | Hive (default DeepFrost) + CyberFrost worker |")
-    L.append("| 9311 | optional | DeepFrost v4.1 | Hive `deepseek-ai/deepseek-v4.1-flash` |")
+    L.append("| 9311 | optional | DeepFrost v4.1 | Hive `deepseek-ai/deepseek-v4.1-flash-1017` |")
     L.append("| 9312 | optional | GLMFrost 5.3 Flash | Hive `zai-org/glm-5.3-flash` |")
     L.append("| 9313 | optional | CyberFrost 3.8 SAGE | gx10 hub `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw` |")
-    L.append("| 9314 | optional | DeepFrost Max Think | Hive `deepseek-ai/deepseek-v4.1-flash` (max-think, no hedge) |")
+    L.append("| 9314 | optional | DeepFrost Max Think | Hive `deepseek-ai/deepseek-v4.1-flash-1017` (max-think, no hedge) |")
     L.append("| 9315 | optional | GLMFrost Max Think | Hive `zai-org/glm-5.3-flash` (max-think, no hedge) |")
     L.append("")
     L.append("```bash")
@@ -127,7 +127,7 @@ def endpoints_section(L):
     L.append("* `\"hedge\": true` forces the speculative dual-dispatch; omitting it means the "
              "hedge fires only on the latency hints.")
     L.append("* Frost names verified live: `DeepFrost v4.1` reached Hive as "
-             "`deepseek-ai/deepseek-v4.1-flash`; `CyberFrost 3.8 SAGE` routed to the worker slot.")
+             "`deepseek-ai/deepseek-v4.1-flash-1017`; `CyberFrost 3.8 SAGE` routed to the worker slot.")
     L.append("* **9301 belongs to the ufo bridge** - publishing there fails silently "
              "(winerror 10048), which is why the Frost ports start at 9310.")
     L.append("* Start/stop them with `python tools/hive/serve_endpoints.py`.")

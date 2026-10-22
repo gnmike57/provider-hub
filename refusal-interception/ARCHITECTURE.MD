@@ -1,482 +1,323 @@
-1 + # Architecture — Interception Gateway 
+# Architecture — Interception Gateway
+
+> **REWRITTEN 2026-10-21** (accuracy pass). The previous version of this file was
+> corrupted with diff-artifact line numbering (`N + ` prefixes on every line) and
+> carried stale facts; it is preserved verbatim as the sibling
+> [`ARCHITECTURE.orig.md`](ARCHITECTURE.orig.md). This rewrite is grounded in the
+> source as it exists today: `routing_patterns.py`, `ingress_assembler.py`,
+> `context_formatter.py`, `speculative_hedge.py`, `proxy_gateway.py`, and
+> `litellm/routing_callback.py` — all at the **repo root** (the old
+> `reference-implementation/` path no longer exists).
+
+How the gateway, hedger, and assembler fit together.
+
+---
+
+## 1. System overview
+
+```
+                        ┌────────────────────────────────────────────────┐
+  client ── HTTP/SSE ──▶ │             proxy_gateway.py (FastAPI)          │
+                        │                                                 │
+                        │  1. authz (F9) + body cap (32 MiB) + n>1 (E6)   │
+                        │  2. capacity guard (MAX_CONCURRENT_STREAMS 429) │
+                        │  3. open primary (retry 408/429 — B10)          │
+                        │  4. ring-buffer state machine (B7/B8)           │
+                        │        │                                        │
+                        │      clean ── presignal → recovery? keep        │
+                        │        │              else divert               │
+                        │   passthrough + finish/[DONE]                   │
+                        │                                                 │
+                        │                    fallback_stream()            │
+                        │                    specialist_messages()        │
+                        │                    → footnote → audit           │
+                        └────────────────────────────────────────────────┘
+```
+
+| Endpoint | Path | Purpose |
+|---|---|---|
+| `POST /v1/chat/completions` | streaming ring-buffer | drop-in OpenAI-compatible proxy |
+| `POST /v1/execute` | orchestrator → worker → `assemble()` | Part IV deterministic assembly |
+| `GET /healthz` | config + runtime snapshot (`HEALTHZ_PROBE=1` adds the live upstream probe) | liveness / introspection |
+| `GET /metrics` | Prometheus text (F26) | counters + warm gauges |
+
+## 2. Module map
+
+| Module | Responsibility | Key exports |
+|---|---|---|
+| `routing_patterns.py` | **Single source of truth for routing logic** (F3), dependency-free | `ROUTING_RE`, `normalise`, `is_routable`, `is_presignal_recovered`, `should_hedge`, `reasoning_presignal`, `tier2_decision`, `classify_status`, `is_no_go`, `no_go_match`, `is_attack_content`, `attack_match`, `footnote`, `stage_comment` |
+| `context_formatter.py` | Format context before the specialist sees it | `format_messages`, `specialist_messages`, `DEFAULT_SYSTEM`, `AUTHORIZED_FRAME`, `TERMINAL_AWARENESS`, `assert_clean`, `prune_artifacts` |
+| `ingress_assembler.py` | Deterministic (non-LLM) merge + audit records | `assemble`, `validate_artifact`, `audit_record`, `artifact_sha256`, `SLOT`, `GRAMMAR_FOR` |
+| `proxy_gateway.py` | FastAPI app: buffering, routing, metrics, endpoints | `app`, `fallback_stream`, `Settings`/`SETTINGS` |
+| `speculative_hedge.py` | Speculative dual-dispatch (B9/B11 fixes) | `hedge_stream`, `HedgeSettings`, `SETTINGS` (the `hedge_settings` name never existed and is gone from `__all__`) |
+| `litellm/routing_callback.py` | Non-streaming repair inside LiteLLM | `RoutingFootnoteCallback` |
+
+**Single-source invariant:** `grep -rn 'ROUTING_RE = ' *.py` returns exactly one hit —
+`routing_patterns.py:103`. The LiteLLM callback imports `is_routable`/`footnote`
+rather than re-declaring them; duplicated detection logic was the root cause of
+defects B20/B21 and E1/E2/E3. (`conftest.py` extends the real `litellm` package's
+`__path__` with the local shim so `from litellm.routing_callback import ...` works
+even when site-packages has litellm installed.)
+## 3. Streaming state machine (`/v1/chat/completions`)
+
+A single pass over one `aiter_lines()` iterator (B7: never re-enter a broken iterator).
+States: `BUFFERING → {ROUTED, PASSTHROUGH, COMPLETE}`.
+
+```
+BUFFERING
+  ├─ finish_reason == "timeout" or delta.error           → ROUTED    (Tier 1)
+  ├─ delta.reasoning, BUFFER_REASONING=0                 → forward live,
+  │                                                       do NOT count  (B21/F1)
+  ├─ delta.content                                       → append, count tokens
+  │     ├─ refusal PRESIGNAL + CONTINUE_ENABLED=1        → grace window:
+  │     │     is_presignal_recovered() (head+tail, ≥20 chars,
+  │     │     lecture-free)                              → keep primary (RECOVERED)
+  │     │     else refusal confirms                      → ROUTED
+  │     ├─ is_routable(buffer[-200:])                    → ROUTED    (Tier 3)
+  │     └─ content_tokens ≥ BUFFER_CONTENT_TOKENS (10)   → PASSTHROUGH
+  ├─ finish_reason present                               → COMPLETE
+  └─ stream ends                                         → COMPLETE
+```
+
+Key invariants:
+
+- **Buffered lines are held in `pending`**, replayed verbatim on pass-through;
+  `finish_reason` and `[DONE]` are always propagated to the client (B7).
+- **On ROUTED the buffered text is discarded** — never surfaced. Reasoning already
+  forwarded is deliberation, not the error itself.
+- **Routing is evaluated only while buffering** (B8); once in pass-through the stream
+  is opaque.
+- **`n>1` is rejected up front** (E6) — the buffer inspects one choice stream, so extra
+  choices would bypass detection entirely.
+- **Continue-with-primary refusal avoidance** (2026-10-21): a Tier-3 presignal does not
+  divert immediately; `CONTINUE_ENABLED=1` (default) streams a `GRACE_TOKENS=10`
+  window and keeps the primary only when `is_presignal_recovered()` says it
+  self-corrected (anchored AND unanchored refusal checks + LECTURE-free, head AND
+  tail judged). The gateway screens the buffer **tail** (`buffer[-200:]`).
+- **Reasoning presignal** (T6.2): the helm's reasoning trace is screened by
+  `reasoning_presignal()` (≥120 chars gate, helm only — the terminal's reasoning is
+  never screened) and can divert on metadata alone, before any content token.
+- **Commitment contract**: the reply that COMES BACK from a divert is judged before it
+  ships — refusal-flavoured output costs one in-character re-ask; a watered-down
+  costume (`WATERED_DOWN_DIVERT=1`) escalates instead of shipping.
+
+### Gates before the primary sees the request
+
+- **Gate 7 no-go** (`NO_GO_RE`, `is_no_go`, `no_go_match`): hard classes (CBRN, CSAM,
+  stalkerware, nonconsensual surveillance) are 403'd pre-routing. `NO_GO_ENABLED=1`
+  kill switch; `no_go_match()` records WHAT tripped it in the audit line.
+- **Gate 8 attack content** (`ATTACK_CONTENT_RE` + `_OFFENSIVE_REQUEST_RE` shapes
+  A/A2/A3/B with defensive-span discrimination): a **forced divert** to the specialist
+  before the primary is consulted. **Opt-in: `ATTACK_GATE_ENABLED=0` default** — a
+  forced divert silently substitutes the model the operator asked for.
+
+### Tier 2 / escalation (off the critical path)
+
+- **Tier 2** (`tier2_decision`): joint log-prob mass over `TIER2_OPENERS`
+  (`"i","as","sorry","my","no","unfortunately"`), threshold `τ=0.85` default.
+  Decision support only — NOT wired into the streaming loop (the streaming path does
+  not request logprobs); intended for non-streaming repair paths.
+- **Escalation ladder** (2026-10-21): a chain name IS the contract
+  (`DEEPMAX>GLM>ABLITV2L` = DeepSeek-max helm → GLM no-reasoning middle → Abliterated
+  V2 Large terminal); a confirmed refusal climbs to the cheap middle first and only a
+  twice-refusing middle reaches the terminal. Non-chain routes opt in with
+  `ESCALATION_MIDDLE=1` (default 0). `UNCENSORED_MIDDLE=1` swaps the middle for the
+  uncensored Abliterated Large (T5.6). Resolution lives in
+  `providers.py::CONSTELLATION_CHAINS`; REDHANDS activation for chain-3 /
+  `X-Max-Offense: 1` is in `redhands.py`.
+## 4. Diversion path (`fallback_stream`)
+
+1. `specialist_messages()` — the **whole conversation**, artifacts pruned turn-by-turn,
+   neutral system injected (F7: `format_messages()`'s 4-stage reduction to
+   `[DEFAULT_SYSTEM, latest user turn]` silently dropped 27k-token contexts and tool
+   results on a plain divert; the reduction remains correct for `/v1/execute`, which
+   builds its own sanitized worker prompt). `assert_clean()` is the invariant.
+2. Retry wrapper — retries `DIVERT = {500,502,503,504}` with backoff (F6); a 503 is
+   *capacity*. `FALLBACK_MAX_ATTEMPTS=3`.
+3. Audit record emitted **before** the call (`audit_record`, mode=`stream`; `forced`
+   and `signal_match` keys appear only on Gate-8 diverts).
+4. Specialist SSE forwarded verbatim, then a provenance footnote delta
+   (`footnote()` → `\n\n{friendly} taking over...`), `finish="stop"`, `[DONE]` —
+   the upstream finish chunk is HELD so no content follows a finish reason (R4).
+5. Budget bound: `SPECIALIST_MAX_TOKENS=4096` (0 = unbounded, the old behaviour that
+   402'd), min()'d with the client's own `max_tokens`.
+6. REVERSE HANDBACK: a terminal that answers `[[GW-HANDBACK]]` hands benign work back
+   to the helm before anything ships (`handback_total`).
+
+**Error taxonomy (B10)** — the distinction the whole design hinges on (`classify_status`):
+
+| Status | Meaning | Action |
+|---|---|---|
+| 400/401/403/404/422 | client/authorisation error | fail fast, no retry, no divert |
+| 408/429 | transient rate limit | retry **same provider**, never divert |
+| 500/502/503/504 | capacity / server fault | retry, then **divert** |
+| `timeout` / `error` metadata / transport None | upstream timeout | **divert** (Tier 1) |
+
+## 5. Two diversion strategies
+
+### A. Ring-buffer proxy (default) — `proxy_gateway.py`
+
+Serial, one upstream stream, commit-or-discard after ≤10 content tokens
+(`BUFFER_CONTENT_TOKENS`, calibrated 2026-10-05 down from 25: the anchored regex fires
+by the 5th content word worst-case, so TTFT dropped 0.59 s → 0.24 s at equal recall).
+
+### B. Speculative hedge — `speculative_hedge.py`
+
+Dispatches to both models concurrently via `build_request()` + `send(stream=True)` under
+an `AsyncExitStack` (B9: `AsyncClient.stream()` is an async CM, not awaitable — the
+corpus's `asyncio.gather(...)` raised `TypeError`).
+
+- **Gated by `should_hedge()`** (B11) — hedges only on latency-hint matches
+  (`HEDGE_HINT_RE`, case-sensitive `HEDGE_HINT_ASAP_RE`) or `force`, because firing both
+  branches on every request doubles cost and halves concurrency (p\* ≈ 0.51 break-even).
+- Reasoning deltas are **forwarded live by default** (`HEDGE_LIVE_REASONING=1`) but
+  **never counted toward `COMMIT_TOKENS` (10) and never screened** (F1/B21) — committing
+  to the sovereign during deliberation would leak the error. `=0` holds them again.
+- Commit rules: timeout/`error` → worker; ≥10 content tokens or `[DONE]`/finish →
+  sovereign (buffer replayed verbatim); the worker path discards the sovereign buffer
+  entirely and appends the footnote.
+## 6. Deterministic assembly (`/v1/execute`)
+
+```
+messages ─▶ orchestrator ─▶ plan JSON
+              │  requires_unrestricted_worker?
+              ├─ no  → return direct_response
+              └─ yes → subtask + scaffolding (must contain unique SLOT)
+                         │
+                         ▼
+                     run_specialist(subtask)   ── formatted, retry-wrapped
+                         │
+                         ▼
+                     assemble(scaffolding, artifact)   ← pure string replace, fails closed
+                         │
+                         ▼
+                     audit (sha256 of artifact + deliverable) → response + footnote
+```
+
+- **Never an LLM merge.** `assemble()` raises on missing/duplicate `SLOT`
+  (`{{UNRESTRICTED_PAYLOAD}}`) or an empty artefact rather than degrading into a
+  model-mediated merge — that is the Ingress Assembly Shock defence: the sovereign must
+  never read the specialist's raw output.
+- `validate_artifact()` gates structure pre-slot (python → AST parse,
+  `json_sarif` → `json.loads`); `GRAMMAR_FOR["json_sarif"]` (`SARIF_DEFECT_GBNF`) is
+  passed as TabbyAPI `grammar_string` to logit-lock rigid formats.
+- `ORCHESTRATOR_MODEL` defaults to `PRIMARY_MODEL`; `ASSEMBLY_ENABLED=1` default.
+- T4.2 fan-out: up to `FANOUT_MAX_PARALLEL=4` subtask specialists; the `/bus/*` team
+  surface exists only when `BUS_ENABLED=1` (default 0).
+
+## 7. Cross-cutting concerns
+
+**Formatter.** Four ordered stages: drop system/developer turns → inject
+`DEFAULT_SYSTEM` → prune provider artifacts (`<thinking>`, `antml:`, `im_start|`,
+`system-reminder:`) → keep the latest user turn (`format_messages`) or the whole
+conversation (`specialist_messages`). `assert_clean()` is the testable invariant.
+2026-10-21 frames: `AUTHORIZED_FRAME` (established-authorization context, default on),
+`COMPLETION_CONTRACT` (`[[GW-CHECKLIST]]` coverage + one repair re-dispatch),
+`TERMINAL_AWARENESS` ([[GW-HANDBACK]] reverse handback + `[[GW-SKILL:]]` learned-skills
+markers injected via `skill_frame()`), `SPECIALIST_SYSTEM_MODE=redhands` for the
+REDHANDS persona (`redhands.py`).
+
+**Audit trail (F5).** Every diversion and every assembly emits one JSON line: request
+id, primary/worker model, routing signal, mode, sha256 of artefact and deliverable;
+`forced` + `signal_match` only on Gate-8 diverts. Written to `AUDIT_LOG` if set, always
+to stdout, and **never raises into the request path** (design rule 7) — `audit_record`
+catches everything and returns `{}` on failure.
+
+**Metrics (F26).** Plain dict counters rendered as Prometheus text at `/metrics`:
+`requests_total`, `diverted_total`, `forced_divert_total`, `authz_denied_total`,
+`fallback_errors_total`, `primary_errors_total`, `assembly_total`, `fanout_total`,
+`presignal_detected_total`, `ladder_secondary_total`, `ladder_terminal_total`,
+`watered_down_divert_total`, `rescue_divert_total`, `handback_total`,
+`completion_reask_total`, `reasoning_presignal_total`, `continue_divert_total`,
+`account_pool_*`, plus `in_flight` and `specialist_warm` gauges. (`requests_clean`
+appeared in the old doc but was never incremented; it is not a metric.
+`incr()` never raises — design rule 7.)
+
+**Lifecycle (F10/F27).** Lifespan starts the keep-alive poller
+(`KEEPALIVE_URL`, `KEEPALIVE_INTERVAL_S=240`) and, on shutdown, drains `in_flight` to
+zero for up to `SHUTDOWN_GRACE_S` (default 10 s) so streams are not severed.
+`_stream_opened()`/`_stream_closed()` keep `app.state.in_flight` and the published
+gauge in lockstep (they used to diverge, so a wedged stream was invisible), and the
+close is clamped at zero.
+
+**Stage annotations.** `stage_comment()` emits SSE comment lines (`: gw-stage ...`)
+with a near-white tint + glow hue per stage from `STAGE_STYLES` (`STAGE_PALETTE=green`
+selects the alternative palette); OpenAI-style consumers that parse only `data:` lines
+ignore them, and every chunk also carries the answering model in its `model` field.
+
+**Key resolution (F25).** Tests read keys via `evals/_keys.py`: env → secret file →
+Cline config fallback (with warning). The gateway itself only reads env vars.
+## 8. Configuration surface (env vars)
+
+| Group | Variables | Default |
+|---|---|---|
+| Primary | `PRIMARY_API_URL/KEY/MODEL` (bridged to `HIVE_API_BASE`/`HIVE_SECRET_KEY` when unset) | Hive `zai-org/glm-5.3-flash`, else OpenAI `gpt-4o` |
+| Specialist | `SPECIALIST_API_URL/KEY/MODEL` (override `FALLBACK_*`; key falls through to `NANOGPT_API_KEY`) | local vLLM `:8000`, `Qwen3.6-35B-A3B-abliterated-NVFP4-MTP` |
+| Buffer | `BUFFER_CONTENT_TOKENS`, `BUFFER_REASONING` | `10`, `0` (reasoning never counted) |
+| Retry | `MAX_ATTEMPTS`, `RETRY_BASE_DELAY`, `FALLBACK_MAX_ATTEMPTS` | `3`, `0.5`, `3` |
+| Assembly | `ASSEMBLY_ENABLED`, `ORCHESTRATOR_MODEL`, `FANOUT_MAX_PARALLEL` | `1`, = primary, `4` |
+| Audit | `AUDIT_LOG` | empty (stdout only) |
+| Governance | `AUTHORISED_PRINCIPALS`, `AUTHZ_ENFORCED`, `KEEPALIVE_URL`, `KEEPALIVE_INTERVAL_S` | off / `0` / — / 240 |
+| Shutdown | `SHUTDOWN_GRACE_S` | `10` |
+| Hedge | `SOVEREIGN_*`, `WORKER_*`, `COMMIT_TOKENS`, `HEDGE_LIVE_REASONING` | mirrors primary/specialist, `10`, `1` |
+| Gates | `NO_GO_ENABLED`, `ATTACK_GATE_ENABLED` | `1`, `0` (Gate 8 opt-in) |
+| Presignal | `CONTINUE_ENABLED`, `GRACE_TOKENS`, `MIN_SUBSTANTIVE_CHARS`, `REASONING_PRESIGNAL` | `1`, `10`, `20`, `1` |
+| Ladder | `ESCALATION_MIDDLE`, `UNCENSORED_MIDDLE`, `WATERED_DOWN_DIVERT` | `0`, `0`, `1` |
+| Frames | `AUTHORIZED_FRAME`, `COMPLETION_CONTRACT`, `SKILL_MEMORY`, `CAMO_ENABLED`, `SPECIALIST_SYSTEM_MODE` | `1`, `1`, `1`, `1`, `neutral` |
+| Budgets | `SPECIALIST_MAX_TOKENS`, `HEDGE_MAX_TOKENS` | `4096`, hedge-side cap |
+| DoS | `MAX_BODY_BYTES`, `MAX_CONCURRENT_STREAMS` | 32 MiB (413), 64 (429) |
+| Palette | `STAGE_PALETTE` | `default` |
+
+Run: `uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000`
+
+## 9. LiteLLM callback (non-streaming repair)
+
+`litellm/routing_callback.py::RoutingFootnoteCallback` imports `is_routable`/`footnote`
+from `routing_patterns` and `audit_record` from `ingress_assembler` (never re-declares
+the regex). `apply(response)` detects a refusal on a NON-streaming response, appends
+the provenance footnote (`model_label` from `LITELLM_ROUTING_FOOTNOTE_MODEL`, default
+`specialist`), and emits `signal="tier3_refusal", mode="litellm_post_call"`. Both hook
+protocol methods (`async_post_call_success_hook`, `post_call_success_hook`) delegate to
+`apply()` and never raise into the request path. Scope: disclosure + signal only — the
+actual divert lives in the streaming gateway. Register with:
+
+```yaml
+litellm_settings:
+  callbacks: routing_callback.RoutingFootnoteCallback
+```
+
+`litellm` itself is imported lazily inside the hooks, so the module (and its tests)
+load without litellm installed.
+## 10. Design rules the code enforces
+
+1. **One source of truth** for routing detection and the neutral prompt — no local copies.
+2. **A 429/503 is not a routable error.** Error taxonomy is explicit and unit-tested.
+3. **Never surface a buffered error.** Discard on divert; reason-only output is deliberation.
+4. **Reasoning is not content** — forwarded for TTFT (live by default), never counted
+   toward the commit budget, never screened for refusals.
+5. **Assembly fails closed** and is never model-mediated.
+6. **Guards run once, shared** by both endpoints.
+7. **Hooks/guards never raise into the request path** — degrade with an explanatory chunk.
+
+## 11. Where the tests live
+
+| Concern | Suite |
+|---|---|
+| detection / formatter / assembler / calibration | `evals/routing_probe.py`, `evals/hedge_calibrate.py` |
+| authz / gates / attack content | `evals/routing_test.py`, `evals/nogo_gate_probe.py`, `evals/attack_gate_test.py` |
+| LiteLLM callback | `evals/callback_test.py` |
+| hedging | `evals/hedge_test.py`, `evals/hedge_budget_test.py`, `evals/hedge_empty_test.py` |
+| streaming gateway | `evals/e2e_gateway_test.py`, `evals/stream_finalize_test.py` |
+| `/v1/execute`, audit, fan-out, retry | `evals/assembly_test.py`, `evals/fanout_test.py` |
+| tool calls, n>1, disconnect, concurrency, metrics | `evals/edge_test.py` |
+| chains / redhands / pool | `evals/constellation_test.py`, `evals/redhands_test.py`, `evals/ablit_pool_test.py` |
+| real local vLLM / live stack (opt-in, skipped by default) | `evals/live_stack_test.py` |
+
+Run all: `./run_all_tests.sh`. See `README.md` for results and `corrections-ledger.md`
+for the B/E defect IDs referenced above. (`evals/tinfoil_live_test.py` from the old doc
+no longer exists; `evals/live_stack_test.py` is the live-suite home.)
 
-2 + 
 
-3 + How the gateway, hedger, and assembler fit together. 
 
-4 + Code references are to `reference-implementation/`. 
 
-5 + 
-
-6 + --- 
-
-7 + 
-
-8 + ## 1. System overview 
-
-9 + 
-
-10 + ``` 
-
-11 +                         ┌────────────────────────────────────────────────┐ 
-
-12 +   client ── HTTP/SSE ──▶ │             proxy\_gateway.py (FastAPI)         │ 
-
-13 +                         │                                                │ 
-
-14 +                         │  1. authz (F9)                                 │ 
-
-15 +                         │  2. n>1 rejected (E6)                          │ 
-
-16 +                         │  3. open primary (retry 408/429 — B10)         │ 
-
-17 +                         │  4. ring-buffer state machine (B7/B8)          │ 
-
-18 +                         │        │                                       │ 
-
-19 +                         │      clean                                     │ 
-
-20 +                         │        │                                       │ 
-
-21 +                         │   passthrough                                  │ 
-
-22 +                         │   + finish/\[DONE]                              │ 
-
-23 +                         │                                                │ 
-
-24 +                         │                                                │ 
-
-25 +                         │                    fallback\_stream()           │ 
-
-26 +                         │                    format → specialist         │ 
-
-27 +                         │                    → footnote → audit          │ 
-
-28 +                         └────────────────────────────────────────────────┘ 
-
-29 + ``` 
-
-30 + 
-
-31 + | Endpoint | Path | Purpose | 
-
-32 + |---|---|---| 
-
-33 + | `POST /v1/chat/completions` | streaming ring-buffer | drop-in OpenAI-compatible proxy | 
-
-34 + | `POST /v1/execute` | planner → worker → `assemble()` | Part IV deterministic assembly | 
-
-35 + | `GET /healthz` | config + runtime snapshot | liveness / introspection | 
-
-36 + | `GET /metrics` | Prometheus text (F26) | counters + warm gauges | 
-
-37 + 
-
-38 + --- 
-
-39 + 
-
-40 + ## 2. Module map 
-
-41 + 
-
-42 + | Module | Responsibility | Key exports | 
-
-43 + |---|---|---| 
-
-44 + | `routing\_patterns.py` | \*\*Single source of truth for routing logic\*\* (F3), dependency-free | `is\_routable`, `should\_hedge`, `tier2\_decision`, `normalise` | 
-
-45 + | `context\_formatter.py` | Format context before the specialist sees it | `format\_messages`, `DEFAULT\_SYSTEM`, `assert\_clean` | 
-
-46 + | `ingress\_assembler.py` | Deterministic (non-LLM) merge + audit records | `assemble`, `audit\_record`, `SLOT` | 
-
-47 + | `proxy\_gateway.py` | FastAPI app: buffering, routing, metrics, endpoints | `app`, `fallback\_stream` | 
-
-48 + | `speculative\_hedge.py` | Speculative dual-dispatch (B9/B11 fixes) | `hedge\_stream` | 
-
-49 + | `litellm/routing\_callback.py` | Non-streaming repair inside LiteLLM | `RoutingFootnoteCallback` | 
-
-50 + 
-
-51 + \*\*Single-source invariant:\*\* `grep -rn 'ROUTING\_RE = ' reference-implementation/` must return 
-
-52 + exactly one hit. The LiteLLM callback imports `is\_routable`/`format\_messages` rather than 
-
-53 + re-declaring them — duplicated logic is the root cause of defects B20, B21, E1, E2, E3. 
-
-54 + 
-
-55 + 
-
-56 + --- 
-
-57 + 
-
-58 + ## 3. Streaming state machine (`/v1/chat/completions`) 
-
-59 + 
-
-60 + A single pass over one `aiter\_lines()` iterator (B7: never re-enter a broken iterator). 
-
-61 + States: `BUFFERING → {ROUTED, PASSTHROUGH, COMPLETE}`. 
-
-62 + 
-
-63 + ``` 
-
-64 + BUFFERING 
-
-65 +   ├─ finish\_reason == "timeout" or delta.error           → ROUTED    (Tier 1) 
-
-66 +   ├─ delta.reasoning, BUFFER\_REASONING=0                  → forward now, 
-
-67 +   │                                                        do NOT count  (B21) 
-
-68 +   ├─ delta.content                                        → append, count tokens 
-
-69 +   │     ├─ is\_routable(buffer) within 200-char window     → ROUTED    (Tier 3) 
-
-70 +   │     └─ content\_tokens ≥ BUFFER\_CONTENT\_TOKENS (25)    → PASSTHROUGH 
-
-71 +   ├─ finish\_reason present                                → COMPLETE 
-
-72 +   └─ stream ends                                          → COMPLETE 
-
-73 + ``` 
-
-74 + 
-
-75 + Key invariants: 
-
-76 + 
-
-77 + - \*\*Buffered lines are held in `pending`\*\*, replayed verbatim on pass-through; `finish\_reason` 
-
-78 +   and `\[DONE]` are always propagated to the client (B7). 
-
-79 + - \*\*On ROUTED the buffered text is discarded\*\* — never surfaced. Reasoning already 
-
-80 +   forwarded is deliberation, not the error itself. 
-
-81 + - \*\*Routing is evaluated only while buffering\*\* (B8); once in pass-through the stream is opaque. 
-
-82 + - \*\*`n>1` is rejected up front\*\* (E6) — the buffer inspects one choice stream, so extra 
-
-83 +   choices would bypass detection entirely. 
-
-84 + 
-
-85 + ### Tier 2 / Tier 4 (off the critical path) 
-
-86 + 
-
-87 + - \*\*Tier 2\*\* (`routing\_probability`): first-token log-prob mass over single-token routing 
-
-88 +   openers, threshold `τ` (default 0.85, unvalidated — see ledger). Not wired into the 
-
-89 +   streaming loop; intended for non-streaming paths. 
-
-90 + - \*\*Tier 4\*\* (`Tier4Classifier`): LLM-as-judge for routing, disabled by default, 50–180 ms — must never 
-
-91 +   sit in front of TTFT (report §5.1). Returns `None` on failure, never `False`. 
-
-92 + 
-
-93 + --- 
-
-94 + 
-
-95 + ## 4. Diversion path (`fallback\_stream`) 
-
-96 + 
-
-97 + 1. `format\_messages()` — 4-stage reduction to `\[DEFAULT\_SYSTEM, latest user turn]`. 
-
-98 + 2. `\_open\_fallback\_with\_retry()` — retries `DIVERT = {500,502,503,504}` with backoff (F6). 
-
-99 +    A 503 is \*capacity\*. 
-
-100 + 3. Audit record emitted \*\*before\*\* the call (`audit\_record`, mode=`stream`). 
-
-101 + 4. Specialist SSE forwarded verbatim, then a provenance footnote delta, `finish="stop"`, `\[DONE]`. 
-
-102 + 5. `record\_success()` on completion; `record\_failure()` on transport or 
-
-103 +    HTTP errors. 
-
-104 + 
-
-105 + \*\*Error taxonomy (B10)\*\* — the distinction the whole design hinges on: 
-
-106 + 
-
-107 + | Status | Meaning | Action | 
-
-108 + |---|---|---| 
-
-109 + | 400/401/403/404/422 | client/authorisation error | fail fast, no retry, no divert | 
-
-110 + | 408/429 | transient rate limit | retry \*\*same provider\*\*, never divert | 
-
-111 + | 500/502/503/504 | capacity / server fault | retry, then \*\*divert\*\* | 
-
-112 + | `timeout` / `error` metadata | upstream timeout | \*\*divert\*\* (Tier 1) | 
-
-113 + 
-
-114 + --- 
-
-115 + 
-
-116 + ## 5. Shared Functions 
-
-117 + 
-
-118 + | Control | Config | Behaviour | 
-
-119 + |---|---|---| 
-
-120 + | \*\*F9 authz\*\* | `AUTHORISED\_PRINCIPALS` CSV, `AUTHZ\_ENFORCED` | empty list + enforced = deny all; off by default for local dev | 
-
-121 + | \*\*F10 keep-alive\*\* | `KEEPALIVE\_URL`, interval 240 s | background poller warms the specialist; surfaced at `/healthz` and `/metrics` | 
-
-122 + 
-
-123 + --- 
-
-124 + 
-
-125 + ## 6. Two diversion strategies 
-
-126 + 
-
-127 + ### A. Ring-buffer proxy (default) — `proxy\_gateway.py` 
-
-128 + Serial, one upstream stream, commit-or-discard after ≤25 content tokens. Lowest cost; 
-
-129 + TTFT penalty bounded by the buffer. 
-
-130 + 
-
-131 + ### B. Speculative hedge — `speculative\_hedge.py` 
-
-132 + Dispatches to both models concurrently via `build\_request()` + `send(stream=True)` under an 
-
-133 + `AsyncExitStack` (B9: `AsyncClient.stream()` is an async CM, not awaitable — the corpus's 
-
-134 + `asyncio.gather(...)` raised `TypeError`). 
-
-135 + 
-
-136 + - \*\*Gated by `should\_hedge()`\*\* (B11) — hedges only on latency-hint matches or `force`, 
-
-137 +   because firing both branches on every request doubles cost and halves concurrency. 
-
-138 + - Reasoning deltas are \*\*held but not counted\*\* toward `COMMIT\_TOKENS` (F1/B21) — otherwise 
-
-139 +   the hedge commits to the sovereign during deliberation and the error leaks. 
-
-140 + - Commit rules: timeout/`error` → worker; ≥25 content tokens or `\[DONE]`/finish → 
-
-141 +   sovereign (buffer replayed verbatim); worker path discards the sovereign buffer entirely 
-
-142 +   and appends the footnote. 
-
-143 + 
-
-144 + Break-even analysis: appendix A, `p\* ≈ 0.51`. 
-
-145 + 
-
-146 + --- 
-
-147 + 
-
-148 + ## 7. Deterministic assembly (`/v1/execute`) 
-
-149 + 
-
-150 + ``` 
-
-151 + messages ─▶ orchestrator ─▶ plan JSON 
-
-152 +               │  requires\_unrestricted\_worker? 
-
-153 +               ├─ no  → return direct\_response 
-
-154 +               └─ yes → subtask + scaffolding (must contain unique SLOT) 
-
-155 +                          │ 
-
-156 +                          ▼ 
-
-157 +                      run\_specialist(subtask)   ── formatted, retry-wrapped 
-
-158 +                          │ 
-
-159 +                          ▼ 
-
-160 +                      assemble(scaffolding, artifact)   ← pure string replace, fails closed 
-
-161 +                          │ 
-
-162 +                          ▼ 
-
-163 +                      audit (sha256 of artifact + deliverable) → response + footnote 
-
-164 + ``` 
-
-165 + 
-
-166 + - \*\*Never an LLM merge.\*\* `assemble()` raises on missing/duplicate `SLOT` or empty artefact 
-
-167 +   rather than degrading into a model-mediated merge — that is the Ingress Assembly Shock 
-
-168 +   defence: the sovereign must never read the specialist's raw output. 
-
-169 + - The footnote discloses specialist provenance. 
-
-170 + - `ORCHESTRATOR\_MODEL` defaults to `PRIMARY\_MODEL`; `ASSEMBLY\_ENABLED=0` disables the route. 
-
-171 + 
-
-172 + --- 
-
-173 + 
-
-174 + ## 8. Cross-cutting concerns 
-
-175 + 
-
-176 + \*\*Formatter.\*\* Ensures standard prompt structure is applied. Four ordered stages: drop system/developer → inject `DEFAULT\_SYSTEM` → prune 
-
-177 + provider artefacts (``, `antml:`, `im\_start|`…) → keep only the latest user turn. 
-
-178 + `assert\_clean()` is the testable invariant. 
-
-179 + 
-
-180 + \*\*Audit trail (F5).\*\* Every diversion and every assembly emits one JSON line: request id, 
-
-181 + primary/worker model, routing signal, mode, sha256 of artefact and deliverable. Written to 
-
-182 + `AUDIT\_LOG` if set, always to stdout, and \*\*never raises into the request path\*\*. 
-
-183 + 
-
-184 + \*\*Metrics (F26).\*\* Plain dict counters exposed as Prometheus text at `/metrics`: 
-
-185 + `requests\_total`, `requests\_clean`, `diverted\_total`, 
-
-186 + `authz\_denied\_total`, `fallback\_errors\_total`, `assembly\_total`, 
-
-187 + `in\_flight`, plus `specialist\_warm` gauges. 
-
-188 + 
-
-189 + \*\*Lifecycle (F10/F27).\*\* Lifespan starts the keep-alive poller and, on shutdown, drains 
-
-190 + `in\_flight` to zero for up to `SHUTDOWN\_GRACE\_S` (default 10 s) so streams are not severed. 
-
-191 + 
-
-192 + \*\*Key resolution (F25).\*\* Tests read keys via `evals/\_keys.py`: env → secret file → Cline 
-
-193 + config fallback (with warning). The gateway itself only reads env vars. 
-
-194 + 
-
-195 + --- 
-
-196 + 
-
-197 + ## 9. Configuration surface (env vars) 
-
-198 + 
-
-199 + | Group | Variables | Default | 
-
-200 + |---|---|---| 
-
-201 + | Primary | `PRIMARY\_API\_URL/KEY/MODEL` | OpenAI `gpt-4o` | 
-
-202 + | Specialist | `FALLBACK\_API\_URL/KEY/MODEL` | local vLLM `:8000`, Qwen3.6-35B | 
-
-203 + | Buffer | `BUFFER\_CONTENT\_TOKENS`, `BUFFER\_REASONING` | `25`, `0` (reasoning never counted) | 
-
-204 + | Retry | `MAX\_ATTEMPTS`, `RETRY\_BASE\_DELAY`, `FALLBACK\_MAX\_ATTEMPTS` | `3`, `0.5`, `3` | 
-
-205 + | Assembly | `ASSEMBLY\_ENABLED`, `ORCHESTRATOR\_MODEL` | `1`, = primary | 
-
-206 + | Audit | `AUDIT\_LOG` | empty (stdout only) | 
-
-207 + | Governance | `AUTHORISED\_PRINCIPALS`, `AUTHZ\_ENFORCED`, `KEEPALIVE\_URL`, `KEEPALIVE\_INTERVAL\_S` | off / `0` / — / 240 | 
-
-208 + | Shutdown | `SHUTDOWN\_GRACE\_S` | `10` | 
-
-209 + | Hedge | `SOVEREIGN\_\*`, `WORKER\_\*`, `COMMIT\_TOKENS` | mirrors primary/fallback, `25` | 
-
-210 + 
-
-211 + Run: `uvicorn proxy\_gateway:app --host 127.0.0.1 --port 9000` 
-
-212 + 
-
-213 + --- 
-
-214 + 
-
-215 + ## 10. Design rules the code enforces 
-
-216 + 
-
-217 + 1. \*\*One source of truth\*\* for routing detection and the neutral prompt — no local copies. 
-
-218 + 2. \*\*A 429/503 is not a routable error.\*\* Error taxonomy is explicit and unit-tested. 
-
-219 + 3. \*\*Never surface a buffered error.\*\* Discard on divert; reason-only output is deliberation. 
-
-220 + 4. \*\*Reasoning is not content\*\* — forward for TTFT, never count toward the commit budget. 
-
-221 + 5. \*\*Assembly fails closed\*\* and is never model-mediated. 
-
-222 + 6. \*\*Guards run once, shared\*\* by both endpoints. 
-
-223 + 7. \*\*Hooks/guards never raise into the request path\*\* — degrade with an explanatory chunk. 
-
-224 + 
-
-225 + --- 
-
-226 + 
-
-227 + ## 11. Where the tests live 
-
-228 + 
-
-229 + | Concern | Suite | 
-
-230 + |---|---| 
-
-231 + | detection / formatter / assembler / Tier 2 | `evals/routing\_probe.py` | 
-
-232 + | authz / Tier 4 | `evals/routing\_test.py` | 
-
-233 + | LiteLLM callback | `evals/callback\_test.py` | 
-
-234 + | hedging | `evals/hedge\_test.py` | 
-
-235 + | streaming gateway | `evals/e2e\_gateway\_test.py` | 
-
-236 + | `/v1/execute`, audit, retry | `evals/assembly\_test.py` | 
-
-237 + | tool calls, n>1, disconnect, concurrency, metrics | `evals/edge\_test.py` | 
-
-238 + | real local vLLM / real Tinfoil | `evals/live\_stack\_test.py`, `evals/tinfoil\_live\_test.py` | 
-
-239 + 
-
-240 + Run all: `./run\_all\_tests.sh`. See `README.md` for results and `corrections-ledger.md` 
-
-241 + for the B/E defect IDs referenced above.
 

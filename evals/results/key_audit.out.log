@@ -1,0 +1,39 @@
+key_audit: 18 unique keys found; firing live usage calls (timeout=40s)...
+  hive-1                   hive    fU6hW...0A==     OK        http=200   4.0s
+      usage-reply='None'
+  hive-2                   hive    yI2zh...Sg==     OK        http=200   1.8s
+      usage-reply='None'
+  hive-3                   hive    4EtBj...5Q==     OK        http=200   0.8s
+      usage-reply='None'
+  hive-4                   hive    sniwZ...xQ==     OK        http=200   1.0s
+      usage-reply='None'
+  hive-5                   hive    EK7Cq...kg==     OK        http=200   1.8s
+      usage-reply='None'
+  ablit-1                  ablit   ak_Qc...6b-Y     OK        http=200   1.5s
+      usage-reply='None'
+  ablit-2                  ablit   ak_Hv...LV0g     OK        http=200   1.4s
+      usage-reply='None'
+  ablit-3                  ablit   ak_xQ...TLVk     OK        http=200   5.2s
+      usage-reply='None'
+  nano-1                   nano    cat_4...2b39     AUTH_FAIL http=401  23.4s FOREIGN
+      http 401: {"error":{"message":"Invalid session","type":"invalid_api_key","code":"invalid_api_key","status":401}}
+  ABLITERATION_API_KEY     ablit   ak_Ge...gGQk     DEPLETED  http=402   2.1s
+      http 402: {"error":{"code":"insufficient_credits","message":"Billing account is not in good standing for this request. Add credits or resolve the billing issue before retrying.","type":"billing_error","param":null,"request_id":"77
+  ABLITERATION_ADMIN_KEY   ablit-admin sk_Vi...IVup     OK        http=200  19.6s
+      admin GET /organization/balance -> 200
+  HIVE_SECRET_KEY          hive    XSkXR...Ww==     OK        http=200   3.8s
+      usage-reply='None'
+  HIVE_ACCESS_KEY          hive    H235x...EPsu     AUTH_FAIL http=401  16.0s
+      http 401: {"status_code":401,"message":"Invalid or expired token"}
+  NANOGPT_API_KEY          nano    sk_YI...jjui     AUTH_FAIL http=401   5.8s FOREIGN
+      http 401: {"error":{"message":"Invalid session","type":"invalid_api_key","code":"invalid_api_key","status":401}}
+  NANOGPT_MGMT_API_KEY     nano    sk-na...iQhY     AUTH_FAIL http=401   7.8s FOREIGN
+      http 401: {"error":{"message":"Invalid session","type":"invalid_api_key","code":"invalid_api_key","status":401}}
+  ADMIN_API_KEY            local   tYcVc...0yWg     LOCAL     http=0    0.0s (out of audit scope)
+  ABLIT_POOL_KEY_A         unknown ak_Jc...p2W8     OK        http=200  25.3s
+      [via ablit] usage-reply='None'
+  ABLIT_POOL_KEY_B         unknown ak_pJ...SlYo     OK        http=200  31.5s
+      [via ablit] usage-reply='None'
+
+verdict: 12/18 OK -> full masked record: C:\Users\lnxzf\Desktop\projects\provider-hub\evals\results\key_audit.jsonl
+removal rule: remove every non-OK and every FOREIGN key from the active surface (account_pool.json / env / router envs).

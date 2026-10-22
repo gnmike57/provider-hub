@@ -3,7 +3,7 @@
 Any peer on the tailnet can then call a "special endpoint" per model, with the
 model field optional (the port already defaults it):
 
-   9314  deepfrost max think -> Hive deepseek-ai/deepseek-v4.1-flash (no hedge)
+   9314  deepfrost max think -> Hive deepseek-ai/deepseek-v4.1-flash-1017 (no hedge)
    9315  glmfrost max think  -> Hive zai-org/glm-5.3-flash          (no hedge)
    9316  /team               -> the always-on team surface (V2 Large terminal)
    9310  (general)           -> any id in the body; hedge worker = Ablit V2 Large
@@ -16,12 +16,18 @@ the local-LLM system of old, so the divert/fallback target is the uncensored
 Abliteration LARGE V2 brain (abliterated-model-large-v2) with its key BUILT
 IN (ABLITERATION_API_KEY - proxy_gateway._specialist_key resolves it last).
 """
-import io
 import os
-import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Shared core (task 0007 extraction): the launch/env/secret logic lives in
+# serve_module.py; this file keeps the per-host constants + the INSTANCES
+# table. No-flag invocations behave exactly as before the extraction.
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import serve_module  # noqa: E402  (path bootstrap above)
+from serve_module import serve_all  # noqa: E402  (path bootstrap above)
+
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 UFO_ENV = r"C:\Users\lnxzf\Desktop\projects\ufo\ufo\ufo.env"
 
@@ -38,57 +44,54 @@ INSTANCES = [
     # race is disabled at the env layer too (COMMIT_TOKENS=100000) - the
     # gateway already skips hedging for max-think names, this keeps the
     # process honest if the name is ever overridden in a request body.
-    ("deepfrost max think", 9314, HIVE_URL, "deepfrost max think", False),
-    ("glmfrost max think", 9315, HIVE_URL, "glmfrost max think", False),
-    ("team (always-on)", 9316, HIVE_URL, "team", False),
-    ("general (any name / raw id)", 9310, HIVE_URL,
-     "deepseek-ai/deepseek-v4.1-flash", True),
+    serve_module.EndpointConfig("deepfrost max think", 9314, HIVE_URL,
+                                "deepfrost max think", False),
+    serve_module.EndpointConfig("glmfrost max think", 9315, HIVE_URL,
+                                "glmfrost max think", False),
+    serve_module.EndpointConfig("team (always-on)", 9316, HIVE_URL,
+                                "team", False),
+    serve_module.EndpointConfig("general (any name / raw id)", 9310, HIVE_URL,
+                                "deepseek-ai/deepseek-v4.1-flash-1017", True),
 ]
 
 # NOTE: 9301 is owned by the ufo bridge (uvicorn fails to bind with winerror
 # 10048 and the endpoint silently does not exist) - never publish there.
 
+_DISPLAY_HOST = "100.113.176.84"
+_HEADER = f"provider-hub endpoints (0.0.0.0, tailnet {_DISPLAY_HOST}):"
+
 
 def key(name):
-    for line in io.open(UFO_ENV, encoding="utf-8", errors="ignore"):
-        if line.startswith(name + "="):
-            return line.split("=", 1)[1].strip()
-    raise SystemExit(f"{name} not found in {UFO_ENV}")
+    """Legacy single-name reader (kept for existing importers).
+
+    Env-first via serve_module.resolve_secret; falls back to this host's
+    plaintext ufo.env (with the loud legacy-fallback warning); SystemExit with
+    the same message shape when the key is nowhere.
+    """
+    values = serve_module.parse_ufo_env(UFO_ENV)
+    value, _source = serve_module.resolve_secret(
+        name, values, UFO_ENV if name == serve_module.SECRET_NAME else "n/a")
+    if value is None:
+        raise SystemExit(f"{name} not found in {UFO_ENV}")
+    return value
 
 
 def launch(name, port, primary_url, model, hedged):
-    env = dict(os.environ)
-    env.update({
-        "PRIMARY_API_URL": primary_url,
-        "PRIMARY_API_KEY": key("HIVE_SECRET_KEY") if "thehive" in primary_url else "none",
-        "PRIMARY_MODEL": model,
-        "FALLBACK_API_URL": HUB_URL,
-        "FALLBACK_API_KEY": "none",
-        "FALLBACK_MODEL": SPECIALIST,
-        "HEDGE_MAX_TOKENS": "4000",
-        "COMMIT_TOKENS": "10", "HEDGE_LIVE_REASONING": "1",
-        "AUDIT_LOG": os.path.join(ROOT, "evals", "results", f"endpoints_{port}_audit.jsonl"),
-        "METRICS_PORT": str(port + 100),
-        "ACCEPT_TIMEOUT_S": "120", "YIELD_TIMEOUT_S": "600",
-        "PYTHONDONTWRITEBYTECODE": "1", "PYTHONIOENCODING": "utf-8",
-    })
-    if not hedged:
-        env["COMMIT_TOKENS"] = "100000"  # effectively no speculative race
-    logf = io.open(os.path.join(ROOT, "evals", "results", f"endpoints_{port}.log"),
-                   "w", encoding="utf-8")
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "proxy_gateway:app", "--host", "0.0.0.0",
-         "--port", str(port), "--log-level", "warning"],
-        cwd=ROOT, env=env, stdout=logf, stderr=subprocess.STDOUT)
-    print(f"  {name:18s} pid={proc.pid:6d} http://100.113.176.84:{port}/v1/chat/completions"
-          f"{'  (hedged)' if hedged else ''}")
-    return proc
+    """Backward-compatible wrapper: the copies' positional launch signature.
+
+    Builds an EndpointConfig (bind/dry_run from the current plan state) and
+    delegates to serve_module.launch. Pre-extraction callers that unpacked the
+    INSTANCES 5-tuples keep working unchanged.
+    """
+    cfg = serve_module.EndpointConfig(name, port, primary_url, model, hedged)
+    return serve_module.launch(
+        cfg, ufo_env=UFO_ENV, root=ROOT, display_host=_DISPLAY_HOST,
+        fallback_url=HUB_URL, fallback_model=SPECIALIST)
 
 
 if __name__ == "__main__":
-    print("provider-hub endpoints (0.0.0.0, tailnet 100.113.176.84):")
-    procs = [launch(*inst) for inst in INSTANCES]
-    print("all up; ctrl-c or kill the pids to stop")
-    for p in procs:
-        p.wait()
+    raise SystemExit(serve_all(
+        sys.argv[1:], instances=INSTANCES, ufo_env=UFO_ENV, root=ROOT,
+        header=_HEADER, display_host=_DISPLAY_HOST, fallback_url=HUB_URL,
+        fallback_model=SPECIALIST))
 

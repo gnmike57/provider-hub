@@ -28,6 +28,15 @@ siphon_state.json.tmp
 abliteration_pool.json
 abliteration_pool.json.tmp
 
+# Multi-account credential pool (Hive/Abliteration/NanoGPT - full key values)
+account_pool.json
+account_pool.json.tmp
+
+# nanogpt helper folder: machine-specific config (hardcoded npx path) holding an
+# osint.cat API key in plaintext - re-set per Windows environment, never commit
+nanogpt/.mcp.json
+nanogpt/.mcp.json.bak
+
 # loki runtime state (autonomous session ledger)
 .loki/
 
@@ -40,3 +49,73 @@ tars/gx10-router/router.env
 # IDE state
 .idea/
 
+# tool caches (untracked; never commit)
+.mypy_cache/
+.ruff_cache/
+
+# production runtime state - billing / audit / learned maps (never commit;
+# verified live: billing.py USERS_PATH/USAGE_PATH, siphon.py SIPHON_AUDIT_FILE,
+# camouflage._path(), skills_memory._path() all default to these at the root)
+usage_events.jsonl
+usage_events.jsonl.tmp
+users.jsonl
+card_amount_audit.jsonl
+skills_memory.jsonl
+camouflage_map.jsonl
+
+# hub runtime artifacts under evals/results (pid / watchdog state / dumps)
+evals/results/frost_hub.pid
+evals/results/frost_watchdog_state.json
+evals/results/_sentinel_dump*
+evals/results/gw_receipts/
+
+# ---------------------------------------------------------------------------
+# 2026-10-22 (key-surface audit): secrets that were reachable to `git add -A`.
+# All ADDITIVE - nothing previously tracked is affected. Verified with
+# `git check-ignore` that each entry below was NOT-IGNORED before this block.
+# ---------------------------------------------------------------------------
+# TARS staged setup tree: holds .tars-setup/router/router.env with 5 live keys
+.tars-setup/
+.staging/
+
+# staged constellation bindings (slot_bindings.json is already ignored above;
+# the .staged-v2 snapshot carries the same per-slot provider keys)
+slot_bindings.staged-v2.json
+slot_bindings*.json
+
+# dated snapshots of key-bearing state (constellations / gateway registry)
+constellations.json.bak-*
+gateway_registry.json.bak-*
+*.bak-20*
+
+# credential-shaped files: never commit, any extension
+router.env
+*.key
+*.pem
+
+# audit output from evals/key_audit.py - MASKED keys only, but still a
+# credential-adjacent artifact: keep it local
+evals/results/key_audit.jsonl
+evals/results/key_bench.jsonl
+evals/results/key_refit.jsonl
+
+# scratch files produced by ad-hoc audits/benchmarks (never repo content)
+evals/_local_hashes.txt
+evals/_spark_hashes.txt
+evals/_spark_discover.sh
+evals/_history_key_scan.ps1
+evals/_tmp_ast.py
+evals/_newkey_check.py
+evals/_newkey_swap.py
+
+
+# point-in-time snapshots from the 2026-10-20 remediation staging - state that
+# must never re-enter the tree (registry/binding history + launcher copies).
+# gitignore coverage verified live 2026-10-21: constellations.json.bak-*,
+# gateway_registry.json.bak-*, launch_frost_hub.ps1.bak-*, slot_bindings.json.bak-*
+*.bak-*
+slot_bindings.staged-*.json
+
+
+# hub_ipc runtime lock files (never commit)
+*.lock
