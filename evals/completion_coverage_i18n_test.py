@@ -15,7 +15,7 @@ from proxy_gateway import _completion_uncovered, _conductor_implicated
 
 def _checklist(*items):
     """Numbered checklist block (the _COMPLETION_RE contract: every item
-    line is `\d+[.)] ...`)."""
+    line is a numbered `N.` or `N)` line)."""
     lines = "\n".join(
         "{}. {}".format(i + 1, it) for i, it in enumerate(items))
     return "[[GW-CHECKLIST]]\n" + lines + "\n[[/GW-CHECKLIST]]\n"

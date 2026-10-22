@@ -1,4 +1,4 @@
-# gx10_sync.ps1 - instant local <-> GX10 (DGX Spark) mirror for provider-hub (2026-10-21).
+﻿# gx10_sync.ps1 - instant local <-> GX10 (DGX Spark) mirror for provider-hub (2026-10-21).
 #
 # OPERATOR RULE: every change lands on the local copy AND the Spark copy
 # together. This script is that rule, mechanised:
@@ -107,10 +107,13 @@ function Push-Files([string[]]$rels) {
 
 function Invoke-Verify {
     Write-Note "on-box compile check..."
-    $script = ("cd '{0}' && find . -name '*.py' -not -path '*__pycache__*' " +
-               "-print0 | xargs -0 -n 32 python3 -m py_compile " +
-               "&& echo 'GX10 COMPILE OK' || echo 'GX10 COMPILE FAIL'") -f $Remote
-    ssh $SSH "bash -lc `"$script`""
+    # 2026-10-22 fix: the old `bash -lc "<script>"` nesting lost its
+    # quotes through PowerShell -> ssh, so the box ran `cd` alone (back
+    # to $HOME) and find swept the whole home tree (osint/venv, .cargo).
+    # Direct ssh command form + explicit venv/vendor exclusions = the
+    # check now scopes to the mirrored project only.
+    $find = "find . -name '*.py' -not -path '*__pycache__*' -not -path '*/venv/*' -not -path '*/.venv/*' -not -path '*/.cargo/*' -not -path '*/node_modules/*' -not -path './nanogpt/*' -not -path './tars/*' -not -path './evals/results/*' -not -path './.tars-setup/*' -print0 | xargs -0 -n 32 python3 -m py_compile && echo GX10_COMPILE_OK || echo GX10_COMPILE_FAIL"
+    ssh $SSH "cd $Remote && $find"
 }
 
 function Invoke-Restart {
