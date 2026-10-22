@@ -2648,19 +2648,57 @@ async def _conductor_subtask(text, *, nasty, routine, terminal, settings=None,
         }
         payload.update(_thinking_off_knobs(d_model))
         url, key = d_url, d_key
+    # SUBTASK RETRIES (2026-10-22, live defect: "(subtask lost: specialist
+    # capacity exhausted)" shipped in real conductor deliverables because ONE
+    # transient blip - a 429 rate limit or a transport hiccup - lost the
+    # subtask FOREVER; the conductor fires up to FANOUT_MAX_PARALLEL
+    # concurrent routine hops at the SAME upstream, exactly the shape that
+    # trips rate limits). Now: up to CONDUCTOR_SUBTASK_RETRIES extra
+    # attempts (default 2; 0 restores the one-shot law) on transport
+    # errors and retry/divert-class statuses (429/408/5xx), rotating the
+    # account-pool credential between attempts, with
+    # CONDUCTOR_SUBTASK_RETRY_DELAY backoff (default 0.5s).
     try:
-        resp = await client.post(
-            url, json=payload, headers={**_auth_header(key)},
-            timeout=httpx.Timeout(30.0, read=180.0))
-    except Exception:  # noqa: BLE001 - a lost subtask never sinks siblings
-        return None
-    if resp.status_code >= 400:
-        return None
-    try:
-        return str(((resp.json().get("choices") or [{}])[0]
-                    .get("message", {}).get("content", "")) or "").strip() or None
+        attempts = max(1, _int_env("CONDUCTOR_SUBTASK_RETRIES", 2) + 1)
     except Exception:  # noqa: BLE001
-        return None
+        attempts = 3
+    try:
+        backoff = max(0.0, float(os.getenv("CONDUCTOR_SUBTASK_RETRY_DELAY",
+                                          "0.5") or 0.5))
+    except Exception:  # noqa: BLE001
+        backoff = 0.5
+    for attempt in range(attempts):
+        try:
+            headers, acct = account_pool.routed_headers(
+                {**_auth_header(key), "Content-Type": "application/json"},
+                url)
+            resp = await client.post(
+                url, json=payload, headers=headers,
+                timeout=httpx.Timeout(30.0, read=180.0))
+        except Exception:  # noqa: BLE001 - a lost subtask never sinks siblings
+            if attempt + 1 < attempts:
+                await asyncio.sleep(backoff * (attempt + 1))
+                continue
+            return None
+        try:
+            account_pool.observe_result(acct, resp.status_code)
+        except Exception:  # noqa: BLE001
+            pass
+        if (resp.status_code >= 400
+                and (attempt + 1 < attempts)
+                and classify_status(resp.status_code) in (
+                    "retry_same", "retry_then_divert")):
+            # transient (429/408/5xx): back off, rotate the credential, retry
+            await asyncio.sleep(backoff * (attempt + 1))
+            continue
+        if resp.status_code >= 400:
+            return None
+        try:
+            return str(((resp.json().get("choices") or [{}])[0]
+                        .get("message", {}).get("content", "")) or "").strip() or None
+        except Exception:  # noqa: BLE001
+            return None
+    return None
 # CONDUCTOR-PART-2B
 def _conductor_uncovered(checklist, deliverable):
     """The completion contract, applied to the assembled deliverable: the
