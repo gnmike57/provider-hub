@@ -146,6 +146,17 @@ def _length_continue_on() -> bool:
         return True
 
 
+def _race_length_continue_max_rounds() -> int:
+    """S1 OVERKILL (2026-10-22): the race winner's continuation rounds bound.
+    Same env/contract as the gateway's _length_continue_max_rounds
+    (LENGTH_CONTINUE_MAX_ROUNDS, default 5, clamp 0..50; 0 = never)."""
+    try:
+        n = int(os.getenv("LENGTH_CONTINUE_MAX_ROUNDS", "5") or 5)
+    except Exception:  # noqa: BLE001
+        n = 5
+    return max(0, min(n, 50))
+
+
 def _chain_reasoning_effort() -> str:
     """S2 CHAIN_REASONING_EFFORT (2026-10-22): the thinking budget for the
     max-reasoning chain hops. Default "max" keeps the chain NAME's promise;
@@ -971,18 +982,48 @@ async def race_stream(
                         yield f"{line}\n\n".encode()
                     if (held_finish is not None and _length_continue_on()
                             and winner_text.strip()):
-                        cont = await _open_winner_continue(winner, winner_text)
-                        if cont is not None:
+                        # S1 OVERKILL (2026-10-22): up to
+                        # LENGTH_CONTINUE_MAX_ROUNDS rounds - a continuation
+                        # that ALSO cuts length gets another round (the cut
+                        # finish held each time); exhausting the budget or a
+                        # continuation that cannot open ships the honest cut.
+                        _rounds = 0
+                        while True:
+                            cont = await _open_winner_continue(winner, winner_text)
+                            if cont is None:
+                                break  # ships the held finish below
                             _RACE_OUTCOMES["length_continue"] += 1
                             yield hop_comment(
                                 "race",
                                 "run command: continue past the token limit")
                             cont_done = False
+                            cont_held = None
                             try:
                                 async for raw in cont.aiter_lines():
                                     cline = (raw or "").strip()
                                     if not cline:
                                         continue
+                                    if (cont_held is not None
+                                            and cline.startswith("data:")
+                                            and cline[5:].strip() == "[DONE]"):
+                                        continue  # suppressed: a round closes it
+                                    if (cline.startswith("data:")
+                                            and _finish_reason_of(cline) == "length"):
+                                        kept = _strip_length_finish(cline)
+                                        if kept is not None:
+                                            winner_text += kept[1]
+                                            yield f"{kept[0]}\n\n".encode()
+                                        cont_held = cline
+                                        continue
+                                    if cline.startswith("data:"):
+                                        try:  # tally the live tail
+                                            _d = (((json.loads(cline[5:].strip())
+                                                    .get("choices") or [{}])[0]
+                                                    .get("delta")) or {})
+                                            if _d.get("content"):
+                                                winner_text += str(_d["content"])
+                                        except Exception:  # noqa: BLE001
+                                            pass
                                     yield f"{cline}\n\n".encode()
                                     if cline.replace("data:", "", 1).strip() \
                                             == "[DONE]":
@@ -991,11 +1032,20 @@ async def race_stream(
                             finally:
                                 with contextlib.suppress(Exception):
                                     await cont.aclose()
-                            if not cont_done:
-                                # the continuation ended bare: close properly
-                                yield f"data: {_chunk({}, finish='stop', model=winner['model'], stream_id=sid)}\n\n".encode()
+                            if cont_held is None:
+                                if not cont_done:
+                                    # the continuation ended bare: close properly
+                                    yield f"data: {_chunk({}, finish='stop', model=winner['model'], stream_id=sid)}\n\n".encode()
+                                    yield b"data: [DONE]\n\n"
+                                return
+                            _rounds += 1
+                            if (_rounds >= _race_length_continue_max_rounds()
+                                    or not winner_text.strip()):
+                                yield f"{cont_held}\n\n".encode()
                                 yield b"data: [DONE]\n\n"
-                            return
+                                return
+                            # the continuation ALSO cut: another round on the
+                            # accumulated text (the loop re-opens it)
                     if held_finish is not None:
                         # switch off / empty winner / continuation failed to
                         # open: the cut finish ships exactly as before.

@@ -25,7 +25,12 @@ if ! .venv/bin/pip show litellm >/dev/null 2>&1; then
   echo "   poll with: tail -5 $DIR/pip-install.log ; .venv/bin/pip show litellm"
 else
   echo "== litellm already installed =="
-  .venv/bin/pip show litellm | head -2
+  # SIGPIPE fix (2026-10-22): `pip show | head -2` made pip die of SIGPIPE and
+  # `set -o pipefail` aborted deploy.sh BEFORE the config-sanity step (live
+  # defect during the v2 deploy: "ERROR: Pipe to stdout was broken"). Capture
+  # first, print after - echo never SIGPIPEs pip.
+  _pip_show="$(.venv/bin/pip show litellm 2>/dev/null || true)"
+  echo "$_pip_show" | head -2
 fi
 
 # 3. config sanity ------------------------------------------------------------

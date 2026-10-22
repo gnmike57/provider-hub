@@ -143,6 +143,49 @@ model_list:
       api_key: os.environ/ABLIT_POOL_KEY_D
       api_base: https://api.abliteration.ai/v1
 
+  # ---- LEGACY SURFACE (additive-only, 2026-10-22): the tars-hybrid names ---
+  # The v2 deploy replaced the single-model surface; the box's TARS clients
+  # (agent-tars.config.ts: model.id 'abliterated-model-large-v2' at :4001)
+  # and the old verify pins call these names. The catalog only grows - the
+  # legacy ids stay, now backed by the same 4-key V2 pool.
+  - model_name: abliterated-model-large-v2
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_A
+      api_base: https://api.abliteration.ai/v1
+  - model_name: abliterated-model-large-v2
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_B
+      api_base: https://api.abliteration.ai/v1
+  - model_name: abliterated-model-large-v2
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_C
+      api_base: https://api.abliteration.ai/v1
+  - model_name: abliterated-model-large-v2
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_D
+      api_base: https://api.abliteration.ai/v1
+
+  - model_name: tars-hybrid
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_A
+      api_base: https://api.abliteration.ai/v1
+  - model_name: tars-hybrid
+    litellm_params:
+      model: openai/abliterated-model-large-v2
+      api_key: os.environ/ABLIT_POOL_KEY_B
+      api_base: https://api.abliteration.ai/v1
+
+  - model_name: abliterated-model
+    litellm_params:
+      model: openai/abliterated-model
+      api_key: os.environ/ABLIT_POOL_KEY_A
+      api_base: https://api.abliteration.ai/v1
+
 litellm_settings:
   drop_params: true
   request_timeout: 600

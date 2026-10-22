@@ -627,10 +627,12 @@ _METRICS = {
     "verify_gaps_total": 0,              # T-E: verifications that ended NOT verified (gaps named)
     "verify_council_disagree_total": 0,  # T-E: verify councils whose two reviewers disagreed
     "verify_receipt_failed_total": 0,    # T-E: verify receipt writes that failed (verdict unaffected)
-    # S1 LENGTH AUTO-CONTINUE (2026-10-22): primary streams cut at the
-    # output-token cap (finish_reason=length) that got ONE seamless
-    # continuation round (the RACE winner's rounds live in the hedge
-    # module's race_length_continue_total).
+    # S1 LENGTH AUTO-CONTINUE, OVERKILL EDITION (operator directive
+    # 2026-10-22: "bulletproof it to 500% - it keeps happening when
+    # ABLITERATED takes over"): EVERY path (primary, race winner, and the
+    # Abliterated terminal/divert) runs up to LENGTH_CONTINUE_MAX_ROUNDS
+    # (default 5) seamless continuation rounds on a finish_reason=length cut;
+    # the cut finish never ships unless a continuation cannot run.
     "length_continue_total": 0,
     # LLM SCOUT-JUDGE (roadmap 1, 2026-10-22)
     "scout_judge_total": 0,              # scout-judge classifications run (SCOUT_JUDGE=1)
@@ -804,6 +806,7 @@ def render_prometheus() -> str:
     "arsenal_total": "/v1/arsenal/run hacking-tool executions attempted (roadmap 4)",
     "arsenal_ok_total": "arsenal tool runs that exited 0",
     "arsenal_blocked_total": "arsenal runs rejected by the target/arg allowlist",
+    "length_continue_total": "S1 auto-continue rounds run on ANY path (primary/race/terminal); default up to LENGTH_CONTINUE_MAX_ROUNDS=5 per stream",
             "sustained_probe_hit_total": "pre-probes that skipped the expensive V2 terminal (clean + simple)",
             "sustained_verify_total": "DEEP evidence-claim verifications run by the SUSTAINED chain",
             "sustained_verify_gaps_total": "DEEP verifications that reported GAPS",
@@ -1817,6 +1820,52 @@ async def fallback_stream(
                                finish=None, model=s.fallback_model, stream_id=sid)
             break
 
+        # S1 LENGTH AUTO-CONTINUE - THE TERMINAL PATH (operator directive
+        # 2026-10-22: "bulletproof the auto-continue to absolute overkill -
+        # it keeps happening when ABLITERATED takes over"): the divert used
+        # to ship the specialist's finish_reason=length cut verbatim. The
+        # drained terminal stream now gets up to LENGTH_CONTINUE_MAX_ROUNDS
+        # seamless continuation rounds from the SAME specialist hop (the cut
+        # finish is held out of the shipped lines - its content delta keeps
+        # flowing), so the commitment judge, the marker stripping and the
+        # footnote machinery below all see the COMPLETE stitched answer and
+        # the client never receives a truncated reply. Bounded by
+        # LENGTH_CONTINUE_MAX_ROUNDS; fail-open (a continuation that cannot
+        # open, breaks, or answers nothing ships the honest cut); kill
+        # switch LENGTH_AUTO_CONTINUE=0 (or MAX_ROUNDS=0).
+        _lc_rounds = 0
+        while (not broke_msg and lines and text.strip()
+               and _chain_env_flag("LENGTH_AUTO_CONTINUE")
+               and _lc_rounds < _length_continue_max_rounds()
+               and _finish_reason_of_line(lines[-1]) == "length"):
+            _cont_payload = dict(payload)
+            _cont_payload["messages"] = list(msgs) + [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": LENGTH_CONTINUE_INSTRUCTION},
+            ]
+            _lc_rounds += 1
+            incr("length_continue_total")
+            try:
+                _cont_resp = await open_fallback(
+                    app.state.http, _cont_payload, headers, s)
+            except PrimaryOpenError:
+                break  # the honest cut (the finish line is still in place)
+            _c_lines, _c_text, _c_broke, sid = await _drain_specialist(
+                _cont_resp, sid)
+            if not _c_text.strip():
+                break  # nothing gained: ship the honest cut
+            # success: swap the cut finish for its content-only line, then
+            # append the continuation's lines verbatim (a broke continuation
+            # carries its visible error event along - F11 parity).
+            _held = _strip_length_finish_line(lines[-1])
+            if _held is not None:
+                lines = lines[:-1]
+                if _held[1]:
+                    lines.append(_held[0])
+            lines = lines + _c_lines
+            text = text + _c_text
+            broke_msg = _c_broke  # a broke continuation surfaces on ship
+
         # REVERSE HANDBACK (operator directive 2026-10-21): the terminal
         # signalled the task is benign - hand it back to the cheap helm
         # BEFORE shipping anything (the drain-then-judge architecture makes
@@ -2617,6 +2666,50 @@ def _chain_env_flag(name: str, default: str = "1") -> bool:
     default ON; 0/false/no/off restores the plain chain dispatch)."""
     return (os.getenv(name, default) or default).strip().lower() not in (
         "0", "false", "no", "off")
+
+
+def _length_continue_max_rounds() -> int:
+    """S1 OVERKILL (operator directive 2026-10-22: 'bulletproof the
+    auto-continue to absolute overkill 500% - it keeps happening when
+    ABLITERATED takes over'): how many continuation rounds a length-cut
+    stream may run on EVERY path (primary, race winner, and the Abliterated
+    terminal/divert). LENGTH_CONTINUE_MAX_ROUNDS, default 5, clamp 0..50;
+    0 = never continue (the bare cut ships, the pre-S1 behaviour)."""
+    try:
+        n = int(os.getenv("LENGTH_CONTINUE_MAX_ROUNDS", "5") or 5)
+    except (TypeError, ValueError):
+        n = 5
+    return max(0, min(n, 50))
+
+
+def _finish_reason_of_line(line):
+    """finish_reason of an SSE data line (None when absent/unparsable)."""
+    try:
+        ev = json.loads(line[5:].strip())
+        return ((ev.get("choices") or [{}])[0] or {}).get("finish_reason")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _strip_length_finish_line(line):
+    """A length finish is HELD: rewrite the line with finish_reason=None so
+    any content delta riding it keeps flowing. Returns (rewritten_line,
+    content_text) or None when the line carries no length finish."""
+    try:
+        ev = json.loads(line[5:].strip())
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(ev, dict):
+        return None
+    ch = (ev.get("choices") or [{}])[0] or {}
+    if ch.get("finish_reason") != "length":
+        return None
+    content = str((ch.get("delta") or {}).get("content") or "")
+    ch2 = dict(ch)
+    ch2["finish_reason"] = None
+    ev2 = dict(ev)
+    ev2["choices"] = [ch2]
+    return "data: " + json.dumps(ev2, ensure_ascii=False), content
 
 
 # CONDUCTOR (chain 6): the GLMMAX helm decomposes the ask (CyberSubtaskPlan
@@ -4123,82 +4216,87 @@ async def chat_proxy(request: Request):
                 return
 
             async def _lines_with_length_continue(first_resp):
-                """S1 LENGTH AUTO-CONTINUE (2026-10-22): yield the source
-                stream's SSE lines; a length finish (+ its [DONE]) is held
-                back and replaced by ONE seamless continuation round from the
-                SAME primary hop, so the state machine below sees a single,
-                longer, complete stream - buffer, judges and commit all
-                judge the stitched answer. The continuation's own finish
-                closes the stream; a second length finish passes through
-                as-is (bounded: never two rounds). A continuation that
-                cannot open falls back to shipping the cut finish exactly
-                as before. Kill switch: LENGTH_AUTO_CONTINUE=0."""
-                held = None
+                """S1 LENGTH AUTO-CONTINUE, OVERKILL EDITION (operator
+                directive 2026-10-22): yield the source stream's SSE lines;
+                every length finish (+ its [DONE]) is held back and replaced
+                by a seamless continuation round from the SAME primary hop,
+                up to LENGTH_CONTINUE_MAX_ROUNDS rounds (default 5), so the
+                state machine below sees a single, longer, complete stream -
+                buffer, judges and commit all judge the stitched answer. A
+                non-length finish (or exhausting the round budget) closes the
+                stream with the LAST held finish shipped honestly; a
+                continuation that cannot open falls back to shipping the cut
+                finish exactly as before. Kill switch: LENGTH_AUTO_CONTINUE=0
+                (or LENGTH_CONTINUE_MAX_ROUNDS=0)."""
+                resp = first_resp
+                rounds = 0
                 partial = ""
-                async for raw in first_resp.aiter_lines():
-                    line = (raw or "").strip()
-                    if (held is not None and line.startswith("data:")
-                            and line[5:].strip() == "[DONE]"):
-                        continue  # suppressed: the continuation closes the stream
-                    if line.startswith("data:"):
+                try:
+                    while True:
+                        held = None
+                        async for raw in resp.aiter_lines():
+                            line = (raw or "").strip()
+                            if (held is not None and line.startswith("data:")
+                                    and line[5:].strip() == "[DONE]"):
+                                continue  # suppressed: a continuation closes it
+                            if line.startswith("data:"):
+                                try:
+                                    ev = json.loads(line[5:].strip())
+                                except json.JSONDecodeError:
+                                    ev = {}
+                                if isinstance(ev, dict):
+                                    ch = (ev.get("choices") or [{}])[0] or {}
+                                    if ch.get("finish_reason") == "length":
+                                        # a finish can ride the SAME line as a
+                                        # content delta: keep the content
+                                        # flowing, hold ONLY the finish.
+                                        held = line
+                                        d = ch.get("delta") or {}
+                                        if d.get("content"):
+                                            partial += str(d["content"])
+                                            ev2 = dict(ev)
+                                            ch2 = dict(ch)
+                                            ch2["finish_reason"] = None
+                                            ev2["choices"] = [ch2]
+                                            yield f"data: {json.dumps(ev2)}"
+                                        continue
+                                    d = ch.get("delta") or {}
+                                    if d.get("content"):
+                                        partial += str(d["content"])
+                            yield line
+                        if held is None:
+                            return  # a clean finish closed the stream
+                        if (not _chain_env_flag("LENGTH_AUTO_CONTINUE")
+                                or rounds >= _length_continue_max_rounds()
+                                or not partial.strip()):
+                            yield held
+                            yield "data: [DONE]"
+                            return
+                        rounds += 1
+                        incr("length_continue_total")
+                        cont_payload = dict(primary_payload)
+                        cont_payload["messages"] = list(
+                            primary_payload.get("messages") or []) + [
+                            {"role": "assistant", "content": partial},
+                            {"role": "user",
+                             "content": LENGTH_CONTINUE_INSTRUCTION},
+                        ]
+                        # (no hop comment here: this wrapper feeds the line
+                        # state machine, which forwards data: lines only.)
                         try:
-                            ev = json.loads(line[5:].strip())
-                        except json.JSONDecodeError:
-                            ev = {}
-                        if isinstance(ev, dict):
-                            ch = (ev.get("choices") or [{}])[0] or {}
-                            if ch.get("finish_reason") == "length":
-                                # a finish can ride the SAME line as a content
-                                # delta (the test harness and some upstreams do
-                                # it): keep the content flowing into the
-                                # buffer, hold ONLY the finish.
-                                held = line
-                                d = ch.get("delta") or {}
-                                if d.get("content"):
-                                    partial += str(d["content"])
-                                    ev2 = dict(ev)
-                                    ch2 = dict(ch)
-                                    ch2["finish_reason"] = None
-                                    ev2["choices"] = [ch2]
-                                    yield f"data: {json.dumps(ev2)}"
-                                continue
-                            d = ch.get("delta") or {}
-                            if d.get("content"):
-                                partial += str(d["content"])
-                    yield line
-                if held is None:
-                    return
-                if (not _chain_env_flag("LENGTH_AUTO_CONTINUE")
-                        or not partial.strip()):
-                    yield held
-                    yield "data: [DONE]"
-                    return
-                incr("length_continue_total")
-                cont_payload = dict(primary_payload)
-                cont_payload["messages"] = list(
-                    primary_payload.get("messages") or []) + [
-                    {"role": "assistant", "content": partial},
-                    {"role": "user", "content": LENGTH_CONTINUE_INSTRUCTION},
-                ]
-                # (no hop comment here: this wrapper feeds the line state
-                # machine, which forwards data: lines only - the client-
-                # visible "run command: continue" comment is the RACE path's)
-                try:
-                    cont_resp = await open_primary(
-                        app.state.http, cont_payload, primary_headers,
-                        call_settings)
-                except Exception:  # noqa: BLE001 - keep the partial answer
-                    yield held
-                    yield "data: [DONE]"
-                    return
-                try:
-                    async for raw2 in cont_resp.aiter_lines():
-                        line2 = (raw2 or "").strip()
-                        if line2:
-                            yield line2
+                            cont_resp = await open_primary(
+                                app.state.http, cont_payload, primary_headers,
+                                call_settings)
+                        except Exception:  # noqa: BLE001 - keep the partial
+                            yield held
+                            yield "data: [DONE]"
+                            return
+                        with contextlib.suppress(Exception):
+                            await resp.aclose()
+                        resp = cont_resp  # the loop drains the continuation
                 finally:
                     with contextlib.suppress(Exception):
-                        await cont_resp.aclose()
+                        await resp.aclose()
 
             try:
                 # B7: ONE pass over ONE iterator - never re-enter, never drop.

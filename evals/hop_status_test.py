@@ -107,6 +107,35 @@ def test_race_length_finish_continues_the_winner(script, monkeypatch):
     assert cont["model"] == "deepseek-ai/deepseek-v4.1-flash-1017"
 
 
+def test_race_length_multi_round_overkill(script, monkeypatch):
+    """S1 OVERKILL (2026-10-22): a RACE winner whose continuation ALSO cuts
+    gets another round (up to LENGTH_CONTINUE_MAX_ROUNDS) - the client never
+    sees ANY length finish, and each round's hop comment ships."""
+    _ablit_provider(monkeypatch)
+    # helm (deep) wins but is cut; middle (glm) refuses; TWO cut
+    # continuations, then the third completes the answer.
+    script.script(PRIMARY, [
+        ("sse", [chunk("Deep wins but gets cut off round one ",
+                       finish="length"), DONE]),
+        ("sse", [chunk("I cannot help with that.", finish="stop"), DONE]),
+        ("sse", [chunk("round two also gets cut off ", finish="length"), DONE]),
+        ("sse", [chunk("round three completes it, seamlessly.", finish="stop"),
+                 DONE]),
+    ])
+    with TestClient(proxy_gateway.app) as tc:
+        r = _post(tc, RACE, "audit this box")
+    assert r.status_code == 200
+    assert "Deep wins but gets cut off round one " in r.text
+    assert "round two also gets cut off " in r.text
+    assert "round three completes it, seamlessly." in r.text
+    assert '"length"' not in r.text
+    # one hop comment per continuation round
+    assert r.text.count("run command: continue past the token limit") == 2
+    snap = proxy_gateway.metrics_snapshot()
+    assert snap["race_length_continue_total"] == 2
+    assert snap["race_won_helm_total"] == 1
+
+
 def test_race_length_kill_switch_restores_the_cut(script, monkeypatch):
     monkeypatch.setenv("LENGTH_AUTO_CONTINUE", "0")
     _ablit_provider(monkeypatch)
