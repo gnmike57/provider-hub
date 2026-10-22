@@ -306,6 +306,25 @@ What the implementing Cline CLI session can and cannot do. The scope markers
 
 ### 9.2 Partial scope (needs operator hand)
 
+> **AMENDMENT (2026-10-22, operator-directed completion pass).**
+> 1. **E15 — key revocation of orphan id=245159: BLOCKED, operator token
+>    needed.** The NanoGPT management token (`sk-nano-mgmt-…iQhY`, seen in
+>    process env at the 2026-10-22 10:32 key audit) is not present in any
+>    persistent store (HKCU/HKLM env, ufo.env, .loki dirs, router envs,
+>    account_pool.json, the gx10 — all checked; only masked values survive in
+>    `evals/results/key_audit.jsonl`). The revoke needs a fresh management
+>    token from https://nano-gpt.com/settings#management-api-tokens, then:
+>    `powershell -File nanogpt\scripts\nanogpt-key.ps1 revoke -KeyId 245159 -Yes`.
+>    Note: the whole NanoGPT surface is retired from the hub since 2026-10-20
+>    (the hop was dropped; the audited inference keys already 401), so the
+>    orphan is dormant, not dangerous.
+> 2. **E16 — S-B registry key removal: DONE 2026-10-22.** The Hive plaintext
+>    key is out of `gateway_registry.json` (blank; the ablit key likewise) —
+>    `providers.Registry` resolves blank provider keys from env
+>    (`HIVE_SECRET_KEY` / `ABLITERATION_API_KEY`) at load time, and
+>    `tools/hive/make_gateway_registry.py` no longer embeds the key. Pinned
+>    by `evals/sb_registry_test.py`.
+
 1. **Key revocation of orphan id=245159** — destructive; skill rules require
    operator confirmation before any DELETE.
 2. **Removing the Hive plaintext key from `gateway_registry.json`** — touches

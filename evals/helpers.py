@@ -139,5 +139,9 @@ def script(monkeypatch, tmp_path):
     s.specialist_system_mode = "neutral"
     s.specialist_max_tokens = 4096
     s.max_concurrent_streams = 64
+    # LLM SCOUT-JUDGE (roadmap 1): default-off per test; scout_judge_test
+    # opts in explicitly (hermeticity - one opting-in test must not leak the
+    # judge into every later suite).
+    s.scout_judge = 0
     yield sc
     proxy_gateway.BREAKER = proxy_gateway.SpecialistCircuitBreaker()

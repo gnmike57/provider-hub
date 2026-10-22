@@ -18,25 +18,31 @@
 >   2026-10-21 mint; `ensure_pool(2)` was re-run with N=4 (org-burst bench).
 >   The chat key `ABLITERATION_API_KEY` was rotated 2026-10-22 (ak_QcXw…);
 >   the admin key `sk_Vizp…IVup` is unchanged (verified 2026-10-22).
-> * **Roadmap status (verified live 2026-10-22)**: (1) PARTIAL — the
->   ZERO-REFUSAL LAW landed a deterministic multilingual full-reply judge
->   (`routing_patterns.zero_refusal_violation`) at all four commit sites, but
->   the LLM scout-judge (hard-refusal vs hedging vs done) is still open; the
->   LLM-judged surfaces that DO exist are the `/v1/verify` two-reviewer council
->   and the SUSTAINED GLM pre-probe. (2) DONE — via chain-6 CONDUCTOR +
->   AUTO_TEAM + `/v1/verify` (RARV-C: plan → fan-out → coverage judge →
->   council → tamper-evident receipt). (3) **NOT DONE** — live-probed
->   2026-10-22: gx10 `:4001` still serves the OLD tars-hybrid surface
->   (`abliterated-model-large-v2`, `tars-hybrid`, `abliterated-model`, old
->   master key); the constellation `litellm_config.yaml` was never deployed and
->   is itself now stale (3 chains vs the hub's 7; pool keys re-minted since).
->   (4) OPEN — `docs/autonomous-hacking-system-plan.md` is referenced below but
->   does not exist yet (vuln-lab targets staged in `.staging/vuln-lab/`).
-> * **Verification (superseded counts)**: full suite on 2026-10-22 =
->   **821 passed / 22 skipped / 1 xpassed / 0 failed** (`py -3.12 -m pytest
->   evals/ -q --ignore=evals/results`), grown by the T-A..T-E waves
->   (multilingual refusal cores, COMPLETION_STRICT, chains RACE/CONDUCTOR/
->   SUSTAINED, AUTO_TEAM, /v1/verify, conductor subtask retries).
+> * **Roadmap status (2026-10-22, SECOND pass — items closed)**:
+>   (1) **DONE** — the LLM scout-judge landed (`SCOUT_JUDGE=1`): the regex
+>   tiers stay the pre-filter; every refusal-class divert verdict is confirmed
+>   by ONE bounded LLM classification (HARD_REFUSAL / HEDGING / DONE) on
+>   the cheap middle hop; DONE overturns a regex false positive, a broken
+>   judge fails open (`evals/scout_judge_test.py`, 7 tests).
+>   (2) DONE — via chain-6 CONDUCTOR + AUTO_TEAM + `/v1/verify` (RARV-C:
+>   plan → fan-out → coverage judge → council → tamper-evident receipt).
+>   (3) **DONE — DEPLOYED 2026-10-22**: the gx10 `:4001` router now serves
+>   the 7-chain constellation surface (live-verified: `/health/liveliness`
+>   200, `/v1/models` = 7 chain ids + 5 hops with the current master key, a
+>   PONG chat through `GLMMAX>DEEP>ABLITV2L`, a 200 through
+>   `ABLITV2L>SUB-GLM/DEEP` on a re-minted pool key). LiteLLM expresses the
+>   chains as fallback cascades — full RACE/CONDUCTOR/SUSTAINED semantics
+>   remain Windows-gateway-side by design. The old tars-hybrid surface is
+>   retired (backup: `litellm_config.yaml.bak-tars-hybrid-20261022` on the
+>   box). (4) **phase 1 DONE** — the Arsenal surface
+>   (`arsenal.py`, `POST /v1/arsenal/run` + `GET /v1/arsenal/tools`,
+>   admin-authed, target allowlist, `evals/arsenal_test.py` incl. a live
+>   nmap pin) and its plan doc now exists:
+>   `docs/autonomous-hacking-system-plan.md` (phases 2-3 open there).
+> * **Verification (final, 2026-10-22)**: full suite =
+>   **838 passed / 22 skipped / 1 xpassed / 0 failed** (`py -3.12 -m pytest
+>   evals/ -q --ignore=evals/results`), grown by the T-A..T-E waves and the
+>   2026-10-22 additions (scout-judge 7, arsenal 7, S-B registry 3).
 > * **Hub autostart (fixed 2026-10-22)**: the SYSTEM scheduled-task launch died
 >   in preflight (`Write-Note` called before it was defined, and SYSTEM cannot
 >   see the operator's User-scope secrets). Fixed in

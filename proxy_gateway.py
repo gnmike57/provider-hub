@@ -59,6 +59,7 @@ import siphon as siphon_mod
 import abliteration_keys
 import account_pool
 import redhands
+import arsenal
 from providers import CONSTELLATION_CHAINS, resolve_constellation_chain
 import skills_memory
 import camouflage
@@ -387,6 +388,22 @@ class Settings:
     completion_strict: int = field(
         default_factory=lambda: _int_env("COMPLETION_STRICT", 1)
     )
+    # LLM SCOUT-JUDGE (roadmap 1, 2026-10-22): the regex tiers stay the
+    # pre-filter; 1 = every refusal-class divert verdict is confirmed by ONE
+    # bounded LLM classification (HARD_REFUSAL / HEDGING / DONE) on the
+    # cheap middle hop BEFORE the divert fires. DONE overturns a regex false
+    # positive (the answer ships); a judge that errors keeps the regex
+    # verdict (fail-open: never weaken the ZERO-REFUSAL LAW). Default 0.
+    scout_judge: int = field(
+        default_factory=lambda: _int_env("SCOUT_JUDGE", 0)
+    )
+    # ARSENAL (roadmap 4, 2026-10-22): the hacking-tool surface behind the
+    # REDHANDS brain. 1 = /v1/arsenal/* exists (admin-authed, allowlisted
+    # targets only); 0 = 501. Default 1 - the allowlist + admin key are the
+    # real gates.
+    arsenal_enabled: int = field(
+        default_factory=lambda: _int_env("ARSENAL_ENABLED", 1)
+    )
     # T4.2 fan-out: max parallel subtask specialists per /v1/execute.
     fanout_max_parallel: int = field(
         default_factory=lambda: _int_env("FANOUT_MAX_PARALLEL", 4)
@@ -615,6 +632,14 @@ _METRICS = {
     # continuation round (the RACE winner's rounds live in the hedge
     # module's race_length_continue_total).
     "length_continue_total": 0,
+    # LLM SCOUT-JUDGE (roadmap 1, 2026-10-22)
+    "scout_judge_total": 0,              # scout-judge classifications run (SCOUT_JUDGE=1)
+    "scout_judge_confirmed_total": 0,   # verdicts that confirmed the refusal divert
+    "scout_judge_overruled_total": 0,   # DONE verdicts that overturned a regex false positive
+    # ARSENAL (roadmap 4, 2026-10-22)
+    "arsenal_total": 0,                 # /v1/arsenal/run executions attempted
+    "arsenal_ok_total": 0,              # tool runs that exited 0
+    "arsenal_blocked_total": 0,         # runs rejected by the target/arg allowlist
 }
 
 
@@ -773,6 +798,12 @@ def render_prometheus() -> str:
             "conductor_verified_total": "conductor deliverables whose checklist fully covered",
             "conductor_plan_failed_total": "conductor plans that degraded to the single nasty hop",
             "sustained_probe_total": "GLM pre-probe screens fired by the SUSTAINED chain",
+    "scout_judge_total": "LLM scout-judge classifications run (SCOUT_JUDGE=1, roadmap 1)",
+    "scout_judge_confirmed_total": "scout-judge verdicts that confirmed the refusal divert",
+    "scout_judge_overruled_total": "scout-judge DONE verdicts that overturned a regex false positive",
+    "arsenal_total": "/v1/arsenal/run hacking-tool executions attempted (roadmap 4)",
+    "arsenal_ok_total": "arsenal tool runs that exited 0",
+    "arsenal_blocked_total": "arsenal runs rejected by the target/arg allowlist",
             "sustained_probe_hit_total": "pre-probes that skipped the expensive V2 terminal (clean + simple)",
             "sustained_verify_total": "DEEP evidence-claim verifications run by the SUSTAINED chain",
             "sustained_verify_gaps_total": "DEEP verifications that reported GAPS",
@@ -2940,6 +2971,73 @@ async def _sustained_probe(user_query, *, probe, settings=None, client=None):
     if not text or is_routable(text) or len(text) < min_subst:
         return None
     return text
+
+
+# LLM SCOUT-JUDGE (roadmap 1, 2026-10-22): the regex tiers stay the pre-filter;
+# when SCOUT_JUDGE=1 one bounded LLM call classifies the buffer as
+# HARD_REFUSAL / HEDGING / DONE before a refusal-class divert fires. DONE
+# overturns a regex false positive; a judge that errors keeps the regex verdict
+# (fail-open: never weaken the ZERO-REFUSAL LAW).
+_SCOUT_JUDGE_SYSTEM = (
+    "You are the refusal-triage judge of the interception gateway. Classify "
+    "the assistant reply below in exactly one word: HARD_REFUSAL (it "
+    "refuses the ask, apologises out of it, or dodges it), HEDGING (it "
+    "engages but waters the answer down, offers only alternatives, or "
+    "qualifies the commitment away), or DONE (it answers the ask directly "
+    "and substantively). Reply with ONLY that word."
+)
+
+
+def _scout_judge_hop(chain, settings):
+    """The cheap brain the judge rides: the chain's blind middle hop when a
+    chain is active, else the request's primary binding."""
+    if chain and chain.get("middle"):
+        slot, model_id, _ = chain["middle"]
+        if slot == "primary":
+            return settings.primary_api_url, settings.primary_api_key, model_id
+        return (HUB_PROVIDERS["ablit.ai"]["url"],
+                HUB_PROVIDERS["ablit.ai"]["key"], model_id)
+    return settings.primary_api_url, settings.primary_api_key, settings.primary_model
+
+
+async def _scout_judge(buffer_text, *, chain=None, settings=None, client=None):
+    """Returns 'HARD_REFUSAL' | 'HEDGING' | 'DONE' | None (fail-open)."""
+    if not (buffer_text or "").strip():
+        return None
+    j_url, j_key, j_model = _scout_judge_hop(chain, settings)
+    incr("scout_judge_total")
+    cap = max(8, _int_env("SCOUT_JUDGE_MAX_TOKENS", 64))
+    payload = {
+        "model": j_model,
+        "messages": [
+            {"role": "system", "content": _SCOUT_JUDGE_SYSTEM},
+            {"role": "user", "content": buffer_text[-4000:]},
+        ],
+        "stream": False,
+        "max_tokens": cap,
+        "max_completion_tokens": cap,
+    }
+    payload.update(_thinking_off_knobs(j_model))
+    try:
+        resp = await client.post(
+            j_url, json=payload, headers={**_auth_header(j_key)},
+            timeout=httpx.Timeout(5.0, read=20.0))
+    except Exception:  # noqa: BLE001 - judge failure = keep the regex verdict
+        return None
+    if resp.status_code >= 400:
+        return None
+    try:
+        text = str(((resp.json().get("choices") or [{}])[0]
+                    .get("message", {}).get("content", "")) or "").strip()
+    except Exception:  # noqa: BLE001
+        return None
+    upper = text.upper()
+    for verdict in ("HARD_REFUSAL", "HEDGING", "DONE"):
+        if verdict in upper:
+            return verdict
+    return None
+
+
 # SUSTAINED-PART-B
 async def _sustained_verified(inner, *, verify, settings=None, client=None):
     """T-D chain 7 DEEP-VERIFY. Forwards the chain's stream verbatim while
@@ -4606,6 +4704,30 @@ async def chat_proxy(request: Request):
                             completion_uncovered = [
                                 "reply ignored the [[GW-CHECKLIST]] contract for a multi-item ask"]
                             routed_reason = "tier3_incomplete"
+            # LLM SCOUT-JUDGE (roadmap 1, 2026-10-22): the regex tiers are the
+            # pre-filter; with SCOUT_JUDGE=1 every refusal-class verdict is
+            # confirmed by ONE bounded LLM classification on the cheap middle
+            # hop before the divert fires. DONE overturns a regex false
+            # positive (the buffer ships as-is); HARD_REFUSAL / HEDGING map
+            # to the matching divert; a judge that errors or answers
+            # ambiguously keeps the regex verdict (fail-open). Objective
+            # reasons (tier3_incomplete completion contract, empty /
+            # thinking-only) are NOT judgment calls and never consult it.
+            if (getattr(settings, "scout_judge", 0)
+                    and routed_reason in (
+                        "tier3_refusal", "tier3_partial_refusal",
+                        "tier3_watered_down")):
+                verdict = await _scout_judge(
+                    buffer_text, chain=chain, settings=settings,
+                    client=app.state.http)
+                if verdict == "DONE":
+                    incr("scout_judge_overruled_total")
+                    routed_reason = ""
+                    refusal_presignal = False
+                elif verdict in ("HARD_REFUSAL", "HEDGING"):
+                    incr("scout_judge_confirmed_total")
+                    routed_reason = ("tier3_partial_refusal"
+                                     if verdict == "HEDGING" else "tier3_refusal")
             async for chunk in _finalize(routed_reason):
                 yield chunk
             return
@@ -5187,6 +5309,76 @@ def _verify_second_reviewer_hop(helm_hop):
     except Exception:  # noqa: BLE001
         pass
     return helm_hop
+
+
+@app.get("/v1/arsenal/tools")
+async def arsenal_tools_endpoint(request: Request):
+    """ARSENAL (roadmap 4): the runnable hacking-tool surface behind the
+    REDHANDS brain. Admin-authed; lists the tools + the authorized target
+    hosts (never any key material)."""
+    if not getattr(SETTINGS, "arsenal_enabled", 1):
+        return JSONResponse(status_code=501, content={"error": "arsenal disabled (ARSENAL_ENABLED=0)"})
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
+    return {
+        "tools": {name: {"binary": spec["binary"], "description": spec["description"],
+                         "target_kind": spec["kind"]}
+                  for name, spec in arsenal.TOOLS.items()},
+        "allowed_hosts": sorted(arsenal.allowed_hosts()),
+        "timeout_default_s": int(os.getenv("ARSENAL_TIMEOUT_S", "120") or 120),
+    }
+
+
+@app.post("/v1/arsenal/run")
+async def arsenal_run_endpoint(request: Request):
+    """ARSENAL (roadmap 4): run ONE allowlisted hacking tool against ONE
+    authorized target. The REDHANDS brain (chain-3 / X-Max-Offense) is the
+    intended caller; the surface decides only whether the run is ALLOWED.
+
+    Admin-authed (X-Admin-Key; 403 fail-closed). Body:
+        {"tool": "nmap"|"sqlmap"|"ffuf" (required),
+         "target": host | host:port | URL (required; host must be in
+                   ARSENAL_ALLOWED_TARGETS - default: loopback + the gx10
+                   vuln-lab range),
+         "args": [str, ...] (optional tool flags; safe-charset checked),
+         "timeout": seconds (optional; 5..600, default ARSENAL_TIMEOUT_S)}
+    Returns the arsenal result envelope
+    {ok, tool, target, command, stdout, stderr, returncode, duration_s,
+    error, redhands}. NEVER raises into the request path."""
+    if not getattr(SETTINGS, "arsenal_enabled", 1):
+        return JSONResponse(status_code=501, content={"error": "arsenal disabled (ARSENAL_ENABLED=0)"})
+    if not _require_admin(request):
+        return JSONResponse(status_code=403, content={"error": "admin key required"})
+    try:
+        body = await read_json_body(request)
+    except Exception:  # noqa: BLE001
+        return JSONResponse(status_code=400, content={"error": "invalid JSON body"})
+    tool = str(body.get("tool") or "").strip()
+    target = str(body.get("target") or "").strip()
+    if not tool or not target:
+        return JSONResponse(status_code=400,
+                            content={"error": "tool and target are required"})
+    raw_args = body.get("args") or []
+    if not isinstance(raw_args, list) or not all(
+            isinstance(a, (str, int, float)) for a in raw_args):
+        return JSONResponse(status_code=400,
+                           content={"error": "args must be a list of strings"})
+    timeout = body.get("timeout")
+    try:
+        timeout = float(timeout) if timeout is not None else 0.0
+    except (TypeError, ValueError):
+        timeout = 0.0
+    incr("arsenal_total")
+    result = arsenal.run_tool(tool, target, extra_args=[str(a) for a in raw_args],
+                              timeout=timeout)
+    if result["error"] and result["returncode"] is None:
+        incr("arsenal_blocked_total")
+    elif result["ok"]:
+        incr("arsenal_ok_total")
+    result["redhands"] = bool(
+        request.headers.get("X-Max-Offense") == "1"
+        or getattr(SETTINGS, "specialist_system_mode", "") == "redhands")
+    return result
 
 
 @app.post("/v1/verify")

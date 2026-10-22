@@ -564,6 +564,19 @@ class Registry:
                         )
                         for pid, p in (raw.get("providers") or {}).items()
                     }
+                    # S-B (2026-10-22): the Hive plaintext key no longer lives
+                    # in the registry FILE - a blank provider key resolves from
+                    # its well-known env var at load time (secrets are env-only;
+                    # the file keeps url/model topology). Consumers
+                    # (model_switch.resolve_target, /v1/switch) see the same
+                    # key as before; the file itself carries no secret.
+                    _ENV_KEY_FOR = {"hive": "HIVE_SECRET_KEY",
+                                    "ablit": "ABLITERATION_API_KEY"}
+                    for _pid, _prov in providers.items():
+                        if not _prov.key and _ENV_KEY_FOR.get(_pid):
+                            _env_val = os.getenv(_ENV_KEY_FOR[_pid], "")
+                            if _env_val:
+                                _prov.key = _env_val
                     defaults = dict(raw.get("defaults") or {})
                     if providers:
                         self.providers, self.defaults = providers, defaults

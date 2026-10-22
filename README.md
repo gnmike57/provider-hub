@@ -434,6 +434,9 @@ the opt-in gate.
 
 ## T-E wave: AUTO_TEAM + /v1/verify (2026-10-23)
 
+> (Sections below unchanged; the SCOUT-JUDGE and ARSENAL additions of
+> 2026-10-22 are documented at the end of this README.)
+
 **AUTO_TEAM** (`AUTO_TEAM=1`, default `0`) decomposes multi-item chats. When
 a `/v1/chat/completions` ask is multi-item (`routing_patterns.is_multi_item_ask`
 >= 2 - a marked list, >= 2 ordinals, or >= 2 imperatives) AND the request
@@ -484,3 +487,46 @@ aliases); `verified` is true only when coverage passed AND both council
 reviewers said `VERIFIED` in agreement. Metrics: `verify_total`,
 `verify_verified_total`, `verify_gaps_total`,
 `verify_council_disagree_total`, `verify_receipt_failed_total`.
+
+## SCOUT-JUDGE — LLM refusal triage (2026-10-22)
+
+`SCOUT_JUDGE=1` (default `0`) adds the max-intelligence triage layer on top
+of the regex tiers: every refusal-class divert verdict
+(`tier3_refusal` / `tier3_partial_refusal` / `tier3_watered_down`) is
+confirmed by ONE bounded LLM call (the chain's blind middle hop, else the
+primary; thinking off, `SCOUT_JUDGE_MAX_TOKENS` cap) classifying the full
+buffer as `HARD_REFUSAL` / `HEDGING` / `DONE`. `DONE` overturns a regex
+false positive (the buffer ships; `scout_judge_overruled_total`);
+`HARD_REFUSAL`/`HEDGING` confirm + sharpen the divert
+(`scout_judge_confirmed_total`). A judge that errors or answers ambiguously
+FAILS OPEN — the regex verdict stands, so the ZERO-REFUSAL LAW is never
+weakened. Objective reasons (`tier3_incomplete`, empty, thinking-only)
+never consult the judge. Pinned by `evals/scout_judge_test.py`.
+
+## ARSENAL — the hacking-tool surface (2026-10-22)
+
+`arsenal.py` + two admin-authed endpoints put nmap/sqlmap/ffuf behind the
+REDHANDS brain (`docs/autonomous-hacking-system-plan.md`, phase 1):
+
+- `GET /v1/arsenal/tools` — the tool registry + the authorized target hosts.
+- `POST /v1/arsenal/run` — `{"tool": "nmap", "target":
+  "100.67.13.78:8100", "args": ["-sV"], "timeout": 60}` → the result envelope
+  `{ok, command, stdout, stderr, returncode, duration_s, error, redhands}`.
+
+Safety: `X-Admin-Key` (403 fail-closed), a target-host allowlist
+(`ARSENAL_ALLOWED_TARGETS`, default loopback + the gx10 vuln-lab range),
+list-argv subprocess only (no shell; every arg safe-charset checked), a
+bounded timeout (5..600s, `ARSENAL_TIMEOUT_S`), and `run_tool()` NEVER
+raises. Kill switch `ARSENAL_ENABLED=0` → 501. Metrics: `arsenal_total`,
+`arsenal_ok_total`, `arsenal_blocked_total`. Pinned by
+`evals/arsenal_test.py` (incl. one live nmap pin).
+
+## gx10 constellation router v2 (2026-10-22)
+
+`tars/gx10-router/litellm_config.yaml` now mirrors the SEVEN
+constellation chains (entry + `router_settings.fallbacks` cascades; the
+ABLIT V2L terminal round-robins the 4-key pool). Deployed + live-verified
+on the box (`:4001`): `/health/liveliness` 200, `/v1/models` = 7 chain ids
++ 5 hops, a PONG chat through `GLMMAX>DEEP>ABLITV2L`. Full
+RACE/CONDUCTOR/SUSTAINED semantics stay Windows-gateway-side; the router
+gives direct gx10 clients the cascade approximation.
