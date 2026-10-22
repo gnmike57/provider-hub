@@ -232,7 +232,11 @@ def test_persist_waits_for_cross_process_holder(tmp_path, monkeypatch):
         t.start()
         time.sleep(0.4)  # holder still owns the file lock
         assert not done  # writer is blocked on the cross-process lock...
-        assert time.monotonic() - t0 >= 0.4
+        # 2026-10-23 tolerance fix: Windows timer granularity measured the
+        # 0.4s sleep as 0.391s elapsed (a boundary flake); the invariant
+        # is "the writer stayed blocked for (almost) the whole sleep", not
+        # the exact boundary.
+        assert time.monotonic() - t0 >= 0.3
         open(os.path.join(str(tmp_path), "release_now"), "w").close()
         t.join(timeout=20)
         assert done.get("ok")  # ...and completes once released

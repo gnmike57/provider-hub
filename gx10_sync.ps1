@@ -85,7 +85,10 @@ function Push-Files([string[]]$rels) {
     if (-not $rels) { Write-Note "nothing to push"; return }
     # batch transfer: local tar -> scp -> on-box untar. (No tar streams through
     # the PowerShell pipe: PS re-encodes native stdout and corrupts binaries;
-    # per-file scp is too slow for -All's ~50 files.)
+    # per-file scp is too slow.)
+    # 2026-10-23 FIX: the file list goes through a -T list file now - the
+    # tree grew past the Windows command-line length limit and `tar -cf $tmp
+    # ... $existing` failed with "filename or extension is too long" on -All.
     $existing = @($rels | Where-Object {
         Test-Path -LiteralPath (Join-Path $ROOT ($_ -replace '/', '\'))
     })
@@ -94,14 +97,24 @@ function Push-Files([string[]]$rels) {
     }
     if ($existing.Count -eq 0) { Write-Note "nothing to push (all missing)"; return }
     $tmp = Join-Path $env:TEMP "gx10-push.tar"
+    $list = Join-Path $env:TEMP "gx10-push-list.txt"
     if (Test-Path $tmp) { Remove-Item $tmp -Force }
-    tar -cf $tmp -C $ROOT $existing
+    # UTF8 no BOM, LF endings: tar's -T reader is picky about stray CRs.
+    [System.IO.File]::WriteAllText($list, ($existing -join "`n") + "`n",
+        (New-Object System.Text.UTF8Encoding($false)))
+    # 2026-10-23 FIX 2: pin the WINDOWS bsdtar - with Git-for-Windows'
+    # /usr/bin/tar earlier in PATH, the C:\... archive path parses as a
+    # REMOTE spec ("Cannot connect to C: resolve failed", exit 128).
+    $tarExe = Join-Path $env:SystemRoot "System32\tar.exe"
+    if (-not (Test-Path $tarExe)) { $tarExe = "tar" }
+    & $tarExe -cf $tmp -C $ROOT -T $list
     if ($LASTEXITCODE -ne 0) { Write-Error "local tar failed (exit $LASTEXITCODE)"; return }
     scp -q $tmp "${SSH}:/tmp/gx10-push.tar"
     if ($LASTEXITCODE -ne 0) { Write-Error "scp of batch failed (exit $LASTEXITCODE)"; return }
     ssh $SSH "tar -xf /tmp/gx10-push.tar -C '$Remote' && rm /tmp/gx10-push.tar"
     if ($LASTEXITCODE -ne 0) { Write-Error "on-box untar failed (exit $LASTEXITCODE)"; return }
     Remove-Item $tmp -Force
+    Remove-Item $list -Force
     Write-Note ("pushed {0} file(s) -> {1}:{2} (tar batch)" -f $existing.Count, $SSH, $Remote)
 }
 

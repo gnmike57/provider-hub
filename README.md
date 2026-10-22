@@ -521,6 +521,33 @@ raises. Kill switch `ARSENAL_ENABLED=0` → 501. Metrics: `arsenal_total`,
 `arsenal_ok_total`, `arsenal_blocked_total`. Pinned by
 `evals/arsenal_test.py` (incl. one live nmap pin).
 
+## GX10 OFFLOAD — the free local brain first (2026-10-23)
+
+`gx10_offload.py` ingrains the operator directive — "always seek to offload
+work or tasks to the gx10 anywhere anytime it's beneficial" — into EVERY
+model in the hub: an eligible request is answered by the FREE local box
+(`:4000`, 15 local models: qwen3-coder-480b, kimi-k3, glm-5.3-flash,
+deepseek-v4-pro, …) before any paid hop fires. Zero Hive, zero
+Abliteration spend, LAN latency.
+
+- **Beneficial-only gate** (`eligible`): no tools, a SIMPLE ask
+  (`is_multi_item_ask < 2`), not a REDHANDS/sustained chain (their own
+  machinery decides). Plain chains and every hub alias benefit.
+- **Health-gated + cooldown**: cached `/v1/models` probe (max one per
+  `GX10_HEALTH_CACHE_S`, default 30s); a failure cools off for
+  `GX10_OFFLOAD_COOLDOWN_S` (default 30s) — a dead box is never hammered.
+- **Fail-open, never raises**: refusal-ish/empty/≥400/transport errors
+  fall through to the normal paid path — the offload can only SAVE money.
+- The hit ships with `: gw-stage offload <model>` + the
+  "answered by the free local gx10 brain; the paid hops were skipped"
+  disclosure; protocol markers (`[[GW-*]]`) are stripped like every path.
+- Knobs: `GX10_OFFLOAD` (default 1), `GX10_URL`/`GX10_MODELS_URL`,
+  `GX10_OFFLOAD_MODEL` (glm-5.3-flash), `GX10_OFFLOAD_MAX_TOKENS` (1024).
+- Metrics: `gx10_offload_total` / `gx10_offload_hit_total` /
+  `gx10_offload_fallthrough_total`. Pinned by
+  `evals/gx10_offload_test.py` (5 tests incl. the e2e hit/fallthrough/
+  kill-switch).
+
 ## gx10 constellation router v2 (2026-10-22)
 
 `tars/gx10-router/litellm_config.yaml` now mirrors the SEVEN

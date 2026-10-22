@@ -16,6 +16,7 @@ import proxy_gateway
 import stickiness  # T-C: reset per test (default-on cross-conversation state)
 import camouflage  # T-D: pin the learned pool per test (hermeticity)
 import speculative_hedge  # S4: reset the race outcome counters per test
+import gx10_offload  # 2026-10-23: reset the box health cache per test
 
 PRIMARY = "http://primary.test/v1/chat/completions"
 WORKER = "http://worker.test/v1/chat/completions"
@@ -143,5 +144,9 @@ def script(monkeypatch, tmp_path):
     # opts in explicitly (hermeticity - one opting-in test must not leak the
     # judge into every later suite).
     s.scout_judge = 0
+    # GX10 OFFLOAD (2026-10-23): reset the health cache + cooldown per test
+    # (hermeticity - a failed box probe in one test must not cool off the
+    # offload for the whole suite).
+    gx10_offload.reset()
     yield sc
     proxy_gateway.BREAKER = proxy_gateway.SpecialistCircuitBreaker()

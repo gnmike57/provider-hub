@@ -60,6 +60,7 @@ import abliteration_keys
 import account_pool
 import redhands
 import arsenal
+import gx10_offload
 from providers import CONSTELLATION_CHAINS, resolve_constellation_chain
 import skills_memory
 import camouflage
@@ -642,6 +643,10 @@ _METRICS = {
     "arsenal_total": 0,                 # /v1/arsenal/run executions attempted
     "arsenal_ok_total": 0,              # tool runs that exited 0
     "arsenal_blocked_total": 0,         # runs rejected by the target/arg allowlist
+    # GX10 OFFLOAD (operator directive 2026-10-23)
+    "gx10_offload_total": 0,           # eligible requests that tried the free box first
+    "gx10_offload_hit_total": 0,       # requests answered entirely by the free box
+    "gx10_offload_fallthrough_total": 0,  # tries that fell back to the paid path
 }
 
 
@@ -807,6 +812,9 @@ def render_prometheus() -> str:
     "arsenal_ok_total": "arsenal tool runs that exited 0",
     "arsenal_blocked_total": "arsenal runs rejected by the target/arg allowlist",
     "length_continue_total": "S1 auto-continue rounds run on ANY path (primary/race/terminal); default up to LENGTH_CONTINUE_MAX_ROUNDS=5 per stream",
+    "gx10_offload_total": "eligible requests that tried the free gx10 box first (2026-10-23)",
+    "gx10_offload_hit_total": "requests answered entirely by the free gx10 box",
+    "gx10_offload_fallthrough_total": "gx10 tries that fell back to the paid path",
             "sustained_probe_hit_total": "pre-probes that skipped the expensive V2 terminal (clean + simple)",
             "sustained_verify_total": "DEEP evidence-claim verifications run by the SUSTAINED chain",
             "sustained_verify_gaps_total": "DEEP verifications that reported GAPS",
@@ -3883,6 +3891,52 @@ async def chat_proxy(request: Request):
                     _stream_closed()
 
             return StreamingResponse(probe_gen(), media_type="text/event-stream")
+
+    # GX10 OFFLOAD (operator directive 2026-10-23: "ingrain as a function
+    # of any of the models in the hub to ALWAYS seek to offload work to the
+    # gx10 anywhere anytime it's beneficial"): for an eligible request the
+    # FREE local box brain (:4000 - qwen3-coder-480b / kimi-k3 /
+    # glm-5.3-flash / deepseek-v4-pro / ...) answers first - zero Hive and
+    # zero Abliteration spend, LAN latency. BENEFICIAL-ONLY gate in
+    # gx10_offload.eligible (no tools, simple ask, not REDHANDS/sustained);
+    # health-gated with cooldown; FAIL-OPEN - any doubt falls through to the
+    # normal path, so the offload can only save money, never hurt.
+    if (not _sustained_active
+            and gx10_offload.eligible(body, chain, user_query)):
+        incr("gx10_offload_total")
+        _off = await gx10_offload.try_offload(
+            messages, settings=settings, client=app.state.http)
+        if _off is not None:
+            incr("gx10_offload_hit_total")
+            audit_record(
+                request_id=request_id,
+                primary_model=primary_model_used or settings.primary_model,
+                worker_model=_off[1],
+                signal="gx10_offload_hit",
+                mode="offload",
+                principal=principal,
+                audit_log=settings.audit_log,
+            )
+
+            async def offload_gen() -> AsyncGenerator[bytes, None]:
+                sid = f"offload-{uuid.uuid4().hex[:12]}"
+                try:
+                    yield stage_comment("offload", _off[1])
+                    yield _delta_chunk({"content": _off[0]}, finish=None,
+                                       model=_off[1], stream_id=sid)
+                    yield _delta_chunk(
+                        {"content": "\n\nanswered by the free local gx10 "
+                                    "brain; the paid hops were skipped."},
+                        finish=None, model=_off[1], stream_id=sid)
+                    yield _delta_chunk({}, finish="stop",
+                                       model=_off[1], stream_id=sid)
+                    yield b"data: [DONE]\n\n"
+                finally:
+                    _stream_closed()
+
+            return StreamingResponse(offload_gen(),
+                                     media_type="text/event-stream")
+        incr("gx10_offload_fallthrough_total")
 
     async def coordinator() -> AsyncGenerator[bytes, None]:
         # STAGE COLOUR: the stream opens announcing the answering stage
