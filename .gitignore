@@ -148,3 +148,5 @@ slot_bindings.staged-*.json
 # 2026-10-22 max-scope matrix loadgen: results are runtime data (real hive
 # spend records + the report artifacts stay local; the harness code is tracked)
 evals/loadgen_results/
+
+goals/
