@@ -137,3 +137,10 @@ slot_bindings.staged-*.json
 
 # hub_ipc runtime lock files (never commit)
 *.lock
+
+# 2026-10-22 IDE-restart prep: root-level pytest-plugin output + probe
+# scratch (the evidence jsons stay on disk - docs cite them as evidence).
+.w2mem_pytest_*.txt
+/_probe_*.py
+/_probe_*_result.json
+/_logprob_probe_result.json
