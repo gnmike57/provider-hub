@@ -38,7 +38,7 @@ import abliteration_keys
 
 # `hedge_settings` never existed (the module-level instance is SETTINGS), so
 # `from speculative_hedge import *` raised ImportError on the phantom name.
-__all__ = ["hedge_stream", "make_client", "HedgeSettings", "SETTINGS"]
+__all__ = ["hedge_stream", "race_stream", "make_client", "HedgeSettings", "SETTINGS"]
 
 
 def _int_env(name, default):
@@ -551,5 +551,291 @@ async def _drain_worker(worker, s, stream_id: str = "",
         f"data: {_chunk({}, finish=finish_reason or 'stop', model=s.worker_model, stream_id=stream_id)}\n\n".encode()
     )
     yield b"data: [DONE]\n\n"
+
+
+# ---------------------------------------------------------------------------
+# T-D chain 5 - RACE:DEEPMAX/GLMMAX>ABLITV2L (2026-10-22). The hedge's commit
+# machinery generalized to TWO SOVEREIGN CANDIDATES: both max-reasoning helms
+# fire in parallel, the first CLEAN (refusal-free) substantive answer commits
+# and wins, and the loser is CANCELLED MID-STREAM (cancel-on-commit). Every
+# rule is the hedge's own, applied per candidate:
+#   - COMMIT_TOKENS counts delta.content only; reasoning deltas are never
+#     counted and never screened (F1/B21) - a model thinking "I cannot help"
+#     must not trip the refusal detector.
+#   - a candidate whose content window anchors a refusal (is_routable) drops
+#     out of the race; a timeout/error event kills it; an exhausted-clean
+#     candidate (stream ended, [DONE] seen, no refusal, substantive) wins.
+#   - the winner's buffer replays VERBATIM (buffer replay), then its stream
+#     is forwarded live to [DONE].
+#   - all candidates refusing/failing escalates via `escalate` - the chain
+#     terminal (any refusal from both -> terminal).
+# Holding (not live-forwarding) both candidates' reasoning is deliberate:
+# two racing deliberation streams would interleave into garbage on the wire;
+# the loser's buffer dies with it.
+# ---------------------------------------------------------------------------
+async def race_stream(
+    messages,
+    *,
+    settings: HedgeSettings = None,
+    candidates=(),
+    escalate=None,
+    client: httpx.AsyncClient = None,
+    min_substantive_chars: int = 20,
+    tools=None,
+    tool_choice=None,
+) -> AsyncGenerator[bytes, None]:
+    """Two-sovereign race. `candidates` is an ordered list of
+    (url, key, model_id, max_reasoning) tuples - (helm, middle) hops of the
+    RACE chain. `escalate` is a callable text -> chunk iterator wired to the
+    chain terminal; it fires only when EVERY candidate refused/failed.
+    An injected client (the gateway's app.state.http) is reused; otherwise
+    a dedicated client is created and closed here (hedge parity)."""
+    s = settings or SETTINGS
+    sid = f"race-{uuid.uuid4().hex[:12]}"  # R1: one id for the whole stream
+    commit_window = max(1, int(s.commit_tokens or 1))
+    min_subst = max(1, int(min_substantive_chars or 1))
+
+    def _clean_commit(r):
+        """The commit rule: past COMMIT_TOKENS content tokens, refusal-free,
+        and substantive (the answer must be worth committing)."""
+        return (r["content_tokens"] >= commit_window
+                and not r["refused"]
+                and len(r["screen_text"].strip()) >= min_subst)
+
+    def _exhaust_clean_commit(r):
+        """Stream ended without refusing, with substantive content on the
+        record: the full buffer replays verbatim (hedge's [DONE] commit)."""
+        return (not r["refused"] and r["content_tokens"] > 0
+                and len(r["screen_text"].strip()) >= min_subst)
+    # RACE-PART-1B
+    own_client = client is None
+    if own_client:
+        client = make_client()
+    try:
+        async with contextlib.AsyncExitStack() as stack:
+            racers = []
+            for url, key, model_id, max_reasoning in candidates:
+                payload = {
+                    "model": model_id,
+                    "messages": messages,
+                    "stream": True,
+                    "max_tokens": s.max_tokens,
+                    "max_completion_tokens": s.max_tokens,
+                }
+                if max_reasoning:
+                    # The DEEPMAX/GLMMAX knob set: the chain NAME promises
+                    # max reasoning on BOTH candidates. Same convention set
+                    # as the gateway's max-think injection (unknown fields
+                    # are ignored by OpenAI-compatible upstreams).
+                    payload["reasoning_effort"] = "max"
+                    payload["reasoning"] = {"effort": "max"}
+                    payload["reasoning_content"] = True
+                    payload["enable_thinking"] = True
+                    payload["chat_template_kwargs"] = {"thinking": True}
+                    payload["thinking"] = {"type": "enabled"}
+                if tools:
+                    payload["tools"] = tools
+                if tool_choice:
+                    payload["tool_choice"] = tool_choice
+                resp = None
+                try:
+                    # Multi-account pool parity: each candidate picks its
+                    # credential the same way the hedge branches do.
+                    headers, acct = account_pool.routed_headers(
+                        {**_auth_header(key), "Content-Type": "application/json"}, url)
+                    resp = await stack.enter_async_context(
+                        open_stream(client, "POST", url, json=payload, headers=headers))
+                except httpx.TransportError:
+                    account_pool.observe_result(acct, None)
+                    resp = None
+                    _FAILURES["transport_error"] += 1
+                    log.warning("race candidate %s unreachable", model_id)
+                if resp is None:
+                    continue
+                if classify_status(resp.status_code) != "ok":
+                    account_pool.observe_result(acct, resp.status_code)
+                    snippet = await _body_snippet(resp)
+                    _FAILURES["bad_status"] += 1
+                    log.warning("race candidate %s answered HTTP %d: %s",
+                                model_id, resp.status_code, snippet)
+                    with contextlib.suppress(Exception):
+                        await resp.aclose()
+                    continue
+                account_pool.observe_result(acct, resp.status_code)
+                racers.append({
+                    "resp": resp,
+                    "model": model_id,
+                    "buffered": [],      # held lines, replayed verbatim on commit
+                    "screen_text": "",  # delta.content ONLY (F1/B21)
+                    "content_tokens": 0,
+                    "refused": False,
+                    "exhausted": False,
+                    "dead": False,
+                })
+
+            if not racers:
+                if escalate is not None:
+                    async for chunk in escalate("all candidates unreachable"):
+                        yield chunk
+                    return
+                yield f"data: {json.dumps({'error': 'race: all candidates unreachable'})}\n\n".encode()
+                yield b"data: [DONE]\n\n"
+                return
+            # RACE-PART-2
+            # Reader tasks push each candidate's lines into one FIFO queue;
+            # the main loop applies the commit rules per line. Queue order is
+            # arrival order, so the first candidate to actually DELIVER a
+            # clean substantive window wins the race (never the open order).
+            queue: asyncio.Queue = asyncio.Queue()
+            _END = object()
+
+            async def _reader(r):
+                try:
+                    async for raw in r["resp"].aiter_lines():
+                        await queue.put((r, raw))
+                except Exception as exc:  # noqa: BLE001 - a dead reader must not sink the race
+                    log.warning("race reader %s failed: %s", r["model"], type(exc).__name__)
+                finally:
+                    await queue.put((r, _END))
+
+            readers = [asyncio.create_task(_reader(r)) for r in racers]
+            winner = None
+            saw_done = False
+
+            def _any_alive():
+                return any(not r["dead"] for r in racers)
+
+            try:
+                while winner is None:
+                    r, item = await queue.get()
+                    if r["dead"]:
+                        # dropped candidate: discard its tail lines; when the
+                        # LAST candidate drops the race is decided (lost).
+                        if not _any_alive():
+                            break
+                        continue
+                    if item is _END:
+                        r["exhausted"] = True
+                        r["dead"] = True
+                        if _exhaust_clean_commit(r):
+                            winner = r
+                        elif not _any_alive():
+                            break
+                        continue
+                    line = (item or "").strip()
+                    if not line:
+                        continue
+                    if not line.startswith("data:"):
+                        r["buffered"].append(line)  # upstream SSE comment: keep
+                        continue
+                    body = line[5:].strip()
+                    if body == "[DONE]":
+                        r["buffered"].append(line)
+                        r["exhausted"] = True
+                        r["dead"] = True
+                        if _exhaust_clean_commit(r):
+                            winner = r
+                        elif not _any_alive():
+                            break
+                        continue
+                    try:
+                        ev = json.loads(body)
+                    except json.JSONDecodeError:
+                        r["buffered"].append(line)
+                        continue
+                    if not isinstance(ev, dict):
+                        r["buffered"].append(line)
+                        continue
+                    raw_choices = ev.get("choices")
+                    choice = (
+                        raw_choices[0]
+                        if isinstance(raw_choices, list)
+                        and raw_choices
+                        and isinstance(raw_choices[0], dict)
+                        else {}
+                    )
+                    delta = choice.get("delta") or {}
+                    r["buffered"].append(line)
+                    # Tier-1 metadata intercept (hedge parity): a timeout or
+                    # an error event kills the candidate, never the stream.
+                    if choice.get("finish_reason") == "timeout" or delta.get("error") or ev.get("error"):
+                        r["dead"] = True
+                        if not _any_alive():
+                            break
+                        continue
+                    content = delta.get("content")
+                    if content:
+                        r["screen_text"] += content
+                        r["content_tokens"] += 1
+                        if is_routable(r["screen_text"]):
+                            # Zero-refusal law: a candidate that opens (or
+                            # stays) in a refusal never wins the race.
+                            r["refused"] = True
+                            r["dead"] = True
+                            log.info("race candidate %s refused; dropped", r["model"])
+                            if not _any_alive():
+                                break
+                            continue
+                        if _clean_commit(r):
+                            winner = r
+                # RACE-PART-3
+                if winner is not None:
+                    # CANCEL-ON-COMMIT: the loser is cancelled mid-stream -
+                    # its buffer dies with it, its stage never ships.
+                    for r in racers:
+                        if r is not winner and not r["exhausted"]:
+                            with contextlib.suppress(Exception):
+                                await r["resp"].aclose()
+                    # STAGE COLOUR: the winning candidate answers as the helm.
+                    yield stage_comment("helm", winner["model"])
+                    for line in winner["buffered"]:
+                        yield f"{line}\n\n".encode()
+                    if winner["exhausted"]:
+                        # the exhausted-clean commit carries its own [DONE] as
+                        # the last buffered line - the stream is complete.
+                        return
+                    # The winner's remaining lines keep flowing through the
+                    # queue (single continuous pass, B7 parity): forward
+                    # them live until its [DONE] / stream end.
+                    while True:
+                        r, item = await queue.get()
+                        if r is not winner:
+                            continue
+                        if item is _END:
+                            break
+                        line = (item or "").strip()
+                        if not line:
+                            continue
+                        if line.replace("data:", "", 1).strip() == "[DONE]":
+                            saw_done = True
+                            yield f"{line}\n\n".encode()
+                            break
+                        yield f"{line}\n\n".encode()
+                    if not saw_done:
+                        # The winner's stream ended bare (upstream dropped
+                        # the tail): terminate the client stream properly.
+                        yield f"data: {_chunk({}, finish='stop', model=winner['model'], stream_id=sid)}\n\n".encode()
+                        yield b"data: [DONE]\n\n"
+                    return
+                # winner is None: every candidate refused / failed / exhausted
+                # dirty - BOTH refused climbs to the uncensored terminal.
+                for r in racers:
+                    if not r["exhausted"]:
+                        with contextlib.suppress(Exception):
+                            await r["resp"].aclose()
+                if escalate is not None:
+                    async for chunk in escalate("all candidates refused or failed"):
+                        yield chunk
+                    return
+                yield f"data: {json.dumps({'error': 'race: every candidate refused and no terminal was wired'})}\n\n".encode()
+                yield b"data: [DONE]\n\n"
+            finally:
+                for t in readers:
+                    t.cancel()
+                with contextlib.suppress(Exception):
+                    await asyncio.gather(*readers, return_exceptions=True)
+    finally:
+        if own_client:
+            await client.aclose()
 
 

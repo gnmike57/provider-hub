@@ -164,6 +164,62 @@ CONSTELLATION_CHAINS = {
         "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
         "redhands": False,
     },
+    # T-D WAVE (2026-10-22): three NEW chains - ADDITIVE, the four published
+    # chains above stay byte-identical (option-parity law: the catalog only
+    # grows). The same three models, composed differently:
+    #   5. RACE - both max-reasoning helms (DeepSeek + GLM) fire in
+    #      parallel; the first CLEAN substantive answer commits and wins
+    #      (speculative_hedge.race_stream: COMMIT_TOKENS, buffer replay,
+    #      cancel-on-commit); both refusing escalates to the V2 terminal.
+    #      Kill switch: RACE_CHAIN_ENABLED=0 -> plain 3-hop chain semantics.
+    #   6. CONDUCTOR - the GLMMAX helm decomposes the ask (CyberSubtaskPlan
+    #      semantics), SHARPENS each subtask (camouflage.py's learned word
+    #      map dresses routine subtasks for the censored sub-agent), fans the
+    #      routine work out to blind DeepSeek sub-agents and the nastiest to
+    #      the V2 (REDHANDS), then assembles + verifies via the completion
+    #      contract. Fan-out is FANOUT_MAX_PARALLEL-bounded.
+    #      Kill switch: CONDUCTOR_CHAIN_ENABLED=0.
+    #   7. SUSTAINED - the V2 stays helm under the REDHANDS laws (chain-3
+    #      style, sustained offense across turns); a cheap GLM PRE-PROBE
+    #      pre-screens simple asks (clean + simple skips the expensive
+    #      terminal); DeepSeek verifies the evidence claims after the helm
+    #      answers ([[GW-VERIFY]] footnote). Kill switch:
+    #      SUSTAINED_CHAIN_ENABLED=0.
+    "RACE:DEEPMAX/GLMMAX>ABLITV2L": {
+        "description": "DeepSeek-max and GLM-max helms race in parallel; the "
+                       "first clean substantive answer commits and wins (the "
+                       "loser cancelled mid-stream); both refusing climbs to "
+                       "the Abliterated V2 Large terminal (REDHANDS on "
+                       "offense).",
+        "helm": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", True),
+        "middle": ("primary", "zai-org/glm-5.3-flash", True),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": False,
+        "race": True,
+    },
+    "GLMMAX-CONDUCTOR>DEEP+ABLITV2L": {
+        "description": "GLM-5.3 max-reasoning conductor: decomposes and "
+                       "sharpens the ask; blind DeepSeek sub-agents take the "
+                       "routine subtasks; the Abliterated V2 Large brain "
+                       "(REDHANDS) takes the nastiest; assembled and "
+                       "verified via the completion contract.",
+        "helm": ("primary", "zai-org/glm-5.3-flash", True),
+        "middle": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": False,
+        "conductor": True,
+    },
+    "ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY": {
+        "description": "Abliterated V2 Large helm under the REDHANDS laws "
+                       "(sustained offense); GLM cheap pre-probe screens "
+                       "simple asks; DeepSeek verifies the evidence claims.",
+        "helm": ("ablit.ai", "abliterated-model-large-v2", False),
+        "middle": ("primary", "zai-org/glm-5.3-flash", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "verify": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", False),
+        "redhands": True,
+        "sustained": True,
+    },
 }
 
 _CONSTELLATION_LOOKUP = {

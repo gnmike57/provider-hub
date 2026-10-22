@@ -67,9 +67,17 @@ def test_specialist_prompt_redhands_mode():
 
 def test_chain_resolver():
     chains = providers.CONSTELLATION_CHAINS
-    assert set(chains) == {
+    # the published four: never removed, never renamed (T-D 2026-10-22: the
+    # set grew to seven - these four stay pinned as a SUBSET so a removal
+    # still fails; the T-D additions are pinned alongside)
+    assert set(chains) >= {
         "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP",
         "GLMMAX>ABLIT-UNC>ABLITV2L"}
+    # T-D wave (2026-10-22): the three NEW chains - additive
+    assert {
+        "RACE:DEEPMAX/GLMMAX>ABLITV2L",
+        "GLMMAX-CONDUCTOR>DEEP+ABLITV2L",
+        "ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY"} <= set(chains)
     # normalisation: case + whitespace insensitive
     assert providers.resolve_constellation_chain(
         "glmmax> deep > ablitv2l") is chains["GLMMAX>DEEP>ABLITV2L"]
@@ -83,13 +91,21 @@ def test_chain_resolver():
 
 
 def test_models_constellation_only(monkeypatch):
-    # the 3-chain catalog is the DEFAULT (operator directive: only 3 models)
+    # the chain catalog is the DEFAULT (operator directive: only chains)
     monkeypatch.delenv("CONSTELLATION_ONLY", raising=False)
     with TestClient(proxy_gateway.app) as tc:
         data = tc.get("/v1/models").json()["data"]
-    assert [m["id"] for m in data] == [
+    ids = [m["id"] for m in data]
+    # the published four keep their exact order at the head of the catalog
+    # (T-D 2026-10-22: the catalog grew to seven; the original four stay
+    # byte-identical and first - an addition may only append)
+    assert ids[:4] == [
         "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP",
         "GLMMAX>ABLIT-UNC>ABLITV2L"]
+    assert {
+        "RACE:DEEPMAX/GLMMAX>ABLITV2L",
+        "GLMMAX-CONDUCTOR>DEEP+ABLITV2L",
+        "ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY"} <= set(ids)
 
 
 def test_models_full_catalog_is_the_explicit_opt_out(monkeypatch):

@@ -85,7 +85,11 @@ def scenario_b():
     sc.script(WORKER, [("sse", [chunk("specialist answer", finish="stop"), DONE])])
     tc = _gateway(sc)
     with tc:
-        _, text = _post(tc, {"messages": [{"role": "user", "content": "hi"}]})
+        # T-C stickiness (2026-10-22): a DIFFERENT first user turn - this
+        # scenario is an INDEPENDENT conversation, not a follow-up of A's
+        # diverted thread (the same head would ride A's sticky window
+        # straight to the specialist and never test the buffer flush).
+        _, text = _post(tc, {"messages": [{"role": "user", "content": "probe b"}]})
     return _report("B. late refusal (after buffer flushed)", text, sc)
 
 
@@ -99,7 +103,8 @@ def scenario_c():
     sc.script(WORKER, [("sse", [chunk("specialist answer", finish="stop"), DONE])])
     tc = _gateway(sc)
     with tc:
-        _, text = _post(tc, {"messages": [{"role": "user", "content": "hi"}],
+        # T-C stickiness: independent conversation (see scenario_b).
+        _, text = _post(tc, {"messages": [{"role": "user", "content": "probe c"}],
                              "hedge": True})
     return _report("C. late refusal through hedge:true", text, sc)
 

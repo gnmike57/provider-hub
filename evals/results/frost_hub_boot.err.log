@@ -1,4 +1,8 @@
-INFO:     Started server process [14276]
+INFO:     Started server process [27152]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:9000 (Press CTRL+C to quit)
+race reader zai-org/glm-5.3-flash failed: ReadError
+race reader deepseek-ai/deepseek-v4.1-flash-1017 failed: ReadError
+race reader zai-org/glm-5.3-flash failed: ReadError
+race reader zai-org/glm-5.3-flash failed: ReadError

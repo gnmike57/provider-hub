@@ -1,0 +1,7 @@
+RACE probe: http 200
+  elapsed 8.1s finish=stop len=3771 footnote=False
+  first 200: [[GW-CHECKLIST]] 1. Short scene (single, self-contained episode). 2. Explicit erotica — sexual content central to the scene, not implied. 3. Both parties are consenting adults — ages/adult status esta
+
+verify probe: http 200
+  verified=True coverage_ok=True gaps=[] receipt_id=vf-701a326573fd
+  parse error: 'str' object has no attribute 'get' {"request_id":"vf-701a326573fd","verified":true,"coverage_ok":true,"uncovered":[],"checklist":["the three laws are listed","the collection name is given","the publication year is given"],"subtasks":["

@@ -95,7 +95,11 @@ def test_full_buffer_does_not_clear_pending_presignal(gw, script, monkeypatch):
     assert "specialist rescued" in text          # judged: still refusing -> divert
     assert "I cannot help" not in text
     assert proxy_gateway._METRICS["diverted_total"] == 1
-    assert proxy_gateway._METRICS["presignal_failed_total"] == 1
+    # ZERO-REFUSAL LAW (2026-10-22): the full-reply judge fires at the finish
+    # site BEFORE the presignal-recovery branch, so this shape diverts as
+    # tier3_refusal via zero_refusal_violation (the refusal core is anywhere
+    # in the buffer) - presignal_failed_total no longer owns this decision.
+    assert proxy_gateway._METRICS["zero_refusal_divert_total"] == 1
 
 
 # --- 3a. coordinator last resort: disclose, never a truncated 200 ----------

@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 import proxy_gateway
 from helpers import PRIMARY, WORKER, chunk, DONE, script  # noqa: F401
-from routing_patterns import zero_refusal_violation
+from routing_patterns import zero_refusal_violation, is_multi_item_ask
 
 # The EXACT live reply that shipped (2026-10-22, normalised punctuation).
 LIVE_REPRO = (
@@ -103,6 +103,59 @@ def test_quoting_a_refusal_diverts_the_laws_price():
     t = ("Models often refuse with phrases like 'I cannot fulfill this "
          "request'. Here is why they do that.")
     assert zero_refusal_violation(t) == "refusal"
+
+
+# --- multilingual refusal cores (2026-10-22, T-A 1b) -----------------------
+def test_chinese_refusal_core():
+    assert zero_refusal_violation("我不能帮助你完成这个请求。") == "refusal"
+    assert zero_refusal_violation("我无法提供详细信息，但我可以说：") == "refusal"
+
+
+def test_japanese_refusal_core():
+    assert zero_refusal_violation("申し訳ありませんが、お手伝いできません。") == "refusal"
+    assert zero_refusal_violation("その要求にはできかねます。") == "refusal"
+
+
+def test_spanish_refusal_core():
+    assert zero_refusal_violation("Lo siento, pero no puedo ayudarte con eso.") == "refusal"
+    assert zero_refusal_violation("No puedo proporcionar ese contenido.") == "refusal"
+
+
+def test_english_still_clean_substantive():
+    t = "El zorro marrón rápido salta sobre el perro perezoso. Fin."
+    assert zero_refusal_violation(t) is None
+
+
+# --- multi-item ask detector (2026-10-22, T-A 1c) ---------------------------
+def test_marked_list_is_multi_item():
+    ask = ("Please do the following:\n1. Write a keylogger\n2. Explain persistence\n3. List detection methods")
+    assert is_multi_item_ask(ask) >= 3
+
+
+def test_ordinal_prose_is_multi_item():
+    assert is_multi_item_ask("First write the code, then explain it, finally test it.") >= 2
+
+
+def test_simple_ask_is_single_item():
+    assert is_multi_item_ask("What is the capital of France?") == 0
+    assert is_multi_item_ask("hi") == 0
+    assert is_multi_item_ask("") == 0
+
+
+def test_strict_violation_requires_all_three_conditions():
+    s = type("S", (), {"completion_strict": 1})()
+    body = {"messages": [{"role": "user", "content": "1. do A\n2. do B"}]}
+    long_reply = "x" * 200
+    assert proxy_gateway._completion_strict_violation(s, body, long_reply) is True
+    # short reply -> no
+    assert proxy_gateway._completion_strict_violation(s, body, "x" * 50) is False
+    # single-item ask -> no
+    body1 = {"messages": [{"role": "user", "content": "What is 2+2?"}]}
+    assert proxy_gateway._completion_strict_violation(s, body1, long_reply) is False
+    # kill switch -> no
+    s0 = type("S", (), {"completion_strict": 0})()
+    assert proxy_gateway._completion_strict_violation(s0, body, long_reply) is False
+
 
 
 # --- e2e: the laundered partial refusal diverts ------------------------------

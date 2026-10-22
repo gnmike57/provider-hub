@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 import proxy_gateway
+import stickiness  # T-C: reset per test (default-on cross-conversation state)
 
 PRIMARY = "http://primary.test/v1/chat/completions"
 WORKER = "http://worker.test/v1/chat/completions"
@@ -95,6 +96,12 @@ def script(monkeypatch):
     for key in proxy_gateway._METRICS:
         proxy_gateway._METRICS[key] = 0
     proxy_gateway.BREAKER = proxy_gateway.SpecialistCircuitBreaker()
+    # T-C conversation stickiness (2026-10-22): HELM_STICKINESS defaults ON,
+    # and the ledger keys on the conversation's FIRST USER TURN - the same
+    # fingerprint recurs across suites - so without a reset the sticky window
+    # would leak between tests and change which stage answers. Reset like
+    # BREAKER: every test starts with per-request decisions.
+    stickiness.reset()
     s = proxy_gateway.SETTINGS
     s.primary_api_url = PRIMARY
     s.primary_api_key = ""

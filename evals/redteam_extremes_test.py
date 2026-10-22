@@ -153,7 +153,12 @@ def test_watered_down_helm_answer_never_ships(script, monkeypatch, costume):
     assert costume not in r.text                 # the costume never ships
     assert "middle committed answer" in r.text   # the ladder re-answered
     snap = proxy_gateway.metrics_snapshot()
-    assert snap["watered_down_divert_total"] == 1
+    # ZERO-REFUSAL LAW (2026-10-22): costumes whose deflection shape reads as
+    # a "partial" verdict are caught by the full-reply judge BEFORE the
+    # watered-down tier - either catching tier diverts, exactly one fires.
+    caught = (snap["zero_refusal_divert_total"]
+              + snap["watered_down_divert_total"])
+    assert caught == 1
     assert snap["diverted_total"] == 1
     assert _calls(script, SPEC) == []             # the cheap middle answered
 

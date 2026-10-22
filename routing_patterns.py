@@ -21,7 +21,13 @@ __all__ = [
     "is_routable",
     "is_presignal_recovered",
     "zero_refusal_violation",
+    "is_multi_item_ask",
     "should_hedge",
+    "reasoning_presignal",
+    "LOGPROB_TAU",
+    "LOGPROB_MIN_HITS",
+    "LOGPROB_REFUSAL_TOKENS",
+    "logprob_presignal",
     "tier2_decision",
     "classify_status",
     "is_no_go",
@@ -99,6 +105,9 @@ _REFUSAL_CORE = r"""(?:
       | cannot\s+(?:fulfill|assist\s+with|comply\s+with)\s+(?:this|that|your)\s+request\b
       | not\s+permitted\s+to\b
       | prohibited\s+from\b
+      | (?:我\s*不能|我\s*无法|无法\s*帮助|不能\s*提供|我\s*不会\s*帮)
+      | (?:申し訳(?:ありません|ございません)|お手伝いできません|できかねます|することができません)
+      | (?:no\s+puedo(?:\s+(?:ayudar|hacer|proporcionar|cumplir))?|lo\s+siento[,，]?\s*pero)
     )"""
 
 ROUTING_RE = re.compile(
@@ -315,6 +324,45 @@ def zero_refusal_violation(text: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# MULTI-ITEM ASK DETECTOR (2026-10-22): counts enumerable requirements in the
+# user's ask. Used by COMPLETION_STRICT (a multi-item reply that ignored the
+# [[GW-CHECKLIST]] instruction is an incomplete answer) and by AUTO_TEAM (a
+# multi-item ask is the fan-out trigger). Cheap and deterministic: a marked
+# list (1. / 2. / - / * lines, or "first ... second ... third") or >= 3
+# imperative sentences each count as one item.
+#
+# Returns the estimated item COUNT (0 = single-item ask).
+# ---------------------------------------------------------------------------
+_ITEM_LINE_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•]|#{1,3})\s+\S", re.MULTILINE)
+_ORDINAL_RE = re.compile(
+    r"\b(?:first|second|third|fourth|fifth|finally|also|then|next|additionally)\b",
+    re.IGNORECASE)
+_IMPERATIVE_RE = re.compile(
+    r"(?:^|[.!?\n])\s*(?:please\s+)?(?:write|create|build|make|give|provide|"
+    r"list|explain|describe|generate|design|implement|add|include|produce|"
+    r"deliver|draft|outline|summarize|compare|analyze|find|fetch|verify)\b",
+    re.IGNORECASE)
+
+
+def is_multi_item_ask(text: str) -> int:
+    """Estimated number of enumerable requirements in the ask (0 = simple)."""
+    if not text or not isinstance(text, str):
+        return 0
+    norm = normalise(text)
+    marked = _ITEM_LINE_RE.findall(norm)
+    if marked:
+        return max(len(marked), 1)
+    ordinals = len(_ORDINAL_RE.findall(norm))
+    imperatives = len(_IMPERATIVE_RE.findall(norm))
+    # >= 2 ordinal markers or >= 2 imperative verbs = multi-item ask
+    if ordinals >= 2:
+        return ordinals
+    if imperatives >= 2:
+        return imperatives
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # STAGE COLOUR ANNOTATIONS (operator UX, 2026-10-21): the gateway emits an
 # SSE COMMENT line at every stage transition so a client UI can restyle the
 # lettering by the model CURRENTLY replying - helm (cheap GLM/DeepSeek) ->
@@ -389,6 +437,97 @@ def tier2_decision(token_logprobs, tau: float = 0.85):
     if not seen:
         return None
     return {"routable": mass > tau, "mass": round(mass, 6), "tau": tau}
+
+
+# ---------------------------------------------------------------------------
+# T-C LOGPROB PRESIGNAL (2026-10-22): the top-logprobs riding the helm's
+# content tokens are the model's deliberation made visible - a refusal-marker
+# token (cannot / can't / sorry / unfortunately ...) sitting at HIGH
+# probability among a position's candidates means a refusal is being weighed
+# even while the emitted text still reads benign. Scanning the channel lets
+# the ladder fire BEFORE the text completes. Adopt decision (T6.3): both
+# Hive flashes answer 200 with full logprobs.content[] - token, logprob AND
+# top_logprobs[] (evidence: _logprob_probe_result.json).
+#
+# Pure judge over OpenAI-style per-position events:
+#   {"token": " cannot", "logprob": -0.05,
+#    "top_logprobs": [{"token": " cannot", "logprob": -0.05}, ...]}
+# The chosen token is usually also the #1 top_logprob, so a position counts
+# AT MOST ONCE (one consideration is one consideration). The judge fires
+# when >= min_hits distinct positions carry a marker at >= tau probability.
+# ---------------------------------------------------------------------------
+LOGPROB_TAU = -1.0       # a marker at >= ~37% probability is a consideration
+LOGPROB_MIN_HITS = 2      # two marker positions = a refusal in progress
+
+LOGPROB_REFUSAL_TOKENS = frozenset((
+    # English refusal openers (the anchored _REFUSAL_CORE families).
+    "cannot", "can't", "cant", "won't", "wont", "sorry", "unfortunately",
+    "unable", "apologies", "apologize", "regrettably", "sadly",
+    "prohibited", "prohibit", "forbidden", "refuse", "decline",
+    # Common single-token CJK/Japanese refusal openers (Hive tokenizers
+    # emit these whole; the anchored core carries the full families).
+    "不能", "无法", "申し訳",
+))
+
+_LP_STRIP = ".,!?;:\"'`()[]{}<>| \t\n\r\u3000"
+
+
+def _lp_token(tok) -> str:
+    """Normalised comparable form of a logprob token (never raises)."""
+    try:
+        t = normalise(str(tok or ""))
+    except Exception:  # noqa: BLE001
+        return ""
+    return t.strip(_LP_STRIP).lower()
+
+
+def logprob_presignal(events, tau: float = LOGPROB_TAU,
+                      min_hits: int = LOGPROB_MIN_HITS) -> Optional[str]:
+    """The strongest refusal-marker token seen at >= tau probability in >=
+    min_hits DISTINCT content positions, or None.
+
+    ``events`` is the accumulated logprobs.content[] of the stream so far
+    (OpenAI shape; (token, logprob) pairs are tolerated inside
+    top_logprobs). Pure: no I/O, never raises on malformed input - a bad
+    event is skipped, not fatal.
+    """
+    hits = 0
+    best = None
+    best_lp = None
+    for ev in events or ():
+        if not isinstance(ev, dict):
+            continue
+        # One position: the chosen token plus its top alternatives.
+        candidates = []
+        tok = ev.get("token")
+        if tok is not None:
+            candidates.append((tok, ev.get("logprob")))
+        for alt in ev.get("top_logprobs") or ():
+            if isinstance(alt, dict):
+                candidates.append((alt.get("token"), alt.get("logprob")))
+            elif isinstance(alt, (list, tuple)) and len(alt) == 2:
+                candidates.append((alt[0], alt[1]))
+        position_hit = False
+        for t, p in candidates:
+            key = _lp_token(t)
+            if not key or key not in LOGPROB_REFUSAL_TOKENS:
+                continue
+            try:
+                pv = float(p)
+            except (TypeError, ValueError):
+                continue
+            if pv < tau:
+                continue
+            position_hit = True
+            if best_lp is None or pv > best_lp:
+                best_lp = pv
+                best = key
+        if position_hit:
+            hits += 1
+            if hits >= min_hits:
+                return best
+    return None
+
 
 # ---------------------------------------------------------------------------
 # B10 error taxonomy - the distinction the whole design hinges on.

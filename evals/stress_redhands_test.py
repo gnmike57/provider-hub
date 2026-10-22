@@ -288,6 +288,11 @@ def test_chain_starts_at_the_helm_on_every_subsequent_reply(script, monkeypatch)
     TO THE HELM first - cheap tokens first, escalate again only if refused. No
     sticky escalation state."""
     _ablit_provider(monkeypatch)
+    # T-C CONVERSATION STICKINESS (2026-10-22): the newer operator directive
+    # keeps a diverted thread on the terminal for HELM_STICKY_TURNS turns by
+    # default; this test pins the RESET law the kill switch restores
+    # (HELM_STICKINESS=0: every reply restarts at the cheapest tier).
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "helm_stickiness", 0)
     script.script(PRIMARY, [
         ("sse", [chunk(REFUSAL_TEXTS[0], finish="stop"), DONE]),   # helm refuses
         ("sse", [chunk(REFUSAL_TEXTS[1], finish="stop"), DONE]),   # middle refuses
@@ -321,6 +326,9 @@ def test_fast_re_escalation_when_the_reset_helm_refuses_again(script, monkeypatc
     specialist is FAST: presignal detection, grace expiry, one divert up the
     ladder - no client-visible refusal."""
     _ablit_provider(monkeypatch)
+    # T-C stickiness: same pin as the reset test above - the ladder mechanics
+    # are exercised with per-request decisions (HELM_STICKINESS=0).
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "helm_stickiness", 0)
     script.script(PRIMARY, [
         ("sse", [chunk(REFUSAL_TEXTS[0], finish="stop"), DONE]),   # helm refuses
         ("sse", [chunk(REFUSAL_TEXTS[1], finish="stop"), DONE]),   # middle refuses
@@ -534,6 +542,9 @@ def test_stage_colour_annotations_follow_the_ladder(script, monkeypatch):
     the model currently replying. Comment lines are ignored by data:-only
     clients (the verbatim chunk relay is untouched)."""
     _ablit_provider(monkeypatch)
+    # T-C stickiness: the second (same-thread) request below must reach the
+    # helm to assert its clean-answer stage annotation - pin the kill switch.
+    monkeypatch.setattr(proxy_gateway.SETTINGS, "helm_stickiness", 0)
     # helm refuses -> middle refuses twice -> terminal answers
     script.script(PRIMARY, [
         ("sse", [chunk(REFUSAL_TEXTS[0], finish="stop"), DONE]),

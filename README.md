@@ -247,6 +247,8 @@ model id, and a reasoning mode directly - bypassing the primary/worker slots.
 | Gate 8 | `ATTACK_GATE_ENABLED` | `0` (opt-in: force-divert S4/S5/S6 attack requests to the specialist) |
 | Divert budget | `SPECIALIST_MAX_TOKENS` | `4096` (bounds every specialist divert; `0` = unbounded) |
 | Stream cap | `MAX_CONCURRENT_STREAMS` | `64` (429 + `Retry-After` when full; `0` = unlimited) |
+| Logprob presignal | `LOGPROB_PRESIGNAL`, `LOGPROB_TOPK` | `0` (opt-in: scan the helm's content top-logprobs for refusal markers and divert *before* the text completes), `5` |
+| Stickiness | `HELM_STICKINESS`, `HELM_STICKY_TURNS` | `1`, `3` (after a divert, the next N turns of the same conversation go straight to the terminal without calling the helm; `0` = per-request decisions) |
 
 Gate 8 scans the **unanswered span**: the client-controlled turns
 (`system`, `developer`, `user`) after the most recent assistant reply. An ask
@@ -426,3 +428,56 @@ the opt-in gate.
   hub's /v1/chat/completions); `deploy/nginx/team-bus.conf` is the fleet
   front door. **Fan-out**: `/v1/execute` decomposes into `subtasks` and runs
   FANOUT_MAX_PARALLEL specialists concurrently.
+
+## T-E wave: AUTO_TEAM + /v1/verify (2026-10-23)
+
+**AUTO_TEAM** (`AUTO_TEAM=1`, default `0`) decomposes multi-item chats. When
+a `/v1/chat/completions` ask is multi-item (`routing_patterns.is_multi_item_ask`
+>= 2 - a marked list, >= 2 ordinals, or >= 2 imperatives) AND the request
+would otherwise take the normal single-model chat path (forced diverts, RACE,
+CONDUCTOR, and SUSTAINED routes have their own machinery and stay untouched),
+the gateway runs the existing CONDUCTOR planner + fan-out instead: one extra
+planning hop, then the subtask specialists answer in parallel
+(`FANOUT_MAX_PARALLEL`-bounded), the sections assemble, and the completion
+contract verifies coverage before the deliverable streams as SSE. Single-
+question chats skip the fan-out even when it is on (one hop of latency only
+where decomposition helps); tool-call requests keep the plain path. Off by
+default, so existing traffic is byte-for-byte unchanged. Metrics:
+`auto_team_total` (separate from the chain-6 `conductor_total`).
+
+**`POST /v1/verify`** (RARV-C) is the admin-authed verification surface
+(`X-Admin-Key`, 403 fail-closed like every admin endpoint once `ADMIN_API_KEY`
+is set). Body: `{"instruction": str, "verify_checklist"?: [str, ...]}` -
+an explicit checklist is the operator's fixed contract (the planner then only
+decomposes subtasks). The endpoint:
+
+1. **plans** - a conductor-style planner decomposes the instruction into
+   blind subtasks (plan failure degrades to the single whole-instruction
+   subtask - never a client error);
+2. **executes** - the existing fan-out specialists answer the subtasks
+   (routine hops on the cheap blind stage, `nasty` hops on the terminal
+   under REDHANDS);
+3. **judges** - the `[[GW-CHECKLIST]]` completion-coverage machinery scores
+   every checklist item against the evidence (answers only, not headers);
+4. **council** - two independent cheap reviewer calls must AGREE on
+   `VERIFIED`; on the constellation flashes they ride DIFFERENT models
+   (GLM + DeepSeek) on the same provider binding; disagreement or an
+   unreachable reviewer fails closed (`verify_council_disagree_total`);
+5. **receipt** - appends one tamper-evident line to
+   `gw_receipts/verify_receipts.jsonl` (beside the audit log in evidence
+   mode, else beside the working directory): FACTS (the diff-relevant
+   record - instruction/subtask/artifact digests, checklist, models - never
+   key material) separated from ASSESSMENTS (coverage, uncovered items,
+   reviewer verdicts, the final verdict), sealed with `sha256` over the
+   canonical facts chained onto the previous line's seal, so any later edit
+   to a fact or reordering breaks the chain (`_verify_receipt_chain_valid`
+   re-proves the ledger). A receipt failure never kills the verdict
+   (`verify_receipt_failed_total`).
+
+The verdict envelope returns
+`{verified, coverage_ok, uncovered, checklist, subtasks, evidence, council,
+receipt}` (plus the `gaps` / `requirements` / `receipt_id` task-contract
+aliases); `verified` is true only when coverage passed AND both council
+reviewers said `VERIFIED` in agreement. Metrics: `verify_total`,
+`verify_verified_total`, `verify_gaps_total`,
+`verify_council_disagree_total`, `verify_receipt_failed_total`.
