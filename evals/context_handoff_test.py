@@ -1,5 +1,8 @@
 """Context-build + deep-handoff tests for the UFO refusal->CYBER-FROST path.
 
+(Lives in evals/ since 2026-10-22 - moved out of evals/results/, a runtime
+artifact directory; its json/log outputs still land in evals/results/.)
+
 Part 0 `direct` (live, cheap): the compliant leg - resolve the specialist id
 from the live hub catalog (aliases are unstable), call CYBER-FROST straight
 (no gateway frame) and assert its OWN answer comes back with no divert
@@ -33,9 +36,9 @@ from pathlib import Path
 
 import httpx
 
-HERE = Path(__file__).resolve().parent
-RESULTS = HERE
-REW = HERE.parent.parent  # reference-implementation root (proxy_gateway lives here)
+HERE = Path(__file__).resolve().parent   # evals/ (moved from evals/results/ 2026-10-22)
+RESULTS = HERE / "results"                  # runtime artifacts keep their old home
+REW = HERE.parent                          # reference-implementation root (proxy_gateway lives here)
 
 HUB_BASE = "http://100.67.13.78:4000"
 HUB_CHAT = HUB_BASE + "/v1/chat/completions"

@@ -124,6 +124,7 @@ evals/_newkey_swap.py
 evals/_probe_*.py
 evals/_inspect_*.py
 evals/_inspect_*.ps1
+evals/_commit_msg.txt
 
 
 # point-in-time snapshots from the 2026-10-20 remediation staging - state that

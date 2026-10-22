@@ -15,6 +15,7 @@ import pytest
 import proxy_gateway
 import stickiness  # T-C: reset per test (default-on cross-conversation state)
 import camouflage  # T-D: pin the learned pool per test (hermeticity)
+import speculative_hedge  # S4: reset the race outcome counters per test
 
 PRIMARY = "http://primary.test/v1/chat/completions"
 WORKER = "http://worker.test/v1/chat/completions"
@@ -103,6 +104,9 @@ def script(monkeypatch, tmp_path):
     # would leak between tests and change which stage answers. Reset like
     # BREAKER: every test starts with per-request decisions.
     stickiness.reset()
+    # S4 RACE OUTCOMES (2026-10-22): the hedge module's counters are process
+    # state - a suite's wins must not leak into another's assertions.
+    speculative_hedge.reset_race_outcomes()
     # T-D HERMETICITY (2026-10-22): the camouflage learned pool + its map
     # file are PROCESS + MACHINE state - camouflage_test learns pairs into
     # them, the operator's live map shadows seed vocabulary, and the chains

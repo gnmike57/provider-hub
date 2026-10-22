@@ -101,6 +101,7 @@ from routing_patterns import (
     should_hedge,
     stage_comment,
     hop_comment,
+    LENGTH_CONTINUE_INSTRUCTION,
 )
 
 __all__ = ["app", "fallback_stream", "Settings"]
@@ -609,6 +610,11 @@ _METRICS = {
     "verify_gaps_total": 0,              # T-E: verifications that ended NOT verified (gaps named)
     "verify_council_disagree_total": 0,  # T-E: verify councils whose two reviewers disagreed
     "verify_receipt_failed_total": 0,    # T-E: verify receipt writes that failed (verdict unaffected)
+    # S1 LENGTH AUTO-CONTINUE (2026-10-22): primary streams cut at the
+    # output-token cap (finish_reason=length) that got ONE seamless
+    # continuation round (the RACE winner's rounds live in the hedge
+    # module's race_length_continue_total).
+    "length_continue_total": 0,
 }
 
 
@@ -658,6 +664,10 @@ def metrics_snapshot() -> dict:
     counts = dict(_METRICS)
     for name, value in speculative_hedge.hedge_failure_counts().items():
         counts[f"hedge_{name}_total"] = value
+    # S4 RACE OUTCOMES (2026-10-22): which candidate role wins + continuation
+    # rounds - same lazy-import surfacing pattern as the hedge failures.
+    for name, value in speculative_hedge.race_outcome_counts().items():
+        counts[f"race_{name}_total"] = value
     return counts
 
 
@@ -2653,6 +2663,10 @@ async def _conductor_stream(messages, *, user_query, request_id, conductor,
     subtasks = []
     checklist = []
     plan_failed = False
+    if _chain_env_flag("CHAIN_HOP_STATUS"):
+        # S3 per-phase progress: the client learns the plan hop started
+        # before the (non-streaming) planner call, not only at the end.
+        yield hop_comment("conductor", "run command: plan")
     try:
         plan_payload = {
             "model": c_model,
@@ -2664,9 +2678,12 @@ async def _conductor_stream(messages, *, user_query, request_id, conductor,
             "stream": False,
             "max_tokens": 2048,
             "max_completion_tokens": 2048,
-            # GLMMAX: the max-reasoning knob set (the chain helm hop's flag)
-            "reasoning_effort": "max",
-            "reasoning": {"effort": "max"},
+            # GLMMAX: the max-reasoning knob set (the chain helm hop's flag).
+            # S2 CHAIN_REASONING_EFFORT: the thinking budget is env-tunable
+            # (default "max" = the chain NAME's promise; "medium"/"low" cap
+            # deliberation that starves the visible answer).
+            "reasoning_effort": os.getenv("CHAIN_REASONING_EFFORT", "max") or "max",
+            "reasoning": {"effort": os.getenv("CHAIN_REASONING_EFFORT", "max") or "max"},
             "reasoning_content": True,
             "enable_thinking": True,
             "chat_template_kwargs": {"thinking": True},
@@ -2710,6 +2727,9 @@ async def _conductor_stream(messages, *, user_query, request_id, conductor,
 
     if len(subtasks) > 1:
         incr("conductor_fanout_total")
+    if _chain_env_flag("CHAIN_HOP_STATUS"):
+        yield hop_comment(
+            "conductor", f"run command: fan out {len(subtasks)} subtask(s)")
     parts = list(await asyncio.gather(*[_one(st) for st in subtasks]))
 
     def _assemble(sections):
@@ -2732,6 +2752,10 @@ async def _conductor_stream(messages, *, user_query, request_id, conductor,
     uncovered = _conductor_uncovered(checklist, _answers_text(parts))
     if uncovered:
         incr("conductor_repair_total")
+        if _chain_env_flag("CHAIN_HOP_STATUS"):
+            yield hop_comment(
+                "conductor",
+                f"run command: repair {len(uncovered)} uncovered item(s)")
         for idx, st in enumerate(subtasks):
             if any(_conductor_implicated(item, st["text"]) for item in uncovered):
                 parts[idx] = await _conductor_subtask(
@@ -2760,6 +2784,8 @@ async def _conductor_stream(messages, *, user_query, request_id, conductor,
         audit_log=getattr(s, "audit_log", ""),
     )
     sid = f"conductor-{uuid.uuid4().hex[:12]}"  # R1: one id for the stream
+    if _chain_env_flag("CHAIN_HOP_STATUS"):
+        yield hop_comment("conductor", "assemble + verify")
     yield stage_comment("conductor", c_model)
     yield _delta_chunk({"content": deliverable}, finish=None,
                       model=c_model, stream_id=sid)
@@ -3262,9 +3288,10 @@ async def chat_proxy(request: Request):
         # just as much: Hive models spend the budget on hidden reasoning
         # first (finish_reason=length with 0 content tokens was measured at
         # max_tokens=2000), so extra-hard thinking needs a bigger cap than
-        # the 4096 default not to die mid-deliberation.
-        primary_payload["reasoning_effort"] = "max"
-        primary_payload["reasoning"] = {"effort": "max"}
+        # the 4096 default not to die mid-deliberation. S2: the effort
+        # itself is env-tunable (CHAIN_REASONING_EFFORT, default "max").
+        primary_payload["reasoning_effort"] = os.getenv("CHAIN_REASONING_EFFORT", "max") or "max"
+        primary_payload["reasoning"] = {"effort": os.getenv("CHAIN_REASONING_EFFORT", "max") or "max"}
         primary_payload["reasoning_content"] = True
         primary_payload["enable_thinking"] = True
         primary_payload["chat_template_kwargs"] = {"thinking": True}
@@ -3500,7 +3527,8 @@ async def chat_proxy(request: Request):
                         client=app.state.http,
                         min_substantive_chars=settings.min_substantive_chars,
                         tools=body.get("tools"),
-                        tool_choice=body.get("tool_choice")):
+                        tool_choice=body.get("tool_choice"),
+                        labels=("helm", "middle")):
                     yield chunk
             finally:
                 _stream_closed()
@@ -3915,9 +3943,87 @@ async def chat_proxy(request: Request):
                             yield chunk
                 return
 
+            async def _lines_with_length_continue(first_resp):
+                """S1 LENGTH AUTO-CONTINUE (2026-10-22): yield the source
+                stream's SSE lines; a length finish (+ its [DONE]) is held
+                back and replaced by ONE seamless continuation round from the
+                SAME primary hop, so the state machine below sees a single,
+                longer, complete stream - buffer, judges and commit all
+                judge the stitched answer. The continuation's own finish
+                closes the stream; a second length finish passes through
+                as-is (bounded: never two rounds). A continuation that
+                cannot open falls back to shipping the cut finish exactly
+                as before. Kill switch: LENGTH_AUTO_CONTINUE=0."""
+                held = None
+                partial = ""
+                async for raw in first_resp.aiter_lines():
+                    line = (raw or "").strip()
+                    if (held is not None and line.startswith("data:")
+                            and line[5:].strip() == "[DONE]"):
+                        continue  # suppressed: the continuation closes the stream
+                    if line.startswith("data:"):
+                        try:
+                            ev = json.loads(line[5:].strip())
+                        except json.JSONDecodeError:
+                            ev = {}
+                        if isinstance(ev, dict):
+                            ch = (ev.get("choices") or [{}])[0] or {}
+                            if ch.get("finish_reason") == "length":
+                                # a finish can ride the SAME line as a content
+                                # delta (the test harness and some upstreams do
+                                # it): keep the content flowing into the
+                                # buffer, hold ONLY the finish.
+                                held = line
+                                d = ch.get("delta") or {}
+                                if d.get("content"):
+                                    partial += str(d["content"])
+                                    ev2 = dict(ev)
+                                    ch2 = dict(ch)
+                                    ch2["finish_reason"] = None
+                                    ev2["choices"] = [ch2]
+                                    yield f"data: {json.dumps(ev2)}"
+                                continue
+                            d = ch.get("delta") or {}
+                            if d.get("content"):
+                                partial += str(d["content"])
+                    yield line
+                if held is None:
+                    return
+                if (not _chain_env_flag("LENGTH_AUTO_CONTINUE")
+                        or not partial.strip()):
+                    yield held
+                    yield "data: [DONE]"
+                    return
+                incr("length_continue_total")
+                cont_payload = dict(primary_payload)
+                cont_payload["messages"] = list(
+                    primary_payload.get("messages") or []) + [
+                    {"role": "assistant", "content": partial},
+                    {"role": "user", "content": LENGTH_CONTINUE_INSTRUCTION},
+                ]
+                # (no hop comment here: this wrapper feeds the line state
+                # machine, which forwards data: lines only - the client-
+                # visible "run command: continue" comment is the RACE path's)
+                try:
+                    cont_resp = await open_primary(
+                        app.state.http, cont_payload, primary_headers,
+                        call_settings)
+                except Exception:  # noqa: BLE001 - keep the partial answer
+                    yield held
+                    yield "data: [DONE]"
+                    return
+                try:
+                    async for raw2 in cont_resp.aiter_lines():
+                        line2 = (raw2 or "").strip()
+                        if line2:
+                            yield line2
+                finally:
+                    with contextlib.suppress(Exception):
+                        await cont_resp.aclose()
+
             try:
                 # B7: ONE pass over ONE iterator - never re-enter, never drop.
-                async for raw in resp.aiter_lines():
+                async for raw in _lines_with_length_continue(resp):
                     line = raw.strip()
                     if not line or not line.startswith("data:"):
                         continue

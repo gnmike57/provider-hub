@@ -32,7 +32,7 @@ import httpx
 import routing_patterns
 import account_pool
 
-from routing_patterns import classify_status, footnote, is_routable, normalise, should_hedge, stage_comment
+from routing_patterns import classify_status, footnote, is_routable, normalise, should_hedge, stage_comment, hop_comment, LENGTH_CONTINUE_INSTRUCTION
 
 import abliteration_keys
 
@@ -118,6 +118,41 @@ log = logging.getLogger("speculative_hedge")
 # answered but not with 2xx (the common one being 404 model_not_found while the
 # specialist's weights are still loading after a reboot).
 _FAILURES = {"transport_error": 0, "bad_status": 0, "empty_sovereign": 0}
+
+# S4 RACE OUTCOMES (2026-10-22): which candidate ROLE wins the race and how
+# many length-finish continuations fired - surfaced through
+# proxy_gateway.metrics_snapshot() as race_won_<role>_total /
+# race_length_continue_total (same accessor pattern as hedge_failure_counts).
+_RACE_OUTCOMES = {"won_helm": 0, "won_middle": 0, "length_continue": 0}
+
+
+def race_outcome_counts() -> dict:
+    return dict(_RACE_OUTCOMES)
+
+
+def reset_race_outcomes() -> None:
+    """Test hermeticity: zero the outcome counters (the shared script
+    fixture calls this per test, like BREAKER / stickiness)."""
+    for k in _RACE_OUTCOMES:
+        _RACE_OUTCOMES[k] = 0
+
+
+def _length_continue_on() -> bool:
+    """S1 kill switch: LENGTH_AUTO_CONTINUE=0 restores the bare
+    length-finish cut (default on)."""
+    try:
+        return int(os.getenv("LENGTH_AUTO_CONTINUE", "1") or 1) != 0
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _chain_reasoning_effort() -> str:
+    """S2 CHAIN_REASONING_EFFORT (2026-10-22): the thinking budget for the
+    max-reasoning chain hops. Default "max" keeps the chain NAME's promise;
+    "medium"/"low" caps runaway deliberation that starves the visible
+    answer (measured live: a reply died at exactly 8192 output tokens
+    with ~7.7k of them spent on thinking)."""
+    return os.getenv("CHAIN_REASONING_EFFORT", "max") or "max"
 
 
 def hedge_failure_counts() -> dict:
@@ -583,10 +618,13 @@ async def race_stream(
     min_substantive_chars: int = 20,
     tools=None,
     tool_choice=None,
+    labels=(),
 ) -> AsyncGenerator[bytes, None]:
     """Two-sovereign race. `candidates` is an ordered list of
     (url, key, model_id, max_reasoning) tuples - (helm, middle) hops of the
-    RACE chain. `escalate` is a callable text -> chunk iterator wired to the
+    RACE chain; `labels` optionally names the roles for the S4 outcome
+    counters (default: helm for the first candidate, middle for the
+    second). `escalate` is a callable text -> chunk iterator wired to the
     chain terminal; it fires only when EVERY candidate refused/failed.
     An injected client (the gateway's app.state.http) is reused; otherwise
     a dedicated client is created and closed here (hedge parity)."""
@@ -594,6 +632,80 @@ async def race_stream(
     sid = f"race-{uuid.uuid4().hex[:12]}"  # R1: one id for the whole stream
     commit_window = max(1, int(s.commit_tokens or 1))
     min_subst = max(1, int(min_substantive_chars or 1))
+
+    def _finish_reason_of(line):
+        """finish_reason of a data: SSE line, or None (never raises)."""
+        try:
+            ev = json.loads(line[5:].strip())
+            ch = (ev.get("choices") or [{}])[0]
+            return ch.get("finish_reason")
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _strip_length_finish(line):
+        """A length finish can ride the SAME line as a content delta (the
+        test harness and some upstreams put both on one line). Returns
+        (stripped_line, content) so the content keeps flowing into the
+        winner's replay/tally while ONLY the finish is held; None when the
+        finish rode an empty delta (nothing to keep)."""
+        try:
+            ev = json.loads(line[5:].strip())
+            ch = (ev.get("choices") or [{}])[0]
+            content = str(((ch.get("delta") or {}).get("content")) or "")
+            if not content:
+                return None
+            ev2 = dict(ev)
+            ch2 = dict(ch)
+            ch2["finish_reason"] = None
+            ev2["choices"] = [ch2]
+            return f"data: {json.dumps(ev2)}", content
+        except Exception:  # noqa: BLE001
+            return None
+
+    async def _open_winner_continue(r, partial):
+        """S1 LENGTH AUTO-CONTINUE: open ONE continuation stream for a
+        length-cut winner (same hop, partial answer in context). Returns
+        the streaming response, or None when it cannot open - the caller
+        then ships the held finish (never a client error)."""
+        payload = {
+            "model": r["model"],
+            "messages": list(messages) + [
+                {"role": "assistant", "content": partial},
+                {"role": "user", "content": LENGTH_CONTINUE_INSTRUCTION},
+            ],
+            "stream": True,
+            "max_tokens": s.max_tokens,
+            "max_completion_tokens": s.max_tokens,
+        }
+        if r.get("max_reasoning"):
+            effort = _chain_reasoning_effort()
+            payload["reasoning_effort"] = effort
+            payload["reasoning"] = {"effort": effort}
+            payload["reasoning_content"] = True
+            payload["enable_thinking"] = True
+            payload["chat_template_kwargs"] = {"thinking": True}
+            payload["thinking"] = {"type": "enabled"}
+        if tools:
+            payload["tools"] = tools
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
+        try:
+            headers, acct = account_pool.routed_headers(
+                {**_auth_header(r["key"]), "Content-Type": "application/json"},
+                r["url"])
+            resp = await client.send(
+                client.build_request(
+                    "POST", r["url"], json=payload, headers=headers),
+                stream=True)
+        except Exception:  # noqa: BLE001 - continuation is best-effort
+            return None
+        if classify_status(resp.status_code) != "ok":
+            account_pool.observe_result(acct, resp.status_code)
+            with contextlib.suppress(Exception):
+                await resp.aclose()
+            return None
+        account_pool.observe_result(acct, resp.status_code)
+        return resp
 
     def _clean_commit(r):
         """The commit rule: past COMMIT_TOKENS content tokens, refusal-free,
@@ -614,7 +726,7 @@ async def race_stream(
     try:
         async with contextlib.AsyncExitStack() as stack:
             racers = []
-            for url, key, model_id, max_reasoning in candidates:
+            for i, (url, key, model_id, max_reasoning) in enumerate(candidates):
                 payload = {
                     "model": model_id,
                     "messages": messages,
@@ -626,9 +738,11 @@ async def race_stream(
                     # The DEEPMAX/GLMMAX knob set: the chain NAME promises
                     # max reasoning on BOTH candidates. Same convention set
                     # as the gateway's max-think injection (unknown fields
-                    # are ignored by OpenAI-compatible upstreams).
-                    payload["reasoning_effort"] = "max"
-                    payload["reasoning"] = {"effort": "max"}
+                    # are ignored by OpenAI-compatible upstreams). The effort
+                    # itself is env-tunable (S2 CHAIN_REASONING_EFFORT).
+                    effort = _chain_reasoning_effort()
+                    payload["reasoning_effort"] = effort
+                    payload["reasoning"] = {"effort": effort}
                     payload["reasoning_content"] = True
                     payload["enable_thinking"] = True
                     payload["chat_template_kwargs"] = {"thinking": True}
@@ -665,6 +779,13 @@ async def race_stream(
                 racers.append({
                     "resp": resp,
                     "model": model_id,
+                    # S1/S4: the winner's continuation + outcome counters
+                    # need the hop's own wiring and role.
+                    "url": url,
+                    "key": key,
+                    "max_reasoning": bool(max_reasoning),
+                    "role": (labels[i] if i < len(labels)
+                             else ("helm" if i == 0 else f"candidate_{i}")),
                     "buffered": [],      # held lines, replayed verbatim on commit
                     "screen_text": "",  # delta.content ONLY (F1/B21)
                     "content_tokens": 0,
@@ -786,11 +907,31 @@ async def race_stream(
                         if r is not winner and not r["exhausted"]:
                             with contextlib.suppress(Exception):
                                 await r["resp"].aclose()
+                    # S4: which role won (chain-tuning observability).
+                    _won_key = f"won_{winner['role']}"
+                    _RACE_OUTCOMES[_won_key] = _RACE_OUTCOMES.get(_won_key, 0) + 1
                     # STAGE COLOUR: the winning candidate answers as the helm.
                     yield stage_comment("helm", winner["model"])
+                    # S1 LENGTH AUTO-CONTINUE: a length finish is HELD (the
+                    # client never sees the cut); if the switch is on and the
+                    # winner actually said something, ONE seamless continuation
+                    # round closes the stream instead.
+                    held_finish = None
+                    winner_text = winner["screen_text"]
                     for line in winner["buffered"]:
+                        if line.startswith("data:") \
+                                and _finish_reason_of(line) == "length":
+                            kept = _strip_length_finish(line)
+                            if kept is not None:
+                                winner_text += kept[1]
+                                yield f"{kept[0]}\n\n".encode()
+                            held_finish = line
+                            continue
+                        if (held_finish is not None and line.startswith("data:")
+                                and line[5:].strip() == "[DONE]"):
+                            continue  # suppressed: the continuation closes it
                         yield f"{line}\n\n".encode()
-                    if winner["exhausted"]:
+                    if winner["exhausted"] and held_finish is None:
                         # the exhausted-clean commit carries its own [DONE] as
                         # the last buffered line - the stream is complete.
                         return
@@ -808,9 +949,59 @@ async def race_stream(
                             continue
                         if line.replace("data:", "", 1).strip() == "[DONE]":
                             saw_done = True
-                            yield f"{line}\n\n".encode()
+                            if held_finish is None:
+                                yield f"{line}\n\n".encode()
                             break
+                        if line.startswith("data:"):
+                            if _finish_reason_of(line) == "length":
+                                kept = _strip_length_finish(line)
+                                if kept is not None:
+                                    winner_text += kept[1]
+                                    yield f"{kept[0]}\n\n".encode()
+                                held_finish = line
+                                continue
+                            try:  # tally the live tail for the continuation
+                                _d = (((json.loads(line[5:].strip())
+                                        .get("choices") or [{}])[0]
+                                       .get("delta")) or {})
+                                if _d.get("content"):
+                                    winner_text += str(_d["content"])
+                            except Exception:  # noqa: BLE001 - tally only
+                                pass
                         yield f"{line}\n\n".encode()
+                    if (held_finish is not None and _length_continue_on()
+                            and winner_text.strip()):
+                        cont = await _open_winner_continue(winner, winner_text)
+                        if cont is not None:
+                            _RACE_OUTCOMES["length_continue"] += 1
+                            yield hop_comment(
+                                "race",
+                                "run command: continue past the token limit")
+                            cont_done = False
+                            try:
+                                async for raw in cont.aiter_lines():
+                                    cline = (raw or "").strip()
+                                    if not cline:
+                                        continue
+                                    yield f"{cline}\n\n".encode()
+                                    if cline.replace("data:", "", 1).strip() \
+                                            == "[DONE]":
+                                        cont_done = True
+                                        break
+                            finally:
+                                with contextlib.suppress(Exception):
+                                    await cont.aclose()
+                            if not cont_done:
+                                # the continuation ended bare: close properly
+                                yield f"data: {_chunk({}, finish='stop', model=winner['model'], stream_id=sid)}\n\n".encode()
+                                yield b"data: [DONE]\n\n"
+                            return
+                    if held_finish is not None:
+                        # switch off / empty winner / continuation failed to
+                        # open: the cut finish ships exactly as before.
+                        yield f"{held_finish}\n\n".encode()
+                        yield b"data: [DONE]\n\n"
+                        return
                     if not saw_done:
                         # The winner's stream ended bare (upstream dropped
                         # the tail): terminate the client stream properly.

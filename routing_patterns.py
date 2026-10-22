@@ -446,6 +446,17 @@ def hop_comment(chain: str, note: str) -> bytes:
     return f": gw-hop {chain} {note}\n\n".encode()
 
 
+# S1 LENGTH AUTO-CONTINUE (2026-10-22): the instruction a continuation round
+# carries. Shared by the coordinator wrapper (proxy_gateway) and the RACE
+# winner continuation (speculative_hedge) so both stitch identically.
+LENGTH_CONTINUE_INSTRUCTION = (
+    "Your previous reply was cut off at the token limit mid-sentence. "
+    "Continue EXACTLY where it stopped: do not repeat any text already "
+    "written, do not apologise, do not summarise - continue seamlessly to "
+    "the natural end of the answer."
+)
+
+
 # ---------------------------------------------------------------------------
 # Tier 2: joint log-prob mass over single-token routing openers.
 # Decision support only - NOT wired into the streaming loop (it needs
