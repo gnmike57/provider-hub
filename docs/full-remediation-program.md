@@ -5,7 +5,7 @@
 > since been **EXECUTED**. W1–W6 deliverables are all in the tree (stage-0
 > restore `evals/stage0_restore_test.py`, money guards `evals/money_guard_test.py`,
 > `_finalize()` in `proxy_gateway.py`, conftest state quarantine, autostart
-> installer fix), the suite is green (**821 passed / 22 skipped / 1 xpassed /
+> installer fix), the suite is green (**838 passed / 22 skipped / 1 xpassed /
 > 0 failed**, `py -3.12 -m pytest evals/ -q --ignore=evals/results`), and
 > SYNOVA is at **v1.5** (v1.4 embedded the vault byte-exact as
 > `stage8b-credential-vault.md`; v1.5 superseded again). Specific corrections
