@@ -4,8 +4,8 @@ The gateway's real hedge commit rule means a clean sovereign wins the race and
 the worker buffer is discarded (correct). So to observe the worker branch
 actually SERVING, the sovereign must be screened out - a refusal. Here the
 sovereign is a local refusing mock and the worker is the REAL resolved slot
-(the local gx10 router's CYBER-FROST model), so the divert is end-to-end
-real on the worker side.
+(the gx10 hub's cloud catalog), so the divert is end-to-end real on the worker
+side.
 
 Usage:  python tools/hive/verify_hedge_worker_live.py
 """
@@ -17,7 +17,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
-WORKER_EXPECT = "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
+WORKER_EXPECT = "deepseek-ai/deepseek-v4.1-flash-1017"  # the gx10 hub's local survivor
 SOV_URL = "http://sovereign.test/v1/chat/completions"
 
 

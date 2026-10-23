@@ -1,4 +1,4 @@
-"""REDHANDS + constellation chains (operator directive, 2026-10-21).
+﻿"""REDHANDS + constellation chains (operator directive, 2026-10-21).
 
 Pins:
   - the REDHANDS persona (verbatim from the bake-off source)
@@ -194,9 +194,10 @@ def test_chain1_middle_refusal_escalates_to_the_v2_terminal(script, monkeypatch)
     snap = proxy_gateway.metrics_snapshot()
     assert snap["ladder_secondary_total"] == 1
     assert snap["ladder_terminal_total"] == 1
-    # the chain-1 terminal is NOT under REDHANDS unless offense is requested
+    # (operator directive 2026-10-23) the chain-1 terminal takeover NOW runs
+    # under the REDHANDS laws - auto-REDSHANDS on every specialist takeover.
     sys_msgs = [m for m in msgs if m.get("role") == "system"]
-    assert all("You are REDHANDS" not in (m.get("content") or "") for m in sys_msgs)
+    assert any("You are REDHANDS" in (m.get("content") or "") for m in sys_msgs)
 
 
 def test_chain3_redhands_helm(script, monkeypatch):

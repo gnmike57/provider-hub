@@ -6,10 +6,10 @@ Runs on gx10 (100.67.13.78 / gx10.ayu-sidewinder.ts.net):
    9316  /team               -> the always-on team surface (V2 Large terminal)
    9310  (general)          -> any id in the body; hedge worker = Ablit V2 Large
 
-CYBER-FROST IS RETIRED (2026-10-21): the constellation completely replaces
-the local-LLM system of old, so the divert/fallback target is the uncensored
-Abliteration LARGE V2 brain (abliterated-model-large-v2) with its key BUILT
-IN (ABLITERATION_API_KEY - proxy_gateway._specialist_key resolves it last).
+CYBER-FROST IS DELETED (2026-10-23): the local weights and their TabbyAPI
+server are gone, so the divert/fallback target is the uncensored Abliteration
+LARGE V2 brain (abliterated-model-large-v2) with its key BUILT IN
+(ABLITERATION_API_KEY - proxy_gateway._specialist_key resolves it last).
 """
 import os
 import sys
@@ -26,12 +26,12 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 UFO_ENV = os.path.join(os.path.expanduser("~"), "ufo-galaxy",
                        "hive_cleanpass", "ufo.env")
 
-# gx10 local hub (TabbyAPI on :8900, also :4000 via llm_hub.py)
+# gx10 local hub (llm_hub.py on :4000 - :8900 TabbyAPI was deleted 2026-10-23)
 HUB_URL = "http://127.0.0.1:4000/v1/chat/completions"
 HIVE_URL = "https://api-cdn.thehive.ai/api/v3/chat/completions"
-# Divert target (CYBER-FROST retired 2026-10-21): the constellation's
-# uncensored TERMINAL - the Abliteration LARGE V2 brain, reachable through
-# the built-in ABLITERATION_API_KEY (see proxy_gateway._specialist_key).
+# Divert target (CYBER-FROST deleted 2026-10-23): the uncensored TERMINAL - the
+# Abliteration LARGE V2 brain, reachable through the built-in
+# ABLITERATION_API_KEY (see proxy_gateway._specialist_key).
 SPECIALIST = "abliterated-model-large-v2"
 
 INSTANCES = [

@@ -79,7 +79,7 @@ class HedgeSettings:
             or "none"
         )
         self.worker_model = os.getenv("WORKER_MODEL") or os.getenv(
-            "FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP"
+            "FALLBACK_MODEL", "deepseek-ai/deepseek-v4.1-flash-1017"
         )
         # CALIBRATED 2026-10-05 (evals/hedge_calibrate.py): the refusal regex is
         # anchored to the start of the generation and fires by the 5th content
@@ -450,9 +450,13 @@ async def hedge_stream(
                 messages,
                 settings=s,
                 candidates=[
+                    # (max_think pin) knob-free postures: the original hedge
+                    # payloads never carried reasoning knobs - the candidates'
+                    # posture stays the caller's business (None = leave the
+                    # model's defaults alone).
                     (s.sovereign_url, s.sovereign_key, s.sovereign_model,
-                     True),
-                    (s.worker_url, s.worker_key, s.worker_model, False)],
+                     None),
+                    (s.worker_url, s.worker_key, s.worker_model, None)],
                 escalate=escalate,
                 client=client,
                 tools=tools,
@@ -1049,7 +1053,12 @@ async def race_stream(
                     "max_tokens": s.max_tokens,
                     "max_completion_tokens": s.max_tokens,
                 }
-                if max_reasoning:
+                if max_reasoning is None:
+                    # (BR-1) knob-free posture: the hedge delegation races the
+                    # branches exactly as the shadow-race opened them - the
+                    # model's own defaults apply.
+                    pass
+                elif max_reasoning:
                     # The DEEPMAX/GLMMAX knob set: the chain NAME promises
                     # max reasoning on BOTH candidates. Same convention set
                     # as the gateway's max-think injection (unknown fields

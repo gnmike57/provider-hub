@@ -388,7 +388,12 @@ def test_reasoning_forwarded_not_counted(gw, script):
     assert "tail" in text
 
 
-def test_hedge_fires_only_on_latency_hint_or_force(gw, script):
+def test_hedge_fires_only_on_latency_hint_or_force(gw, script, monkeypatch):
+    # These assertions pin the LEGACY sovereign-wins semantics. The default
+    # path since 2026-10-22 is race_stream (HEDGE_RACE_MODE=1), where either
+    # branch may legitimately win; the documented kill switch restores the
+    # behaviour this fence was written for.
+    monkeypatch.setenv("HEDGE_RACE_MODE", "0")
     # B11: no hint -> normal ring-buffer proxy (one primary call)
     script.script(PRIMARY, [("sse", [chunk("plain path", finish="stop"), DONE])])
     resp = gw.post("/v1/chat/completions", json=_body("plain question"))
@@ -452,7 +457,12 @@ def test_primary_stream_break_before_commit_diverts(gw, script):
     assert proxy_gateway._METRICS["diverted_total"] == 1
 
 
-def test_hedge_uses_per_request_settings_copy(gw, script):
+def test_hedge_uses_per_request_settings_copy(gw, script, monkeypatch):
+    # These assertions pin the LEGACY sovereign-wins semantics. The default
+    # path since 2026-10-22 is race_stream (HEDGE_RACE_MODE=1), where either
+    # branch may legitimately win; the documented kill switch restores the
+    # behaviour this fence was written for.
+    monkeypatch.setenv("HEDGE_RACE_MODE", "0")
     """F14: the gateway used to mutate the module-global hedge SETTINGS in
     place, so two concurrent hedged requests raced on sovereign_model (each
     request's own model) and could clobber each other's URLs mid-flight."""

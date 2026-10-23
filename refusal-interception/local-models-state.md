@@ -1,5 +1,11 @@
 # Local model state — GX10 (NVIDIA GB10 DGX Spark)
 
+> **SUPERSEDED (2026-10-23):** every `:8900` / CYBER-FROST row in this
+> document is DEAD - the weights, `cyberfrost.service` and the TabbyAPI
+> stack were deleted this day, Featherless is decommissioned (stale key,
+> not to be enabled), and the gx10 hub on `:4000` now serves the LOCAL
+> catalog only. Kept as a historical snapshot.
+
 Snapshot: **2026-10-05** · host `gx10` · LAN `192.168.4.103` · tailnet `gx10.tail930ca4.ts.net`
 
 ---

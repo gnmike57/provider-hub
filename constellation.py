@@ -443,7 +443,7 @@ def model_dna(exposed_name: str, provider_id: str, upstream_id: str = "") -> dic
     if any(k in name for k in ("abliterated", "uncensored", "cyber")):
         tags.append("uncensored")
     if "frost" in name:
-        tags.append("legacy-frost")  # CyberFrost retired 2026-10-21 (was "speculative")
+        tags.append("legacy-frost")  # CyberFrost deleted 2026-10-23 (was "speculative")
     latency_tier = "mid"
     if any(k in name for k in ("flash", "mini", "small", "8b")):
         latency_tier = "fast"

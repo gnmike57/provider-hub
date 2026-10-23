@@ -1,4 +1,4 @@
-﻿# launch_frost_hub.ps1 - boots the constellation interception hub (uvicorn)
+﻿# launch_frost_hub.ps1 - boots the RedHands Hub (uvicorn)
 # detached. The filename is the legacy entrypoint name and is kept so the
 # scheduled task and watchdog keep working; the system it boots is the
 # constellation (TheHive + Abliteration), CyberFrost retired 2026-10-21.
@@ -75,7 +75,7 @@ function Write-Note([string]$m) {
 # secret is a hard preflight failure (exit 3) so Task Scheduler / the watchdog
 # surface it instead of booting a money-unsafe hub. Rotation later only
 # touches User scope - this file never changes again.
-# 2026-10-22 FIX: Machine scope added as the last fallback. The "Frost Hub" /
+# 2026-10-22 FIX: Machine scope added as the last fallback. The "RedHands Hub" /
 # watchdog scheduled tasks run as SYSTEM, whose User scope is NOT the
 # operator's - without this, every task-context launch died in preflight.
 function Resolve-Secret([string]$Name, [switch]$Required) {
@@ -146,7 +146,7 @@ if (-not (Test-PythonRunsHub $py)) {
 function Stop-HubProcesses() {
     foreach ($procId in (Get-HubListenerPids -Port $PORT)) {
         $cmd = Get-ProcIdentity $procId
-        # Only kill processes that are actually the Frost hub (uvicorn running proxy_gateway).
+        # Only kill processes that are actually the RedHands Hub (uvicorn running proxy_gateway).
         if ($cmd -and ($cmd -like "*uvicorn*" -or $cmd -like "*proxy_gateway*")) {
             Write-Note ("  replacing hub listener pid={0} cmd={1}" -f $procId, $cmd)
             try { Stop-Process -Id $procId -Force -ErrorAction Stop } catch { }
@@ -196,16 +196,17 @@ try {
             # refused; Rotate-Log is best-effort, the next boot rotates them.)
             Rotate-Log -Path $out -MaxBytes $MAX_LOG_BYTES
             Rotate-Log -Path $err -MaxBytes $MAX_LOG_BYTES
-            Write-Note ("Frost hub already healthy on :{0} (pid={1}); no action" -f $PORT, ($live -join ","))
+            Write-Note ("RedHands Hub already healthy on :{0} (pid={1}); no action" -f $PORT, ($live -join ","))
             exit 0
         }
     }
 
     # --- Constellation environment (single source for the boot task) --------
-    # CYBER-FROST is RETIRED (2026-10-21): the hub is the constellation - the
-    # GLM/DeepSeek Hive brains up front, the uncensored Abliteration LARGE V2
-    # brain as the terminal/divert slot. The old Frost worker pins are gone;
-    # FALLBACK_* (the divert slot) now points at the V2 terminal like
+    # CYBER-FROST is DELETED (2026-10-23): the local gx10 quant, its TabbyAPI
+    # server and :8900 are gone, weights and all. The hub is the constellation
+    # - the GLM/DeepSeek Hive brains up front, the uncensored Abliteration
+    # LARGE V2 brain as the terminal/divert slot. The old Frost worker pins are
+    # gone too; FALLBACK_* (the divert slot) points at the V2 terminal like
     # SPECIALIST_* so a legacy FALLBACK_* reader still lands on the terminal.
     # Abliteration keys come from Windows user-scope env (installed 2026-10-21):
     # process env wins, then persistent User scope. No secrets in source.
@@ -224,7 +225,7 @@ try {
     $env:PRIMARY_MODEL     = "abliterated-model-large-v2"                # default primary id
     $hiveKey = Resolve-Secret 'HIVE_SECRET_KEY'  # optional legacy rollback; live rotation is account_pool.json
     if ($hiveKey) { $env:HIVE_SECRET_KEY = $hiveKey } else { Write-Note "HIVE_SECRET_KEY not set in env - legacy Hive rollback path stays disabled (account_pool is the live mechanism)" }
-    $env:FALLBACK_API_URL  = "https://api.abliteration.ai/v1/chat/completions"  # constellation TERMINAL (CyberFrost retired)
+    $env:FALLBACK_API_URL  = "https://api.abliteration.ai/v1/chat/completions"  # constellation TERMINAL (CyberFrost deleted 2026-10-23)
     $env:FALLBACK_API_KEY  = $ablAk
     $env:FALLBACK_MODEL    = "abliterated-model-large-v2"
     $env:SPECIALIST_API_URL = "https://api.abliteration.ai/v1/chat/completions"
@@ -249,10 +250,11 @@ try {
     $env:ENCRYPTION_KEY     = Resolve-Secret 'ENCRYPTION_KEY' -Required
     $env:ADMIN_API_KEY      = Resolve-Secret 'ADMIN_API_KEY' -Required
     $env:AUDIT_LOG          = "$LOG_DIR\boot_audit.jsonl"
-    $env:KEEPALIVE_URL      = "https://api.abliteration.ai/v1/models"  # keep the constellation TERMINAL warm (CyberFrost retired)
+    $env:KEEPALIVE_URL      = "https://api.abliteration.ai/v1/models"  # keep the constellation TERMINAL warm (CyberFrost deleted 2026-10-23)
     $env:MAX_THINK_MIN_TOKENS = "32768"
     $env:NO_GO_ENABLED        = "1"
     $env:HEDGE_MAX_TOKENS     = "16384"   # (I5/Phase 1, 2026-10-23) raced thinking reaches its commit window on ONE budget
+    $env:HEDGE_RACE_MODE          = "1"       # (BR-1) the hedge races for real - the middle contributes on every request
     $env:SPECIALIST_MAX_TOKENS = "32768"  # (I5/Phase 1, 2026-10-23) aligns with TARS maxTokens - no forced continuation rounds
     $env:MAX_CONCURRENT_STREAMS = "64"    # DoS guard on open streams (0 = unlimited)
     $env:COMMIT_TOKENS        = "10"
@@ -309,7 +311,7 @@ $env:SKILL_MEMORY="1"
         -PassThru
 
     Set-Content -LiteralPath $PID_FILE -Value $proc.Id -Encoding ascii -ErrorAction SilentlyContinue
-    Write-Note ("Frost hub launched pid={0} on http://{1}:{2}; out={3} err={4}" -f $proc.Id, $bindHost, $PORT, $out, $err)
+    Write-Note ("RedHands Hub launched pid={0} on http://{1}:{2}; out={3} err={4}" -f $proc.Id, $bindHost, $PORT, $out, $err)
 
     # --- verify: health must come from THE pid we just launched -------------
     # Two conditions, not one: /healthz must answer ok:true AND the listener
@@ -319,13 +321,13 @@ $env:SKILL_MEMORY="1"
     $deadline = (Get-Date).AddSeconds($WaitSeconds)
     while ((Get-Date) -lt $deadline) {
         if ($proc.HasExited) {
-            Write-Note ("Frost hub pid={0} exited early (code {1}); see {2}" -f $proc.Id, $proc.ExitCode, $err)
+            Write-Note ("RedHands Hub pid={0} exited early (code {1}); see {2}" -f $proc.Id, $proc.ExitCode, $err)
             exit 1
         }
         if (Test-HubHealth 3 $HEALTH_URL) {
             $live = Get-HubListenerPids -Port $PORT
             if (@($live) -contains $proc.Id) {
-                Write-Note ("Frost hub healthy on :{0} (pid={1})" -f $PORT, $proc.Id)
+                Write-Note ("RedHands Hub healthy on :{0} (pid={1})" -f $PORT, $proc.Id)
                 exit 0
             }
             if (-not $ownershipWarned) {
@@ -336,7 +338,7 @@ $env:SKILL_MEMORY="1"
         Start-Sleep -Seconds 1
     }
 
-    Write-Note ("Frost hub pid={0} did NOT pass /healthz within {1}s (listener pids=[{2}])" -f $proc.Id, $WaitSeconds, ((Get-HubListenerPids -Port $PORT) -join ","))
+    Write-Note ("RedHands Hub pid={0} did NOT pass /healthz within {1}s (listener pids=[{2}])" -f $proc.Id, $WaitSeconds, ((Get-HubListenerPids -Port $PORT) -join ","))
     exit 1
 } finally {
     if ($haveLock) { try { $mutex.ReleaseMutex() } catch { } }

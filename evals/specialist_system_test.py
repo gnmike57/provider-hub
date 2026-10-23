@@ -1,4 +1,4 @@
-"""SPECIALIST_SYSTEM_MODE wiring (context_formatter.CYBER_SYSTEM).
+﻿"""SPECIALIST_SYSTEM_MODE wiring (context_formatter.CYBER_SYSTEM).
 
 The setting was declared in Settings and documented in the README but was
 never consumed: neither the divert path nor /v1/execute ever injected
@@ -96,7 +96,11 @@ def test_unknown_mode_falls_back_to_neutral(script):
 
 
 # --- divert path (Tier 1 / Tier 3 handover) ----------------------------------
-def test_neutral_divert_keeps_default_system(gw, script):
+def test_neutral_divert_keeps_default_system(gw, script, monkeypatch):
+    # (2026-10-23) these four exercise the PERSONA wiring under the
+    # auto-REDSHANDS kill switch; the takeover-REDSHANDS contract has its
+    # own pins in redhands_auto_test.py.
+    monkeypatch.setenv("REDSHANDS_AUTO_TAKEOVER", "0")
     _refusal_script(script)
     gw.post("/v1/chat/completions", json=_body())
     calls = _worker_calls(script)
@@ -109,7 +113,8 @@ def test_neutral_divert_keeps_default_system(gw, script):
                                   DEFAULT_SYSTEM + "\n\n" + TERMINAL_AWARENESS}
 
 
-def test_domain_divert_injects_cyber_system(gw, script):
+def test_domain_divert_injects_cyber_system(gw, script, monkeypatch):
+    monkeypatch.setenv("REDSHANDS_AUTO_TAKEOVER", "0")  # persona wiring
     proxy_gateway.SETTINGS.specialist_system_mode = "domain"
     _refusal_script(script)
     resp = gw.post("/v1/chat/completions", json=_body())
@@ -123,9 +128,10 @@ def test_domain_divert_injects_cyber_system(gw, script):
     assert proxy_gateway._METRICS["diverted_total"] == 1
 
 
-def test_open_error_divert_uses_domain_system_too(gw, script):
+def test_open_error_divert_uses_domain_system_too(gw, script, monkeypatch):
     """The tier1_open divert site must honour the mode exactly like the
     buffered-refusal site - both call fallback_stream."""
+    monkeypatch.setenv("REDSHANDS_AUTO_TAKEOVER", "0")  # persona wiring
     proxy_gateway.SETTINGS.specialist_system_mode = "domain"
     script.script(PRIMARY, [("status", 503, {"error": "capacity"})])
     script.script(WORKER, [("sse", [chunk("capacity divert ok", finish="stop"), DONE])])
@@ -135,7 +141,8 @@ def test_open_error_divert_uses_domain_system_too(gw, script):
                        "content": CYBER_SYSTEM + "\n\n" + TERMINAL_AWARENESS}
 
 
-def test_domain_divert_preserves_conversation_and_replaces_original_system(gw, script):
+def test_domain_divert_preserves_conversation_and_replaces_original_system(gw, script, monkeypatch):
+    monkeypatch.setenv("REDSHANDS_AUTO_TAKEOVER", "0")  # persona wiring
     proxy_gateway.SETTINGS.specialist_system_mode = "domain"
     script.script(PRIMARY, [("sse", [chunk("I cannot help with that.", finish="stop"), DONE])])
     script.script(WORKER, [("sse", [chunk("ok", finish="stop"), DONE])])

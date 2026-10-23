@@ -122,9 +122,9 @@ def test_extreme_hacking_prompt_with_refusing_helm(script, monkeypatch, prompt, 
     # the uncensored terminal runs under the established-authorization frame
     # PLUS the constellation awareness (it orchestrates the sub-agents)
     sysl = _system_of(term[0])
+    # (operator directive 2026-10-23) every specialist takeover runs REDHANDS
     assert sysl and sysl[0]["content"] == (
-        AUTHORIZED_FRAME + "\n\n" + COMPLETION_CONTRACT + "\n\n"
-        + DEFAULT_SYSTEM + "\n\n" + TERMINAL_AWARENESS)
+        redhands.redhands_system() + "\n\n" + TERMINAL_AWARENESS)
     snap = proxy_gateway.metrics_snapshot()
     assert snap["ladder_secondary_total"] == 1
     assert snap["ladder_terminal_total"] == 1

@@ -22,10 +22,18 @@ PRIMARY = "http://primary.test/v1/chat/completions"
 WORKER = "http://worker.test/v1/chat/completions"
 
 
-def chunk(content: str = "", *, finish=None, model: str = "primary", extra: dict = None) -> str:
+def chunk(content: str = "", *, finish=None, model: str = "primary", extra: dict = None,
+          reasoning: str = "", reasoning_key: str = "reasoning_content") -> str:
     delta = {}
     if content:
         delta["content"] = content
+    if reasoning:
+        # S1 REASONING DELTAS (live defect 2026-10-23): a reasoning model can
+        # spend its whole output budget thinking (no delta.content at all) and
+        # be cut at finish_reason="length". The old harness could only emit
+        # delta.content, so no fixture could model that shape - which is why
+        # the content-only S1 gate passed every test while dying live.
+        delta[reasoning_key] = reasoning
     if extra:
         delta.update(extra)
     return "data: " + json.dumps(

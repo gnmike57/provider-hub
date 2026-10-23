@@ -1,3 +1,11 @@
+> **SUPERSEDED (2026-10-23):** the CYBER-FROST layout described below was
+> deleted this day - the EXL3 weights, `cyberfrost.service`/`:8900` and the
+> Featherless cloud lane are all gone (stale key, not to be enabled). The
+> worker slot now targets the gx10 hub's local survivor
+> `deepseek-ai/deepseek-v4.1-flash-1017` on `http://100.67.13.78:4000/v1`.
+> Kept as a historical record of the staged phase.
+
+
 # Phase 1 (V2 brain) - STAGED 2026-10-20, Phase 3 (24/7 chassis) - LIVE
 
 > **STATUS AMENDMENT (2026-10-22, line-by-line verification pass).** Superseded

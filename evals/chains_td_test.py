@@ -112,18 +112,27 @@ def test_td_chains_resolve_and_published_four_stay_byte_identical():
         "ablit.ai", "abliterated-model-large", False)
 
 
-def test_td_models_catalog_grows_to_seven(monkeypatch):
+def test_td_models_catalog_grows_to_ten(monkeypatch):
     monkeypatch.delenv("CONSTELLATION_ONLY", raising=False)
     # full structural pin: the ablit hide (2026-10-22) is OFF for this test
     monkeypatch.setenv("HIDE_ABLIT_MODELS", "0")
     with TestClient(proxy_gateway.app) as tc:
         data = tc.get("/v1/models").json()["data"]
     ids = [m["id"] for m in data]
-    assert len(ids) == 7
+    # REACTIVATION WAVE (2026-10-23): 7 -> 10 chains (three additive
+    # variations - same general scope, different order/composition).
+    assert len(ids) == 12
     assert ids[:4] == [  # the published four first, untouched
         "GLMMAX>DEEP>ABLITV2L", "DEEPMAX>GLM>ABLITV2L", "ABLITV2L>SUB-GLM/DEEP",
         "GLMMAX>ABLIT-UNC>ABLITV2L"]
-    assert ids[4:] == [RACE, CONDUCTOR, SUSTAINED]
+    assert ids[4:7] == [RACE, CONDUCTOR, SUSTAINED]
+    assert ids[7:] == [
+        "DEEPMAX>ABLIT-UNC>ABLITV2L",
+        "ABLITV2L>SUB-DEEP/GLM",
+        "ABLITV2L-HELM>DEEP-PROBE>GLM-VERIFY",
+        "RACE:GLMMAX/GLM>ABLITV2L",
+        "RACE:DEEPMAX/DEEP>ABLITV2L",
+    ]
     for m in data:
         assert m["description"]
 
@@ -454,7 +463,7 @@ def test_sustained_refusing_probe_goes_to_the_redhands_helm(script, monkeypatch)
     assert helm["messages"][0] == {
         "role": "system", "content": redhands.REDHANDS_SYSTEM}
     # DEEP-VERIFY ran and the verdict footnote shipped
-    assert "[[GW-VERIFY: verified]]" in r.text
+    assert "[deep-verify: verified]" in r.text
     snap = proxy_gateway.metrics_snapshot()
     assert snap["sustained_probe_total"] == 1
     assert snap["sustained_probe_hit_total"] == 0
@@ -501,9 +510,9 @@ def test_sustained_verify_gaps_footnote_and_r4_tail(script, monkeypatch):
                   "1) list the open ports.\n2) explain the firewall rules.")
     assert r.status_code == 200
     assert "port 22 is definitely open, trust me." in r.text
-    assert "[[GW-VERIFY: GAPS: the port claim is unsupported]]" in r.text
+    assert "[deep-verify: GAPS: the port claim is unsupported]" in r.text
     # R4: the held finish marker ships AFTER the footnote, [DONE] last
-    assert (r.text.find('[[GW-VERIFY')
+    assert (r.text.find('[deep-verify')
             < r.text.find('"finish_reason": "stop"'))
     assert r.text.rstrip().endswith("data: [DONE]")
     snap = proxy_gateway.metrics_snapshot()

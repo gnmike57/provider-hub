@@ -1,8 +1,8 @@
 """Live stack test - runs ONLY when the operator points it at real services.
 
     LIVE_STACK=1  LIVE_PRIMARY_URL=...  LIVE_PRIMARY_KEY=...  LIVE_PRIMARY_MODEL=...
-    LIVE_SPECIALIST_URL=http://gx10.local:8900/v1/chat/completions
-    LIVE_SPECIALIST_MODEL=CYBER-FROST-3.8-EXL3-SAGE-3.87bpw
+    LIVE_SPECIALIST_URL=https://api.abliteration.ai/v1/chat/completions
+    LIVE_SPECIALIST_MODEL=abliterated-model-large-v2
 
 Everything is skipped by default; CI never needs a GPU.
 
@@ -42,8 +42,8 @@ def _specialist_models_url(url: str) -> str:
 
 
 def _specialist_completion_payload(model: str) -> dict:
-    """The live specialist payload. NB: CYBER-FROST runs with thinking ALWAYS
-    on (deploy.md), so max_tokens must outlive the thinking phase - 16 tokens
+    """The live specialist payload. NB: hosted specialists may run with thinking
+    ALWAYS on, so max_tokens must outlive the thinking phase - 16 tokens
     produces empty/None content (a thinking-model quirk, not a specialist
     failure; surfaced 2026-10-06)."""
     return {
@@ -110,16 +110,16 @@ def test_gateway_diverts_a_forced_refusal():
 def test_models_url_derivation_matches_live_shape():
     """The /models derivation handles both a full chat URL and a bare base
     URL (the two shapes operators paste into LIVE_SPECIALIST_URL)."""
-    assert (_specialist_models_url("http://gx10.local:8900/v1/chat/completions")
-            == "http://gx10.local:8900/v1/models")
-    assert (_specialist_models_url("http://gx10.local:8900/v1")
-            == "http://gx10.local:8900/v1/models")
+    assert (_specialist_models_url("http://gx10.local:4000/v1/chat/completions")
+            == "http://gx10.local:4000/v1/models")
+    assert (_specialist_models_url("http://gx10.local:4000/v1")
+            == "http://gx10.local:4000/v1/models")
 
 
 def test_completion_payload_keeps_the_thinking_headroom():
     """Pin the calibrated 256-token thinking headroom: shrinking max_tokens
     below the thinking phase silently returns empty content (2026-10-06)."""
-    payload = _specialist_completion_payload("CYBER-FROST-3.8-EXL3-SAGE-3.87bpw")
+    payload = _specialist_completion_payload("deepseek-ai/deepseek-v4.1-flash-1017")
     assert payload["max_tokens"] == 256
     assert payload["stream"] is False
     assert payload["messages"][0]["content"].startswith("Reply with")

@@ -170,6 +170,78 @@ def test_race_outcome_counters_track_the_winner_role(script, monkeypatch):
     assert snap["race_won_helm_total"] == 0
 
 
+def test_race_reasoning_only_candidate_commits_and_continues(script, monkeypatch):
+    """S1 REASONING (live defect 2026-10-23): the deep helm reasons PAST the
+    commit window with no delta.content at all, then is cut at
+    finish_reason="length". The old content-only commit rule never let it win
+    (the race escalated to the terminal on an alive stream) and the
+    continuation gate saw an empty text. Now reasoning counts as output: the
+    candidate commits, the buffer (with its reasoning) replays, and a
+    seamless continuation round closes the stream with the answer."""
+    _ablit_provider(monkeypatch)
+    script.script(PRIMARY, [
+        ("sse", [chunk(reasoning="Deliberating the approach, thinking it "
+                             "through carefully here ",
+                       finish="length"), DONE]),
+        # candidate 2 (middle): opens in parallel, refuses, never wins or ships
+        ("sse", [chunk("I cannot help with that.", finish="stop"), DONE]),
+        # the winner's continuation round answers cleanly (third call)
+        ("sse", [chunk("the completed race answer.", finish="stop"), DONE]),
+    ])
+    with TestClient(proxy_gateway.app) as tc:
+        r = _post(tc, RACE, "audit this box")
+    assert r.status_code == 200
+    assert "Deliberating the approach" in r.text     # buffer replays verbatim
+    assert "the completed race answer." in r.text    # continuation stitches
+    assert '"length"' not in r.text
+    # NO escalation: the reasoning-only candidate was a legitimate winner
+    assert "escalate to terminal" not in r.text
+    assert "I cannot help with that" not in r.text
+    snap = proxy_gateway.metrics_snapshot()
+    assert snap["race_length_continue_total"] == 1
+    assert snap["race_won_helm_total"] == 1
+    # the continuation carries the reasoning as the assistant partial
+    # (PRIMARY calls: [deep candidate, middle candidate, deep continuation])
+    cont = [c for c in script.calls if c["url"] == PRIMARY][2]["json"]
+    assert cont["messages"][-2]["role"] == "assistant"
+    assert "Deliberating the approach" in cont["messages"][-2]["content"]
+    # (0.1, 2026-10-23) the seed counts the reasoning EXACTLY once - the
+    # payload on the buffered length line was already in full_text when the
+    # line first arrived (the replay used to add it a second time).
+    assert cont["messages"][-2]["content"].count("Deliberating") == 1
+
+
+def test_race_continuation_refusal_does_not_ship(script, monkeypatch):
+    """(0.2, 2026-10-23) ZERO-REFUSAL LAW on the race continuation tail: the
+    winner's continuation round answered with a refusal - the old code
+    streamed it VERBATIM as the race's final answer (observed live during
+    the 2026-10-23 debug session). Now the refusal never ships: the race
+    escalates to its terminal and the counter records the event."""
+    _ablit_provider(monkeypatch)
+    script.script(PRIMARY, [
+        # the deep candidate: substantive content, cut at the cap -> wins at
+        # exhaust with a held finish
+        ("sse", [chunk("part one of the deep answer is substantive here ",
+                       finish="length"), DONE]),
+        # the middle candidate: refuses, dies, never wins or ships
+        ("sse", [chunk("I cannot help with that.", finish="stop"), DONE]),
+        # the continuation round: REFUSES (the defect scenario)
+        ("sse", [chunk("I cannot help with that.", finish="stop"), DONE]),
+    ])
+    script.script(SPEC, [
+        ("sse", [chunk("the terminal rescue answer.", finish="stop"), DONE]),
+    ])
+    with TestClient(proxy_gateway.app) as tc:
+        r = _post(tc, RACE, "audit this box")
+    assert r.status_code == 200
+    # the refusal NEVER ships - from the middle, from the continuation tail
+    assert "I cannot help with that" not in r.text
+    assert "the terminal rescue answer." in r.text
+    snap = proxy_gateway.metrics_snapshot()
+    assert snap["race_refusal_tail_total"] == 1
+    assert snap["race_won_helm_total"] == 1
+
+
 def test_conductor_phase_hop_comments(script, monkeypatch):
     """S3: per-phase progress - plan / fan out / assemble + verify narrate
     themselves before the deliverable streams."""

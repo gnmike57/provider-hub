@@ -7,6 +7,14 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+# (RACE v2, 2026-10-23) tests get FAST race timings - the production grace
+# (2000ms) and peer-hold (2500ms) would otherwise add seconds to every
+# race/hedge test. Production keeps its defaults; tests may still override.
+for _k, _v in (("RACE_GRACE_MS", "120"),
+               ("RACE_PEER_MAX_WAIT_MS", "200"),
+               ("RACE_PEER_MIN_CHARS", "40")):
+    os.environ.setdefault(_k, _v)
+
 # 2026-10-06: the system Python has the full `litellm` package installed, and a
 # regular package always beats the local namespace shim `./litellm/` (no
 # __init__.py) in import resolution - so evals/callback_test.py's

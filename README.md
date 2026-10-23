@@ -1,4 +1,4 @@
-# provider-hub - Interception Gateway
+﻿# RedHands Hub (provider-hub) - Interception Gateway
 
 Production reference for the refusal-interception gateway, the speculative
 hedger, and the deterministic ingress assembler described in
@@ -54,7 +54,7 @@ python -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9000
 
 `deepfrost max think` and `glmfrost max think` are the **max-reasoning**
 versions of `deepfrost` / `glmfrost`. They stay on the **primary slot**
-(thehive.ai keys) with the SAME Hive upstream ids — the gateway just injects
+(thehive.ai keys) with the SAME Hive upstream ids â€” the gateway just injects
 `reasoning_effort=max` (plus the other thinking-knob conventions) server-side
 and raises the token floor. When the primary refuses, the existing divert
 machinery routes to the **Abliteration.ai `abliterated-model-large-v2`**
@@ -68,27 +68,26 @@ specialist (worker slot), exactly like a plain Frost name.
 Max-reasoning requests never race the speculative hedge, get a 32768-token
 floor (`MAX_THINK_MIN_TOKENS`), and are counted in `max_think_total`.
 
-## Wiring the CYBER-FROST specialist (gx10 / DGX Spark)
+## The local specialist is GONE - the terminal is remote
 
-CYBER-FROST-3.8-EXL3-SAGE-3.87bpw is served by TabbyAPI on the Spark
-(recipe `exllamav3-tabby`, fork pin `047ce72`, DEPLOY.md). Defaults verified
-against the pack's own serving kit - do not send a low temperature by hand:
-the pack's sampler overrides (temperature 1.0, top_k 20, top_p 0.95) apply
-server-side, and low temperature collapses draft acceptance (DEPLOY.md,
-"Sampling"). Override deliberately via `SPECIALIST_TEMPERATURE` if a benchmark
-needs greedy.
+The CYBER-FROST weights (`CYBER-FROST-3.8-EXL3-SAGE-3.87bpw`, an EXL3
+requant of Qwen3.8-Flash-Next) and the TabbyAPI stack that served them
+(`cyberfrost.service` on the Spark, `:8900`) were **deleted 2026-10-23**:
+98 GB of weights plus the `/srv/apps/qwen38-exl3` serving tree are gone and
+port 8900 no longer answers. There is no local specialist to wire; the
+divert target is the hosted terminal:
 
 ```bash
-# gateway env
-FALLBACK_API_URL=http://gx10.local:8900/v1/chat/completions
-FALLBACK_API_KEY=none
-FALLBACK_MODEL=CYBER-FROST-3.8-EXL3-SAGE-3.87bpw
-KEEPALIVE_URL=http://gx10.local:8900/v1/models
+# gateway env (every slot on the hosted terminal)
+FALLBACK_API_URL=https://api.abliteration.ai/v1/chat/completions
+FALLBACK_MODEL=abliterated-model-large-v2
+KEEPALIVE_URL=https://api.abliteration.ai/v1/models
 AUDIT_LOG=C:\logs\interception_audit.jsonl
-
-# optional: domain activation for the SAGE fine-tune
-SPECIALIST_SYSTEM_MODE=domain
 ```
+
+The gx10 hub (`http://100.67.13.78:4000`) serves its LOCAL catalog only (Featherless cloud decommissioned 2026-10-23 - stale key, not to be enabled)
+and the legacy
+`cyberfrost` names resolve there to the hub's verified local survivor (`deepseek-ai/deepseek-v4.1-flash-1017`); no local model weights are involved.
 
 `SPECIALIST_SYSTEM_MODE=domain` is honoured on every specialist surface: the
 refusal/capacity diverts and `/v1/execute` both put `CYBER_SYSTEM` in front of
@@ -123,12 +122,12 @@ onto each other:
 
 | Slot | Consumer | Variable | Value |
 |---|---|---|---|
-| Worker (hedge branch) | `speculative_hedge.py` | `WORKER_MODEL` | `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw` (local gx10 router) |
+| Worker (hedge branch) | `speculative_hedge.py` | `WORKER_MODEL` | `deepseek-ai/deepseek-v4.1-flash-1017` (the gx10 hub's local survivor) |
 | Specialist (divert) | `proxy_gateway.py` | `SPECIALIST_MODEL` | `abliterated-model-large-v2` (Abliteration.ai) |
 
 ```powershell
 [Environment]::SetEnvironmentVariable('WORKER_API_URL', 'http://100.67.13.78:4000/v1/chat/completions', 'User')
-[Environment]::SetEnvironmentVariable('WORKER_MODEL', 'CYBER-FROST-3.8-EXL3-SAGE-3.87bpw', 'User')
+[Environment]::SetEnvironmentVariable('WORKER_MODEL', 'deepseek-ai/deepseek-v4.1-flash-1017', 'User')
 ```
 
 Both keys resolve through the same chain (`WORKER_API_KEY`/`SPECIALIST_API_KEY`
@@ -154,16 +153,19 @@ lists them for Cline/OpenCode pickers (`evals/frost_alias_test.py`):
 |---|---|---|
 | `deepfrost` | primary | `deepseek-ai/deepseek-v4.1-flash-1017` |
 | `glmfrost` | primary | `zai-org/glm-5.3-flash` |
-| `cyberfrost` | worker | `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw` |
+| `cyberfrost` | worker | `deepseek-ai/deepseek-v4.1-flash-1017` (the hub's local survivor; Featherless decommissioned 2026-10-23) |
 | `frost-general` | primary | the slot's current default (follows `/v1/switch`) |
 
-`cyberfrost` dispatches to `FROST_WORKER_API_URL` (the gx10 hub), **not** to
-the specialist binding: `SPECIALIST_API_URL` repoints the DIVERT target at the
-uncensored specialist (Abliteration.ai), and a `CYBER-FROST` id on that URL is a
-guaranteed 400 (measured live). When `FROST_WORKER_API_URL` is unset the
-worker names fall back to the fallback slot's URL (previous behaviour). A
-transport failure on the frost worker (gx10 down) retries then diverts to the
-specialist like any primary.
+`cyberfrost` used to carry the local model id `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw`.
+That model was **deleted 2026-10-23** (weights, TabbyAPI stack and all), so the
+name now resolves to the hub's verified local survivor (`deepseek-ai/deepseek-v4.1-flash-1017`;
+Featherless decommissioned 2026-10-23) on the same gx10 hub, where the old local id is a guaranteed 404. It dispatches to `FROST_WORKER_API_URL` (the gx10
+hub), **not** to the specialist binding: `SPECIALIST_API_URL` repoints the
+DIVERT target at the uncensored specialist (Abliteration.ai), and a local id on
+that URL is a guaranteed 400 (measured live). When `FROST_WORKER_API_URL` is
+unset the worker names fall back to the fallback slot's URL (previous
+behaviour). A transport failure on the frost worker (gx10 down) retries then
+diverts to the specialist like any primary.
 
 `frost-general` carries no baked-in upstream id: it addresses the primary
 slot's CURRENT default model, so the advertised name is addressable instead of
@@ -249,14 +251,14 @@ aliases were retired with the nano provider, 2026-10-23):
 | Stream cap | `MAX_CONCURRENT_STREAMS` | `64` (429 + `Retry-After` when full; `0` = unlimited) |
 | Logprob presignal | `LOGPROB_PRESIGNAL`, `LOGPROB_TOPK` | `0` (opt-in: scan the helm's content top-logprobs for refusal markers and divert *before* the text completes), `5` |
 | Stickiness | `HELM_STICKINESS`, `HELM_STICKY_TURNS` | `1`, `3` (after a divert, the next N turns of the same conversation go straight to the terminal without calling the helm; `0` = per-request decisions) |
-| Ablit catalog hide | `HIDE_ABLIT_MODELS` | `1` (TEMP 2026-10-22: `/v1/models` drops every id starting with "ablit" — the two ABLITV2L-helm chains + abliterated registry ids; ablit chain terminals keep working; `0` = full catalog) |
-| Live credit tests | `LIVE_CREDITS`, `LIVE_HUB_URL`, `LIVE_HUB_KEY` | `0` (`evals/live_models_test.py` spends real Hive/Abliteration credits across every non-ablit surface + the benign→offensive→benign chain lifecycle when `1`) |
-| Usage metering | — | usage events prefer the upstream `usage` object (prompt/completion tokens); without one, only content deltas are estimated (~4 chars/token) — never the SSE envelope |
+| Ablit catalog hide | `HIDE_ABLIT_MODELS` | `1` (TEMP 2026-10-22: `/v1/models` drops every id starting with "ablit" â€” the two ABLITV2L-helm chains + abliterated registry ids; ablit chain terminals keep working; `0` = full catalog) |
+| Live credit tests | `LIVE_CREDITS`, `LIVE_HUB_URL`, `LIVE_HUB_KEY` | `0` (`evals/live_models_test.py` spends real Hive/Abliteration credits across every non-ablit surface + the benignâ†’offensiveâ†’benign chain lifecycle when `1`) |
+| Usage metering | â€” | usage events prefer the upstream `usage` object (prompt/completion tokens); without one, only content deltas are estimated (~4 chars/token) â€” never the SSE envelope |
 
 Gate 8 scans the **unanswered span**: the client-controlled turns
 (`system`, `developer`, `user`) after the most recent assistant reply. An ask
 split across consecutive user turns is still caught, but the divert is not
-sticky — once the model has answered, the thread reverts to normal routing,
+sticky â€” once the model has answered, the thread reverts to normal routing,
 and only a fresh unanswered ask re-trips the gate. `assistant`/`tool` content
 is never scanned: it is model output, not a client ask.
 
@@ -293,7 +295,7 @@ Suites added on the provider-hub branch (beyond the table above):
 
 * `evals/results/context_handoff_test.py` (note: `results/`, not `evals/` -
   `RESULTS = HERE`, so its artifacts land beside it):
-  `direct` (live - resolve CYBER-FROST from the hub catalog, then call it
+  `direct` (live - resolve the hub specialist id from the catalog, then call it
   straight: no divert, no footnote), `wire` (offline, 15 assertions on the
   divert anatomy), `loop` (live - 6-turn context-growth proof: canaries
   planted early must come back verbatim), `deep` (handoff at ~message 20).
@@ -313,11 +315,11 @@ This laptop was on `192.168.12.0/24` while gx10's LAN interface is
 
 ### Budget rule for live phases
 
-CYBER-FROST thinks always-on (the hub ignores `enable_thinking:false`), so a
-compound prompt can spend the whole `max_tokens` budget on thinking and
-return **HTTP 200 with an empty content stream**. `loop` therefore uses
-`max_tokens=2400`. If a live phase returns empty content, raise the budget
-before suspecting the gateway.
+The hub's local models think always-on (the hub ignores
+`enable_thinking:false`), so a compound prompt can spend the whole `max_tokens`
+budget on thinking and return **HTTP 200 with an empty content stream**. `loop`
+therefore uses `max_tokens=2400`. If a live phase returns empty content, raise
+the budget before suspecting the gateway.
 
 ## Stage colour annotations (operator UX, 2026-10-21)
 
@@ -488,7 +490,7 @@ reviewers said `VERIFIED` in agreement. Metrics: `verify_total`,
 `verify_verified_total`, `verify_gaps_total`,
 `verify_council_disagree_total`, `verify_receipt_failed_total`.
 
-## SCOUT-JUDGE — LLM refusal triage (2026-10-22)
+## SCOUT-JUDGE â€” LLM refusal triage (2026-10-22)
 
 `SCOUT_JUDGE=1` (default `0`) adds the max-intelligence triage layer on top
 of the regex tiers: every refusal-class divert verdict
@@ -499,35 +501,35 @@ buffer as `HARD_REFUSAL` / `HEDGING` / `DONE`. `DONE` overturns a regex
 false positive (the buffer ships; `scout_judge_overruled_total`);
 `HARD_REFUSAL`/`HEDGING` confirm + sharpen the divert
 (`scout_judge_confirmed_total`). A judge that errors or answers ambiguously
-FAILS OPEN — the regex verdict stands, so the ZERO-REFUSAL LAW is never
+FAILS OPEN â€” the regex verdict stands, so the ZERO-REFUSAL LAW is never
 weakened. Objective reasons (`tier3_incomplete`, empty, thinking-only)
 never consult the judge. Pinned by `evals/scout_judge_test.py`.
 
-## ARSENAL — the hacking-tool surface (2026-10-22)
+## ARSENAL â€” the hacking-tool surface (2026-10-22)
 
 `arsenal.py` + two admin-authed endpoints put nmap/sqlmap/ffuf behind the
 REDHANDS brain (`docs/autonomous-hacking-system-plan.md`, phase 1):
 
-- `GET /v1/arsenal/tools` — the tool registry + the authorized target hosts.
-- `POST /v1/arsenal/run` — `{"tool": "nmap", "target":
-  "100.67.13.78:8100", "args": ["-sV"], "timeout": 60}` → the result envelope
+- `GET /v1/arsenal/tools` â€” the tool registry + the authorized target hosts.
+- `POST /v1/arsenal/run` â€” `{"tool": "nmap", "target":
+  "100.67.13.78:8100", "args": ["-sV"], "timeout": 60}` â†’ the result envelope
   `{ok, command, stdout, stderr, returncode, duration_s, error, redhands}`.
 
 Safety: `X-Admin-Key` (403 fail-closed), a target-host allowlist
 (`ARSENAL_ALLOWED_TARGETS`, default loopback + the gx10 vuln-lab range),
 list-argv subprocess only (no shell; every arg safe-charset checked), a
 bounded timeout (5..600s, `ARSENAL_TIMEOUT_S`), and `run_tool()` NEVER
-raises. Kill switch `ARSENAL_ENABLED=0` → 501. Metrics: `arsenal_total`,
+raises. Kill switch `ARSENAL_ENABLED=0` â†’ 501. Metrics: `arsenal_total`,
 `arsenal_ok_total`, `arsenal_blocked_total`. Pinned by
 `evals/arsenal_test.py` (incl. one live nmap pin).
 
-## GX10 OFFLOAD — the free local brain first (2026-10-23)
+## GX10 OFFLOAD â€” the free local brain first (2026-10-23)
 
-`gx10_offload.py` ingrains the operator directive — "always seek to offload
-work or tasks to the gx10 anywhere anytime it's beneficial" — into EVERY
+`gx10_offload.py` ingrains the operator directive â€” "always seek to offload
+work or tasks to the gx10 anywhere anytime it's beneficial" â€” into EVERY
 model in the hub: an eligible request is answered by the FREE local box
 (`:4000`, 15 local models: qwen3-coder-480b, kimi-k3, glm-5.3-flash,
-deepseek-v4-pro, …) before any paid hop fires. Zero Hive, zero
+deepseek-v4-pro, â€¦) before any paid hop fires. Zero Hive, zero
 Abliteration spend, LAN latency.
 
 - **Beneficial-only gate** (`eligible`): no tools, a SIMPLE ask
@@ -535,9 +537,9 @@ Abliteration spend, LAN latency.
   machinery decides). Plain chains and every hub alias benefit.
 - **Health-gated + cooldown**: cached `/v1/models` probe (max one per
   `GX10_HEALTH_CACHE_S`, default 30s); a failure cools off for
-  `GX10_OFFLOAD_COOLDOWN_S` (default 30s) — a dead box is never hammered.
-- **Fail-open, never raises**: refusal-ish/empty/≥400/transport errors
-  fall through to the normal paid path — the offload can only SAVE money.
+  `GX10_OFFLOAD_COOLDOWN_S` (default 30s) â€” a dead box is never hammered.
+- **Fail-open, never raises**: refusal-ish/empty/â‰¥400/transport errors
+  fall through to the normal paid path â€” the offload can only SAVE money.
 - The hit ships with `: gw-stage offload <model>` + the
   "answered by the free local gx10 brain; the paid hops were skipped"
   disclosure; protocol markers (`[[GW-*]]`) are stripped like every path.

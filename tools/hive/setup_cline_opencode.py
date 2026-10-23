@@ -43,8 +43,8 @@ def fix_cline(secret):
         "settings": {
             "provider": "openai-compatible",
             "apiKey": "sk-local",
-            "model": "cyberfrost",
-            "baseUrl": "http://cyber.local:4000/V1",
+            "model": "deepseek-ai/deepseek-v4.1-flash-1017",
+            "baseUrl": "http://cyber.local:4000/v1",
             "reasoning": {"enabled": False},
         },
         "updatedAt": datetime.datetime.utcnow().isoformat() + "Z",

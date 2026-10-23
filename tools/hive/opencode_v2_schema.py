@@ -19,11 +19,11 @@ BASE = "https://api-cdn.thehive.ai/api/v3"
 def main(secret):
     with io.open(CONFIG, encoding="utf-8") as fh:
         old = json.load(fh)
+    # Featherless cloud aliases dropped 2026-10-23 (stale key, not to be
+    # enabled): only ids the gx10 hub actually serves locally remain.
     local = [
         ("cyberhub", "cyber.local model hub", "http://cyber.local:4000/v1", "sk-local",
-         ["qwen2.4t", "qwen3-coder-480b", "gpt-oss-120b", "unc72b", "gemma3-27b-heretic-vl",
-          "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw", "cyberfrost", "cyber35b", "qwen3.8-flash-next",
-          "glm-5.3", "kimi-k3", "k2-375b"]),
+         ["cyberfrost", "deepseek-ai/deepseek-v4.1-flash-1017", "glm-5.3-flash"]),
         ("gx10", "local LiteLLM gateway (127.0.0.1:4000)", "http://127.0.0.1:4000/v1", "sk-local",
          ["ufo-host-model", "ufo-vision-model"]),
         ("111-gx10", "111-gx10 brain (DGX Spark @ cyber.local:8015)", "http://cyber.local:8015/v1",

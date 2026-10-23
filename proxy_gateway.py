@@ -5895,8 +5895,8 @@ FROST_REGISTRY = [
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9315/v1",
      "type": "primary", "provider": "hive", "hedged": False,
      "reasoning": "max"},
-    {"id": "cyberfrost", "name": "CyberFrost 3.8 SAGE", "upstream": "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw",
-     "endpoint": "http://gx10.ayu-sidewinder.ts.net:9313/v1",
+    {"id": "cyberfrost", "name": "CyberFrost 3.8 SAGE", "upstream": "deepseek-ai/deepseek-v4.1-flash-1017",
+     "endpoint": "http://100.67.13.78:4000/v1",
      "type": "worker", "provider": "gx10-hub", "hedged": False},
     {"id": "frost-general", "name": "Frost General (any model)", "upstream": "auto",
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9310/v1",
@@ -6191,6 +6191,7 @@ async def healthz():
             pass
 
     return {
+        "hub": "RedHands Hub",
         "ok": upstream_ok,
         "in_flight": _METRICS.get("in_flight", 0),
         "upstream": {

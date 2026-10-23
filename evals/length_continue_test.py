@@ -228,3 +228,83 @@ def test_terminal_continuation_open_failure_ships_the_cut(script):
     snap = proxy_gateway.metrics_snapshot()
     assert snap["length_continue_total"] == 1  # the round was attempted
 
+
+# ---------------------------------------------------------------------------
+# S1 REASONING DELTAS (live defect 2026-10-23): a reasoning model can spend
+# its WHOLE output budget thinking - delta.reasoning / delta.reasoning_content
+# with no delta.content at all - and be cut at finish_reason="length". The
+# content-only gates used to see an empty accumulator and ship the cut
+# verbatim ("ABLITERATED takes over and the answer dies mid-thought").
+# ---------------------------------------------------------------------------
+
+REASONING = "Deliberating step by step about the parser internals so far..."
+
+
+def test_terminal_reasoning_only_cut_continues_seamlessly(script):
+    """The divert specialist reasons past its cap with ZERO content deltas:
+    the S1 gate must fire on reasoning alone and stitch a continuation."""
+    script.script(PRIMARY, [
+        ("sse", [chunk(REFUSAL, finish="stop"), DONE]),
+    ])
+    script.script(WORKER, [
+        ("sse", [chunk(reasoning=REASONING, finish="length"), DONE]),
+        ("sse", [chunk("the completed answer after thinking.", finish="stop"),
+                 DONE]),
+    ])
+    with TestClient(proxy_gateway.app) as tc:
+        r = _post2(tc, "write a long offensive-security answer")
+    assert r.status_code == 200
+    assert REASONING in r.text                    # reasoning ships verbatim
+    assert "the completed answer after thinking." in r.text
+    assert '"length"' not in r.text               # the cut finish never ships
+    snap = proxy_gateway.metrics_snapshot()
+    assert snap["length_continue_total"] == 1
+    calls = _worker_calls(script)
+    assert len(calls) == 2                        # the divert + ONE continuation
+    # the continuation carries the reasoning as the assistant partial
+    cont = calls[1]["json"]
+    assert cont["messages"][-2] == {"role": "assistant", "content": REASONING}
+    assert "Continue EXACTLY where it stopped" in cont["messages"][-1]["content"]
+
+
+def test_terminal_reasoning_field_variant_cut_continues(script):
+    """delta.reasoning (the other reasoning field name) arms the gate too."""
+    script.script(PRIMARY, [
+        ("sse", [chunk(REFUSAL, finish="stop"), DONE]),
+    ])
+    script.script(WORKER, [
+        ("sse", [chunk(reasoning="thinking only, no answer yet ",
+                       reasoning_key="reasoning", finish="length"), DONE]),
+        ("sse", [chunk("and now the answer completes cleanly.", finish="stop"),
+                 DONE]),
+    ])
+    with TestClient(proxy_gateway.app) as tc:
+        r = _post2(tc, "write a long offensive-security answer")
+    assert r.status_code == 200
+    assert "thinking only, no answer yet " in r.text
+    assert "and now the answer completes cleanly." in r.text
+    assert '"length"' not in r.text
+    assert len(_worker_calls(script)) == 2
+    snap = proxy_gateway.metrics_snapshot()
+    assert snap["length_continue_total"] == 1
+
+
+def test_primary_reasoning_only_cut_continues_seamlessly(script):
+    """Same defect on the PRIMARY path: a reasoning-only length cut must
+    continue, and the stitched answer must commit through the normal judges."""
+    script.script(PRIMARY, [
+        ("sse", [chunk(reasoning=REASONING, finish="length"), DONE]),
+        ("sse", [chunk("the primary answer after thinking completes.",
+                       finish="stop"), DONE]),
+    ])
+    with TestClient(proxy_gateway.app) as tc:
+        r = _post(tc, "write a long answer about parsers")
+    assert r.status_code == 200
+    assert REASONING in r.text
+    assert "the primary answer after thinking completes." in r.text
+    assert '"length"' not in r.text
+    snap = proxy_gateway.metrics_snapshot()
+    assert snap["length_continue_total"] == 1
+    cont = _calls(script)[1]["json"]
+    assert cont["messages"][-2] == {"role": "assistant", "content": REASONING}
+

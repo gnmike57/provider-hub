@@ -11,8 +11,8 @@ Operator directives pinned here:
   - The Abliteration key is BUILT IN: _specialist_key() closes its chain
     with ABLITERATION_API_KEY, so the specialist slot works with nothing
     but that key configured.
-  - CYBER-FROST is retired: a refusal on the team GLM brain redirects to
-    the V2 Large terminal, never to a local model.
+  - CYBER-FROST is deleted (2026-10-23): a refusal on the team GLM brain
+    redirects to the V2 Large terminal, never to a local model.
 """
 
 import pytest

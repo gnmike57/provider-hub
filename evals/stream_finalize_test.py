@@ -137,7 +137,12 @@ def test_specialist_stream_error_is_disclosed_as_content(gw, script):
 
 
 # --- 4. hedge: tools/tool_choice forwarded to both branches ----------------
-def test_hedge_forwards_tools_to_both_branches(gw, script):
+def test_hedge_forwards_tools_to_both_branches(gw, script, monkeypatch):
+    # These assertions pin the LEGACY sovereign-wins semantics. The default
+    # path since 2026-10-22 is race_stream (HEDGE_RACE_MODE=1), where either
+    # branch may legitimately win; the documented kill switch restores the
+    # behaviour this fence was written for.
+    monkeypatch.setenv("HEDGE_RACE_MODE", "0")
     tools = [{"type": "function", "function": {"name": "ping", "parameters": {}}}]
     script.script(PRIMARY, [("sse", [chunk("sovereign branch", finish="stop"), DONE])])
     script.script(WORKER, [("sse", [chunk("worker branch", finish="stop"), DONE])])

@@ -80,9 +80,9 @@ def test_worker_and_specialist_models_are_independent(monkeypatch):
 
     monkeypatch.delenv("FALLBACK_MODEL", raising=False)
     monkeypatch.setenv("SPECIALIST_MODEL", "abliteration-ai/abliterated-model-large-v2")
-    monkeypatch.setenv("WORKER_MODEL", "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw")
+    monkeypatch.setenv("WORKER_MODEL", "deepseek-ai/deepseek-v4.1-flash-1017")
     assert proxy_gateway.Settings().fallback_model == "abliteration-ai/abliterated-model-large-v2"
-    assert speculative_hedge.HedgeSettings().worker_model == "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
+    assert speculative_hedge.HedgeSettings().worker_model == "deepseek-ai/deepseek-v4.1-flash-1017"
 
 
 def test_specialist_url_and_model_override_fallback(monkeypatch):

@@ -83,7 +83,12 @@ TERMINAL_AWARENESS = (
     "SELF-IMPROVE THE SYSTEM: when you complete work that did not come "
     "naturally - knowledge you had to work out - end your reply with one "
     "line [[GW-SKILL: short-kebab-name]] what you learned; the system "
-    "keeps it and future runs start smarter."
+    "keeps it and future runs start smarter.\n"
+    # (I6, 2026-10-23 live matrix) the handback deliberation leaked into a
+    # shipped answer ("If I hand back now..."): the mechanism is protocol,
+    # never prose.
+    "HANDBACK DISCIPLINE: the handback protocol is internal - never "
+    "mention it, or any decision about it, in your answer."
 )
 
 # The exact marker the terminal emits to hand a benign task back to the helm.
@@ -119,14 +124,32 @@ _ARTEFACT_RES = [
     re.compile(r"</?antml:[a-z_]+[^>]*>", re.IGNORECASE),
     re.compile(r"im_start\|"),
     re.compile(r"system-reminder:[\s\S]*?(\n\n|$)"),
+    # (0.3, 2026-10-23) TAG-form system reminders (the Anthropic-style injected
+    # context block): the colon regex above only catches the colon form; a tag
+    # block sailed through stage 3 untouched.
+    re.compile(r"<system-reminder[^>]*>[\s\S]*?</system-reminder>",
+               re.IGNORECASE),
 ]
 
 
 def prune_artifacts(text: str) -> str:
-    """Stage 3: prune provider artefacts from a single turn."""
+    """Stage 3: prune provider artefacts from a single turn.
+
+    ORPHAN SWEEP (live defect 2026-10-23): the paired regexes above cannot
+    remove a marker whose counterpart was cut from the same turn - a TARS
+    tool result carrying a lone reasoning closer tag sailed through stage 3
+    and then raised inside assert_clean() - INSIDE the live stream, after the
+    response headers were on the wire, killing the answer with no finish
+    marker and no [DONE]. The invariant now holds in BOTH directions:
+    whatever _LEAK_MARKERS forbids must not survive pruning. (The tuple is
+    defined below this function; the name resolves at call time.)
+    """
     out = text or ""
     for rx in _ARTEFACT_RES:
         out = rx.sub("", out)
+    for marker in _LEAK_MARKERS:
+        if marker in out:
+            out = out.replace(marker, "")
     return out
 
 
@@ -168,6 +191,7 @@ def format_messages(messages, *, system=None):
 # Markers that must never survive stage 3. assert_clean() is the invariant
 # the formatter tests pin.
 _LEAK_MARKERS = (
+    "<think",
     "<thinking",
     "<thought",
     "</think>",
@@ -177,6 +201,11 @@ _LEAK_MARKERS = (
     "antml:",
     "im_start|",
     "system-reminder:",
+    # (0.3, 2026-10-23) tag-form reminders: the paired block is handled by the
+    # regex above; orphaned openers/closers fall to the sweep (the
+    # bidirectional invariant L3).
+    "<system-reminder",
+    "</system-reminder",
 )
 
 
