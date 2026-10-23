@@ -26,13 +26,15 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 UFO_ENV = os.path.join(os.path.expanduser("~"), "ufo-galaxy",
                        "hive_cleanpass", "ufo.env")
 
-# gx10 local hub (llm_hub.py on :4000 - :8900 TabbyAPI was deleted 2026-10-23)
-HUB_URL = "http://127.0.0.1:4000/v1/chat/completions"
-HIVE_URL = "https://api-cdn.thehive.ai/api/v3/chat/completions"
 # Divert target (CYBER-FROST deleted 2026-10-23): the uncensored TERMINAL - the
 # Abliteration LARGE V2 brain, reachable through the built-in
 # ABLITERATION_API_KEY (see proxy_gateway._specialist_key).
+HIVE_URL = "https://api-cdn.thehive.ai/api/v3/chat/completions"
 SPECIALIST = "abliterated-model-large-v2"
+# The worker/fallback slot MUST speak the same model as SPECIALIST. The old
+# local :4000 llm-hub pairing (HUB_URL=http://127.0.0.1:4000 + SPECIALIST) was a
+# guaranteed 404: the legacy catalog does not serve abliterated-model-large-v2.
+HUB_URL = "https://api.abliteration.ai/v1/chat/completions"
 
 INSTANCES = [
     # Max-think ports default the max-think NAME (not the raw upstream id):

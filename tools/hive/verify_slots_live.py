@@ -22,7 +22,7 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
-WORKER_EXPECT = "deepseek-ai/deepseek-v4.1-flash-1017"  # the gx10 hub's local survivor
+WORKER_EXPECT = "abliterated-model-large-v2"  # the constellation's uncensored terminal (Abliteration.ai)
 SPEC_EXPECT = "abliterated-model-large-v2"  # Abliteration.ai
 
 

@@ -85,9 +85,13 @@ KEEPALIVE_URL=https://api.abliteration.ai/v1/models
 AUDIT_LOG=C:\logs\interception_audit.jsonl
 ```
 
-The gx10 hub (`http://100.67.13.78:4000`) serves its LOCAL catalog only (Featherless cloud decommissioned 2026-10-23 - stale key, not to be enabled)
-and the legacy
-`cyberfrost` names resolve there to the hub's verified local survivor (`deepseek-ai/deepseek-v4.1-flash-1017`); no local model weights are involved.
+The gx10 `:4000` llm-hub is a **legacy catalog** (Spark models + a facade over
+the local router), NOT the constellation hub: Featherless is decommissioned
+(2026-10-23 - stale key, not to be enabled) and the live hub is the
+deepseek / glm / abliteration constellation (`:9310`/`:9311`/`:9312` on the
+gx10, `:9000` locally). The legacy `cyberfrost` names therefore address the
+constellation's uncensored terminal - Abliteration.ai
+`abliterated-model-large-v2` - never a `:4000` model id.
 
 `SPECIALIST_SYSTEM_MODE=domain` is honoured on every specialist surface: the
 refusal/capacity diverts and `/v1/execute` both put `CYBER_SYSTEM` in front of
@@ -122,12 +126,12 @@ onto each other:
 
 | Slot | Consumer | Variable | Value |
 |---|---|---|---|
-| Worker (hedge branch) | `speculative_hedge.py` | `WORKER_MODEL` | `deepseek-ai/deepseek-v4.1-flash-1017` (the gx10 hub's local survivor) |
+| Worker (hedge branch) | `speculative_hedge.py` | `WORKER_MODEL` | `abliterated-model-large-v2` (Abliteration.ai, the uncensored terminal) |
 | Specialist (divert) | `proxy_gateway.py` | `SPECIALIST_MODEL` | `abliterated-model-large-v2` (Abliteration.ai) |
 
 ```powershell
-[Environment]::SetEnvironmentVariable('WORKER_API_URL', 'http://100.67.13.78:4000/v1/chat/completions', 'User')
-[Environment]::SetEnvironmentVariable('WORKER_MODEL', 'deepseek-ai/deepseek-v4.1-flash-1017', 'User')
+[Environment]::SetEnvironmentVariable('WORKER_API_URL', 'https://api.abliteration.ai/v1/chat/completions', 'User')
+[Environment]::SetEnvironmentVariable('WORKER_MODEL', 'abliterated-model-large-v2', 'User')
 ```
 
 Both keys resolve through the same chain (`WORKER_API_KEY`/`SPECIALIST_API_KEY`
@@ -153,18 +157,23 @@ lists them for Cline/OpenCode pickers (`evals/frost_alias_test.py`):
 |---|---|---|
 | `deepfrost` | primary | `deepseek-ai/deepseek-v4.1-flash-1017` |
 | `glmfrost` | primary | `zai-org/glm-5.3-flash` |
-| `cyberfrost` | worker | `deepseek-ai/deepseek-v4.1-flash-1017` (the hub's local survivor; Featherless decommissioned 2026-10-23) |
+| `cyberfrost` | worker | `abliterated-model-large-v2` (the constellation's uncensored terminal on Abliteration.ai) |
 | `frost-general` | primary | the slot's current default (follows `/v1/switch`) |
 
 `cyberfrost` used to carry the local model id `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw`.
-That model was **deleted 2026-10-23** (weights, TabbyAPI stack and all), so the
-name now resolves to the hub's verified local survivor (`deepseek-ai/deepseek-v4.1-flash-1017`;
-Featherless decommissioned 2026-10-23) on the same gx10 hub, where the old local id is a guaranteed 404. It dispatches to `FROST_WORKER_API_URL` (the gx10
-hub), **not** to the specialist binding: `SPECIALIST_API_URL` repoints the
-DIVERT target at the uncensored specialist (Abliteration.ai), and a local id on
-that URL is a guaranteed 400 (measured live). When `FROST_WORKER_API_URL` is
-unset the worker names fall back to the fallback slot's URL (previous
-behaviour). A transport failure on the frost worker (gx10 down) retries then
+That model was **deleted 2026-10-23** (weights, TabbyAPI stack and all). Per the
+2026-10-21 constellation directive the legacy name now addresses the UNCENSORED
+TERMINAL of every chain - Abliteration.ai `abliterated-model-large-v2` (the same
+id all three constellations terminate on; the deployed gx10 hub's own
+`providers.py` carries this mapping). Featherless is decommissioned (stale key,
+not to be enabled) and the gx10 `:4000` llm-hub is a legacy catalog, so no
+`qwen3.8-flash-next` or `:4000` model id is involved. It dispatches to
+`FROST_WORKER_API_URL` (the worker slot), **not** to the specialist binding:
+`SPECIALIST_API_URL` repoints the DIVERT target at the same uncensored
+specialist, and a local id on that URL is a guaranteed 400 (measured live). When
+`FROST_WORKER_API_URL` is unset the worker names fall back to the fallback
+slot's URL (previous behaviour). A transport failure on the frost worker
+(Abliteration unreachable) retries then
 diverts to the specialist like any primary.
 
 `frost-general` carries no baked-in upstream id: it addresses the primary

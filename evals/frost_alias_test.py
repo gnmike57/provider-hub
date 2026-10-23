@@ -39,14 +39,15 @@ def test_alias_table_covers_the_three_systems():
         "primary", "zai-org/glm-5.3-flash")
     assert providers.resolve_frost_alias("glmfrost-5.3-flash") == (
         "primary", "zai-org/glm-5.3-flash")
-    # CYBER-FROST DELETED (2026-10-23): the local EXL3 weights and their
-    # TabbyAPI server are gone, and Featherless is decommissioned (stale key,
-    # not to be enabled), so the legacy names point at the hub's verified
-    # local survivor (deepseek-ai/deepseek-v4.1-flash-1017 via gx10 :4000).
+    # CYBER-FROST RETIRED (2026-10-21, confirmed 2026-10-23): the local EXL3
+    # weights and their TabbyAPI server are gone, Featherless is decommissioned
+    # (stale key, not to be enabled) and the constellation (deepseek / glm /
+    # abliteration) is the live hub - so the legacy names address its
+    # UNCENSORED TERMINAL, Abliteration.ai abliterated-model-large-v2.
     assert providers.resolve_frost_alias("cyberfrost") == (
-        "worker", "deepseek-ai/deepseek-v4.1-flash-1017")
+        "worker", "abliterated-model-large-v2")
     assert providers.resolve_frost_alias("cyberfrost-3.8-sage") == (
-        "worker", "deepseek-ai/deepseek-v4.1-flash-1017")
+        "worker", "abliterated-model-large-v2")
 
 
 def test_raw_ids_and_unknown_models_pass_through():
@@ -79,9 +80,10 @@ def test_glmfrost_name_uses_the_glm_upstream_id(script):
 
 
 def test_cyberfrost_name_routes_to_the_worker_slot(script):
-    """CYBER-FROST is DELETED (2026-10-23): the local weights are gone, so the
-    legacy names address the hub's surviving local model on the worker slot -
-    and the answer still streams back to the client."""
+    """CYBER-FROST is RETIRED (2026-10-21): the local weights are gone, so the
+    legacy names address the constellation's uncensored terminal
+    (abliterated-model-large-v2) on the worker slot - and the answer still
+    streams back to the client."""
     script.script(WORKER, [("sse", [chunk("specialist", finish="stop"), DONE])])
     with TestClient(proxy_gateway.app) as tc:
         resp = tc.post("/v1/chat/completions",
@@ -91,7 +93,7 @@ def test_cyberfrost_name_routes_to_the_worker_slot(script):
     assert "specialist" in resp.text
     sent = [c for c in script.calls if c["url"] == WORKER]
     assert sent, "the worker slot was never called"
-    assert sent[0]["json"]["model"] == "deepseek-ai/deepseek-v4.1-flash-1017"
+    assert sent[0]["json"]["model"] == "abliterated-model-large-v2"
     assert not [c for c in script.calls if c["url"] == PRIMARY], (
         "a CyberFrost request must not touch the primary slot")
 

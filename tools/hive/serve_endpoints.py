@@ -32,11 +32,14 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 UFO_ENV = r"C:\Users\lnxzf\Desktop\projects\ufo\ufo\ufo.env"
 
 HIVE_URL = "https://api-cdn.thehive.ai/api/v3/chat/completions"
-HUB_URL = "http://100.67.13.78:4000/v1/chat/completions"
 # Divert target (CYBER-FROST deleted 2026-10-23): the uncensored TERMINAL - the
 # Abliteration LARGE V2 brain, reachable through the built-in
 # ABLITERATION_API_KEY (see proxy_gateway._specialist_key).
 SPECIALIST = "abliterated-model-large-v2"
+# The worker/fallback slot MUST speak the same model as SPECIALIST: this used to
+# pair the :4000 gx10 llm-hub URL with the abliterated id, a guaranteed 404
+# (that legacy catalog serves neither). Same hosted terminal for both.
+HUB_URL = "https://api.abliteration.ai/v1/chat/completions"
 
 INSTANCES = [
     # Max-think ports default the max-think NAME (not the raw upstream id):

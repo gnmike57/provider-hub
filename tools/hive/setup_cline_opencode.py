@@ -38,13 +38,15 @@ def fix_cline(secret):
         doc = json.load(fh)
     prov = doc["providers"]
 
-    # 1) restore the LOCAL HUB that `cline auth -p openai` overwrote
+    # 1) restore the LOCAL HUB that `cline auth -p openai` overwrote.
+    # The constellation's uncensored terminal is Abliteration.ai; the :4000
+    # gx10 llm-hub is a legacy catalog only.
     prov["openai-compatible"] = {
         "settings": {
             "provider": "openai-compatible",
             "apiKey": "sk-local",
-            "model": "deepseek-ai/deepseek-v4.1-flash-1017",
-            "baseUrl": "http://cyber.local:4000/v1",
+            "model": "abliterated-model-large-v2",
+            "baseUrl": "https://api.abliteration.ai/v1",
             "reasoning": {"enabled": False},
         },
         "updatedAt": datetime.datetime.utcnow().isoformat() + "Z",

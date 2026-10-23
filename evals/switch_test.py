@@ -230,9 +230,10 @@ def test_resolve_frost_name_maps_to_slot_binding():
         s,
     )
     assert got["url"] == WORKER and got["provider_id"] == "frost:worker"
-    # CYBER-FROST DELETED (2026-10-23): the legacy name resolves to the hub's
-    # surviving local model on the worker slot (deepseek-v4.1-flash-1017).
-    assert got["model"] == "deepseek-ai/deepseek-v4.1-flash-1017"
+    # CYBER-FROST RETIRED (2026-10-21): the legacy name resolves to the
+    # constellation's uncensored terminal on the worker slot
+    # (abliterated-model-large-v2).
+    assert got["model"] == "abliterated-model-large-v2"
     got2 = model_switch.resolve_target(
         model_switch.parse_switch_request({"target": "primary", "model": "DeepFrost v4.1"}),
         s,

@@ -22,7 +22,10 @@ UFO_ENV = r"C:\Users\lnxzf\Desktop\projects\ufo\ufo\ufo.env"
 OUT = os.path.abspath(os.path.join(HERE, "..", "..", "gateway_registry.json"))
 
 HIVE_BASE = "https://api-cdn.thehive.ai/api/v3"
-HUB_BASE = "http://100.67.13.78:4000/v1"      # tailnet; works off-subnet
+ABLIT_BASE = 'https://api.abliteration.ai/v1'
+# The worker slot is the constellation's UNCENSORED TERMINAL (Abliteration.ai
+# abliterated-model-large-v2). The gx10 :4000 llm-hub is a legacy catalog and is
+# deliberately NOT wired as a provider here.
 
 
 def key(name):
@@ -55,9 +58,12 @@ doc = {
         },
         "cyberhub": {
             "api": "openai",
-            "base_url": HUB_BASE,
-            "key": "none",
-            "models": {},
+            "base_url": ABLIT_BASE,
+            "key": "",  # resolved from ABLITERATION_API_KEY at load time
+            "models": {
+                "cyberfrost": "abliterated-model-large-v2",
+                "abliterated-model-large-v2": "abliterated-model-large-v2",
+            },
         },
     },
     "defaults": {"primary": "hive", "worker": "cyberhub"},

@@ -232,7 +232,10 @@ def test_launch_env_dict_matches_pre_extraction_keys(popen_recorder, tmp_path):
                  "YIELD_TIMEOUT_S", "PYTHONDONTWRITEBYTECODE",
                  "PYTHONIOENCODING"):
         assert name in env, f"missing env knob {name}"
-    assert env["FALLBACK_API_KEY"] == "none"
+    # A local "none" sentinel is correct for a local hub, but it MASKS the
+    # built-in ABLITERATION_API_KEY in _specialist_key()'s chain - so a hosted
+    # fallback URL must carry a real key, never "none".
+    assert env["FALLBACK_API_KEY"] == "none"  # http://hub:4000 = local sentinel
     assert env["HEDGE_MAX_TOKENS"] == "4000"
     assert env["COMMIT_TOKENS"] == "10"  # hedged instance
     assert env["METRICS_PORT"] == "9410"
@@ -242,6 +245,26 @@ def test_launch_env_dict_matches_pre_extraction_keys(popen_recorder, tmp_path):
     assert env["PYTHONIOENCODING"] == "utf-8"
     assert env["AUDIT_LOG"].endswith("endpoints_9310_audit.jsonl")
     assert proc.waited is False
+
+
+def test_launch_hosted_fallback_carries_the_abliteration_key(popen_recorder,
+                                                            monkeypatch,
+                                                            tmp_path):
+    """A hosted fallback must NOT be handed the local "none" sentinel.
+
+    "none" outranks the built-in ABLITERATION_API_KEY in
+    proxy_gateway._specialist_key(), so the old :4000 pairing both 404'd on the
+    model id and 401'd on auth. The hosted terminal needs the real key.
+    """
+    monkeypatch.setenv("HIVE_SECRET_KEY", "test-hive-key")
+    monkeypatch.setenv("ABLITERATION_API_KEY", "ak_pooled_test")
+    (tmp_path / "ufo.env").write_text("", encoding="utf-8")
+    sm.launch(_cfg(), ufo_env=str(tmp_path / "ufo.env"), root=str(tmp_path),
+              display_host="100.113.176.84",
+              fallback_url="https://api.abliteration.ai/v1/chat/completions",
+              fallback_model="abliterated-model-large-v2")
+    env = popen_recorder["env"]
+    assert env["FALLBACK_API_KEY"] == "ak_pooled_test"
 
 
 def test_launch_unhedged_disables_the_race(popen_recorder, monkeypatch,
@@ -400,7 +423,11 @@ def test_serve_endpoints_gx10_entrypoint_imports_and_keeps_shape(hub_stub):
     gx = _load_entrypoint("serve_endpoints_gx10_under_test",
                           "serve_endpoints_gx10.py", hub_stub)
     assert [c.port for c in gx.INSTANCES] == [9314, 9315, 9316, 9310]
-    assert gx.HUB_URL == "http://127.0.0.1:4000/v1/chat/completions"
+    # The worker slot must speak the model SPECIALIST names: pairing the legacy
+    # gx10 :4000 catalog with abliterated-model-large-v2 was a guaranteed 404.
+    assert gx.SPECIALIST == "abliterated-model-large-v2"
+    assert gx.HUB_URL.endswith("/v1/chat/completions")
+    assert "abliteration.ai" in gx.HUB_URL
     assert "ufo-galaxy" in gx.UFO_ENV and "hive_cleanpass" in gx.UFO_ENV
     assert callable(gx.key) and callable(gx.launch)
 

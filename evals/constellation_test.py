@@ -98,7 +98,7 @@ class FakeRegistry:
                 "glm-5.3-flash": "zai-org/glm-5.3-flash",
             }),
             "cyberhub": FakeProvider("cyberhub", {
-                "cyberfrost": "deepseek-ai/deepseek-v4.1-flash-1017",
+                "cyberfrost": "abliterated-model-large-v2",
             }),
         }
 

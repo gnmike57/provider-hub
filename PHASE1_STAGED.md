@@ -1,8 +1,10 @@
 > **SUPERSEDED (2026-10-23):** the CYBER-FROST layout described below was
 > deleted this day - the EXL3 weights, `cyberfrost.service`/`:8900` and the
-> Featherless cloud lane are all gone (stale key, not to be enabled). The
-> worker slot now targets the gx10 hub's local survivor
-> `deepseek-ai/deepseek-v4.1-flash-1017` on `http://100.67.13.78:4000/v1`.
+> Featherless cloud lane are all gone (stale key, not to be enabled). Per the
+> 2026-10-21 constellation directive the worker slot targets the constellation's
+> UNCENSORED TERMINAL, Abliteration.ai `abliterated-model-large-v2` (the live hub
+> is the deepseek / glm / abliteration constellation on `:9310`/`:9311`/`:9312`;
+> the gx10 `:4000` llm-hub is a legacy catalog, not the hub).
 > Kept as a historical record of the staged phase.
 
 

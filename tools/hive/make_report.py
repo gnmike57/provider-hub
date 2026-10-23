@@ -21,6 +21,7 @@ FROST = {
     "deepseek-ai/deepseek-v4.1-flash-1017": "DeepFrost v4.1",
     "zai-org/glm-5.3-flash": "GLMFrost 5.3 Flash",
     "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw": "CyberFrost 3.8 SAGE (deleted)",
+    "abliterated-model-large-v2": "CyberFrost (uncensored terminal)",
 }
 
 
@@ -128,8 +129,10 @@ def endpoints_section(L):
              "hedge fires only on the latency hints.")
     L.append("* Frost names verified live: `DeepFrost v4.1` reached Hive as "
              "`deepseek-ai/deepseek-v4.1-flash-1017`; `CyberFrost 3.8 SAGE` routed "
-             "to the worker slot (now the hub's local survivor deepseek-ai/deepseek-v4.1-flash-1017 - the local weights were "
-             "deleted 2026-10-23, Featherless cloud twin decommissioned the same day).")
+             "to the worker slot, which is the constellation's UNCENSORED TERMINAL "
+             "(Abliteration.ai `abliterated-model-large-v2` - the same id all three "
+             "constellations terminate on). The old local weights were deleted "
+             "2026-10-23 and the Featherless cloud twin was decommissioned the same day.")
     L.append("* **9301 belongs to the ufo bridge** - publishing there fails silently "
              "(winerror 10048), which is why the Frost ports start at 9310.")
     L.append("* Start/stop them with `python tools/hive/serve_endpoints.py`.")

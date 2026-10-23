@@ -59,17 +59,21 @@ __all__ = [
 FROST_ALIASES = {
     # Plain Frost names (restored 2026-10-20): DeepFrost / GLMFrost live on
     # the PRIMARY slot (the Hive provider) with the exact upstream ids.
-    # CYBER-FROST IS DELETED (2026-10-23 operator directive): the local
-    # 87.2B EXL3 quant, its TabbyAPI server (gx10 cyberfrost.service, :8900)
-    # and its 98 GB weights are GONE from the Spark - the brand name is kept
-    # as the legacy address for the UNCENSORED branch so client configs that
-    # still carry "cyberfrost" keep resolving. The names ride the WORKER slot
-    # (the gx10 hub). FEATHERLESS IS DECOMMISSIONED TOO (2026-10-23 operator
+    # CYBER-FROST IS RETIRED (2026-10-21 operator directive, confirmed
+    # 2026-10-23): the local 87.2B EXL3 quant, its TabbyAPI server (gx10
+    # cyberfrost.service, :8900) and its 98 GB weights are GONE from the Spark.
+    # The constellation (currently live: deepseek / glm / abliteration) fully
+    # replaces the local-LLM system of old, so the legacy CyberFrost names now
+    # address the UNCENSORED TERMINAL of every chain: the Abliteration LARGE V2
+    # brain (abliterated-model-large-v2 - the same id all three constellations
+    # terminate on; REDHANDS on max-offense). This matches the deployed hub's
+    # own providers.py. FEATHERLESS IS DECOMMISSIONED TOO (2026-10-23 operator
     # directive: stale, not to be enabled), so the old cloud-twin target
-    # qwen3.8-flash-next no longer resolves there; the worker now targets the
-    # hub's verified local survivor deepseek-ai/deepseek-v4.1-flash-1017
-    # (measured live 3/3, ~1-2 s through gx10 :4000). They stay on the WORKER
-    # slot so an operator-set SPECIALIST_API_URL/KEY override keeps winning.
+    # qwen3.8-flash-next no longer resolves anywhere. The names stay on the
+    # WORKER slot so an operator-set SPECIALIST_API_URL/KEY override keeps
+    # winning; the gx10 llm-hub on :4000 is a legacy catalog and is NOT the
+    # constellation hub. Egress credentials come from account_pool.json
+    # (ablit-1..3), not the retired hub-pool org.
     "deepfrost v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
     "deepfrost-v4.1": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
     "deepfrost-v41": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017"),
@@ -78,9 +82,9 @@ FROST_ALIASES = {
     "glmfrost-5.3-flash": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost5.3flash": ("primary", "zai-org/glm-5.3-flash"),
-    "cyberfrost 3.8 sage": ("worker", "deepseek-ai/deepseek-v4.1-flash-1017"),
-    "cyberfrost-3.8-sage": ("worker", "deepseek-ai/deepseek-v4.1-flash-1017"),
-    "cyberfrost": ("worker", "deepseek-ai/deepseek-v4.1-flash-1017"),
+    "cyberfrost 3.8 sage": ("worker", "abliterated-model-large-v2"),
+    "cyberfrost-3.8-sage": ("worker", "abliterated-model-large-v2"),
+    "cyberfrost": ("worker", "abliterated-model-large-v2"),
     # Max-think variants (operator request, 2026-10): the SAME upstream models
     # with reasoning pushed to maximum - the gateway injects the knob set and
     # skips the hedge race (see proxy_gateway.wants_max_think / chat_proxy).

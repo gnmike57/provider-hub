@@ -140,10 +140,11 @@ def test_plain_frost_names_resolve_and_are_published(gw, script, monkeypatch):
         "primary", "deepseek-ai/deepseek-v4.1-flash-1017")
     assert providers.resolve_frost_alias("GLMFrost 5.3 Flash") == (
         "primary", "zai-org/glm-5.3-flash")
-    # CYBER-FROST DELETED (2026-10-23): the legacy name maps to the hub's
-    # surviving local model on the worker slot (providers.FROST_ALIASES).
+    # CYBER-FROST RETIRED (2026-10-21): the legacy name addresses the
+    # constellation's uncensored terminal on the worker slot
+    # (providers.FROST_ALIASES).
     assert providers.resolve_frost_alias("cyberfrost 3.8 sage") == (
-        "worker", "deepseek-ai/deepseek-v4.1-flash-1017")
+        "worker", "abliterated-model-large-v2")
     assert providers.resolve_frost_alias("frost-general") == ("primary", None)
     # raw upstream ids and unknown names keep passing through
     assert providers.resolve_frost_alias("gpt-4o") is None

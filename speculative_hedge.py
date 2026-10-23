@@ -79,7 +79,7 @@ class HedgeSettings:
             or "none"
         )
         self.worker_model = os.getenv("WORKER_MODEL") or os.getenv(
-            "FALLBACK_MODEL", "deepseek-ai/deepseek-v4.1-flash-1017"
+            "FALLBACK_MODEL", "abliterated-model-large-v2"
         )
         # CALIBRATED 2026-10-05 (evals/hedge_calibrate.py): the refusal regex is
         # anchored to the start of the generation and fires by the 5th content

@@ -142,12 +142,19 @@ def launch(cfg, *, ufo_env, root, display_host, fallback_url, fallback_model,
         if primary_key is None:
             raise SystemExit(f"{SECRET_NAME} not found in {ufo_env} "
                              f"(and not in the process environment)")
+    # Worker/fallback credential. "none" is the LOCAL-hub sentinel (send no
+    # Authorization header); a hosted fallback such as Abliteration.ai needs a
+    # real key, otherwise _specialist_key() resolves "none" FIRST and masks the
+    # built-in ABLITERATION_API_KEY - a guaranteed 401 on every divert.
+    fallback_key = "none"
+    if "abliteration.ai" in (fallback_url or ""):
+        fallback_key = os.getenv("ABLITERATION_API_KEY") or "none"
     env.update({
         "PRIMARY_API_URL": cfg.primary_url,
         "PRIMARY_API_KEY": primary_key,
         "PRIMARY_MODEL": cfg.model,
         "FALLBACK_API_URL": fallback_url,
-        "FALLBACK_API_KEY": "none",
+        "FALLBACK_API_KEY": fallback_key,
         "FALLBACK_MODEL": fallback_model,
         "HEDGE_MAX_TOKENS": "4000",
         "COMMIT_TOKENS": "10", "HEDGE_LIVE_REASONING": "1",
