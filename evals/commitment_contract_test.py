@@ -25,7 +25,7 @@ def fresh_envs(monkeypatch):
                  "SPECIALIST_API_URL", "SPECIALIST_API_KEY", "SPECIALIST_MODEL",
                  "FALLBACK_API_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL",
                  "WORKER_API_URL", "WORKER_API_KEY", "WORKER_MODEL",
-                 "NANOGPT_API_KEY", "ABLITERATION_API_KEY"):
+                 "ABLITERATION_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     s = proxy_gateway.SETTINGS
     monkeypatch.setattr(s, "primary_api_url", PRIMARY)

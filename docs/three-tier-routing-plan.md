@@ -1,6 +1,6 @@
 > **SUPERSEDED (2026-10-21) — implementation superseded.** This plan's Tier-2/3 model
-> surface (`REASONER_*` via NanoGPT `z-ai/glm-5.3:thinking`, `abliteration-ai/abliterated-model-large-v2`
-> as R3 via the NanoGPT key) was replaced by the 2026-10-21 constellation directive.
+> surface (`REASONER_*` via the nano provider `z-ai/glm-5.3:thinking`, `abliteration-ai/abliterated-model-large-v2`
+> as R3 via the nano key) was replaced by the 2026-10-21 constellation directive.
 > Successor docs, in order:
 > 1. `docs/single-model-chain-plan.md` (2026-10-20) — the staged `deep*`/`glm*` proposal
 >    that first superseded this plan's §2/§8 option surface (its own SUPERSEDED banner
@@ -21,8 +21,8 @@
 # Plan: Three-Tier Speculative Routing for provider-hub
 
 **Tier 1 (default):** thehive.ai `zai-org/glm-5.3-flash`
-**Tier 2 (deep reasoning):** NanoGPT `z-ai/glm-5.3:thinking`
-**Tier 3 (uncensored fallback):** NanoGPT `abliteration-ai/abliterated-model-large-v2`
+**Tier 2 (deep reasoning):** the nano provider `z-ai/glm-5.3:thinking`
+**Tier 3 (uncensored fallback):** the nano provider `abliteration-ai/abliterated-model-large-v2`
 
 Status: research-complete, awaiting implementation go-ahead.
 Date: 2026-10-15 (all facts in §0 probed live today)
@@ -37,8 +37,8 @@ Date: 2026-10-15 (all facts in §0 probed live today)
 | `fallback_stream()` inner loop takes one (url,key,model) | meta-comment ~line 573: "keep the inner loop generic: it only knows (url, key, model)" |
 | Stream loop already has reason-based divert-to-specialist | late lines ~790-905: `tier1_thinking_only / tier1_empty / tier1_stream_broke`, buffer discarded, dispatch worker |
 | `should_hedge()` is the single detection mouth | lives in `routing_patterns.py`, imported by gateway and hedge |
-| Tier-2 model PONGs via NanoGPT | POST `https://nano-gpt.com/api/v1/chat/completions`, Bearer, `z-ai/glm-5.3:thinking` |
-| Tier-3 model PONGs via NanoGPT | same endpoint, `abliteration-ai/abliterated-model-large-v2` |
+| Tier-2 model PONGs via the nano provider | POST `<retired-nano-endpoint>/api/v1/chat/completions`, Bearer, `z-ai/glm-5.3:thinking` |
+| Tier-3 model PONGs via the nano provider | same endpoint, `abliteration-ai/abliterated-model-large-v2` |
 | `SPECIALIST_API_URL/KEY/MODEL` env trio is the worker binding | Settings dataclass, consumed by `fallback_stream` caller |
 | 101 passed / 3 skipped / 4 warnings baseline | re-confirmed today (4.6 s), py_compile clean |
 | No `/v1/chat/hedged` endpoint exists | only inside `chat_proxy`; historical docs mention it — do not rely on it |
@@ -70,11 +70,11 @@ Rejected alternatives:
 | R1 primary URL | `PRIMARY_API_URL` | `https://api-cdn.thehive.ai/api/v3/chat/completions` (from `gateway_registry.json` `providers.hive.base_url`) |
 | R1 primary key | `PRIMARY_API_KEY` | value of `providers.hive.key` (NOTE: sits plaintext in the registry file — rotate and move to env) |
 | R1 model | `PRIMARY_MODEL` | `zai-org/glm-5.3-flash` |
-| R2 reasoner URL | `REASONER_API_URL` (new) | `https://nano-gpt.com/api/v1/chat/completions` |
-| R2 key | `REASONER_API_KEY` (new) | `NANOGPT_API_KEY` (fresh mint, key id=245160, already rotated into HKCU) |
+| R2 reasoner URL | `REASONER_API_URL` (new) | `<retired-nano-endpoint>/api/v1/chat/completions` |
+| R2 key | `REASONER_API_KEY` (new) | `nano key env (retired)` (fresh mint, key id=245160, already rotated into HKCU) |
 | R2 model | `REASONER_MODEL` (new) | `z-ai/glm-5.3:thinking` |
-| R3 specialist URL | `SPECIALIST_API_URL` (existing) | `https://nano-gpt.com/api/v1/chat/completions` |
-| R3 key | `SPECIALIST_API_KEY` (existing) | also `NANOGPT_API_KEY` |
+| R3 specialist URL | `SPECIALIST_API_URL` (existing) | `<retired-nano-endpoint>/api/v1/chat/completions` |
+| R3 key | `SPECIALIST_API_KEY` (existing) | also `nano key env (retired)` |
 | R3 model | `SPECIALIST_MODEL` (repointed) | `abliteration-ai/abliterated-model-large-v2` |
 
 Bonus signal: Hive's structured `message.refusal` field plus
@@ -153,7 +153,7 @@ clients ignore them).
 ## 4. Sequencing & estimates
 
 - **Milestone A (core chain, ~4 h):** T1, T4, cheap T5 (keyword list only),
-  T9 → already satisfies the stated request: GLM-flash default, NanoGPT
+  T9 → already satisfies the stated request: GLM-flash default, nano
   thinking on hard prompts, abliterated-v2-large on refusals.
 - **Milestone B (partial + polish, ~3 h):** T2, T3, T6.
 - **Milestone C (DX + tests, ~2.5 h):** full T5 heuristics, T7, T8.
@@ -175,7 +175,7 @@ clients ignore them).
 1. **Up-front R2 race on every hard-classified prompt?** Default: yes when τ
    exceeded; borderline prompts start R1 solo and may diverge mid-stream.
 2. **Tier-2 locked to GLM-5.3-thinking?** Default: yes. Alternative (deferred):
-   per-class model poll via NanoGPT's catalog (deepseek-r for math etc.).
+   per-class model poll via the nano provider's catalog (deepseek-r for math etc.).
 3. **R2/R3 spend shares the HEDGE_BUDGET_MS pool?** Default: yes; revisit only
    if R3 starves R1 in race mode.
 
@@ -186,12 +186,12 @@ clients ignore them).
   envelope fields `refusal`, `reasoning` present.
 - R2: `z-ai/glm-5.3:thinking` → PONG.
 - R3: `abliteration-ai/abliterated-model-large-v2` → PONG.
-- Keys: persisted `NANOGPT_API_KEY` was revoked server-side ("Invalid
+- Keys: persisted `nano key env (retired)` was revoked server-side ("Invalid
   session"); minted replacement id=245160 via Management API (fresh
-  Idempotency-Key), rotated `NANOGPT_API_KEY` + saved `NANOGPT_API_KEY_HUB`.
+  Idempotency-Key), rotated `nano key env (retired)` + saved `nano hub-key env (retired)`.
   **Orphan to revoke: key id=245159** (created while probing the response
   shape; its secret was never captured/used).
-- NanoGPT auth facts: `Authorization: Bearer` or `x-api-key` both accepted on
+- nano auth facts: `Authorization: Bearer` or `x-api-key` both accepted on
   `/api/v1/*`; model catalog is public; chat route requires a valid key;
   Management API (`/api/management/v1`, mgmt key) lists/creates keys.
 
@@ -244,7 +244,7 @@ Legend: **Effort** = hours inside Cline CLI. **Risk** = L/M/H. **Scope** =
 
 | ID | Option | How | Effort | Risk | Scope | Verdict |
 |---|---|---|---|---|---|---|
-| S-A | **HKCU env vars, referenced only as `$env:NAME`/`os.getenv`** (DEFAULT, current state) | `NANOGPT_API_KEY` (rotated), `NANOGPT_API_KEY_HUB`, mgmt key untouched | 0 h | L | ✅ | done during research |
+| S-A | **HKCU env vars, referenced only as `$env:NAME`/`os.getenv`** (DEFAULT, current state) | `nano key env (retired)` (rotated), `nano hub-key env (retired)`, mgmt key untouched | 0 h | L | ✅ | done during research |
 | S-B | Move Hive key out of `gateway_registry.json` into env | Registry file currently has plaintext key at line 6 | 0.2 h + registry edit | L | ◐ (registry is dead-at-runtime; removing key breaks make_gateway_registry tooling — needs operator confirm) | recommend, Milestone C |
 | S-C | OS keychain (Windows Credential Manager) | `keyring` lib | 1 h | M (new dep) | ◐ (needs operator unlock) | Δ defer |
 | S-D | `.env` file | python-dotenv | 0.5 h | L | ✅ | only if operator prefers; adds an ignore-file burden |
@@ -262,10 +262,10 @@ Legend: **Effort** = hours inside Cline CLI. **Risk** = L/M/H. **Scope** =
 | ID | Option | How | Effort | Risk | Scope | Verdict |
 |---|---|---|---|---|---|---|
 | M-A | **Tier-2 = `z-ai/glm-5.3:thinking`** (DEFAULT) | Same family as R1, thinking variant; live PONG | 0 | L | ✅ | Milestone A |
-| M-B | Tier-2 = `deepseek` reasoning line on NanoGPT | Catalog carries DeepSeek R1-distill family; would need its own probe of the exact ID | +0.3 h | L | ✅ (probe script exists) | Δ alternative: stronger math per open question 2 |
+| M-B | Tier-2 = `deepseek` reasoning line on nano | Catalog carries DeepSeek R1-distill family; would need its own probe of the exact ID | +0.3 h | L | ✅ (probe script exists) | Δ alternative: stronger math per open question 2 |
 | M-C | Tier-3 = `z-ai/glm-5.3-flash-apex-abliterated` | In-family uncensored; PONG listed in catalog (not live-PONG'd) | +0.1 h (probe) | L | ✅ probe | Δ alternative if cross-provider latency felt worse |
-| M-D1 | Tier-3 = `deepseek` reasoning line on NanoGPT | Catalog carries the DeepSeek R1-distill family; needs its own probe of the exact ID | +0.3 h | L | ✅ (probe script exists) | Δ fallback if `abliterated-model-large-v2` breaks |
-| M-D2 | Tier-3 = `z-ai/glm-5.3-flash-apex-abliterated` (NanoGPT, in-family) | Uncensored GLM flash variant on Tier-2's provider; PONG listed in catalog (not live-PONG'd) | +0.1 h (probe) | L | ✅ probe | Δ fallback if cross-provider latency felt worse |
+| M-D1 | Tier-3 = `deepseek` reasoning line on nano | Catalog carries the DeepSeek R1-distill family; needs its own probe of the exact ID | +0.3 h | L | ✅ (probe script exists) | Δ fallback if `abliterated-model-large-v2` breaks |
+| M-D2 | Tier-3 = `z-ai/glm-5.3-flash-apex-abliterated` (nano, in-family) | Uncensored GLM flash variant on Tier-2's provider; PONG listed in catalog (not live-PONG'd) | +0.1 h (probe) | L | ✅ probe | Δ fallback if cross-provider latency felt worse |
 
 *Amendment 2026-10-15: the former M-D option (a LAN-hosted local Llama-3.3-
 70B-abliterated) is REMOVED — local-hardware routing is retired and must
@@ -295,7 +295,7 @@ What the implementing Cline CLI session can and cannot do. The scope markers
    skipped) plus `python -m py_compile` on every touched module. All §8 "✅"
    options are validated with repo stubs only.
 3. **Live API probes** (tiny side effects on external services): Hive +
-   NanoGPT chat PONGs with max_tokens ≤ 256; catalog queries; the §5 curl
+   nano chat PONGs with max_tokens ≤ 256; catalog queries; the §5 curl
    matrix once the gateway runs locally.
 4. **Gateway process supervision for the session**: start
    `uvicorn proxy_gateway:app`, smoke endpoints, capture logs to
@@ -308,14 +308,14 @@ What the implementing Cline CLI session can and cannot do. The scope markers
 
 > **AMENDMENT (2026-10-22, operator-directed completion pass).**
 > 1. **E15 — key revocation of orphan id=245159: BLOCKED, operator token
->    needed.** The NanoGPT management token (`sk-nano-mgmt-…iQhY`, seen in
+>    needed.** The nano management token (`sk-nano-mgmt-…<redacted>`, seen in
 >    process env at the 2026-10-22 10:32 key audit) is not present in any
 >    persistent store (HKCU/HKLM env, ufo.env, .loki dirs, router envs,
 >    account_pool.json, the gx10 — all checked; only masked values survive in
 >    `evals/results/key_audit.jsonl`). The revoke needs a fresh management
->    token from https://nano-gpt.com/settings#management-api-tokens, then:
->    `powershell -File nanogpt\scripts\nanogpt-key.ps1 revoke -KeyId 245159 -Yes`.
->    Note: the whole NanoGPT surface is retired from the hub since 2026-10-20
+>    token from <retired-nano-console>/settings#management-api-tokens, then:
+>    `powershell -File <removed-nano-key-script> revoke -KeyId 245159 -Yes`.
+>    Note: the whole nano surface is retired from the hub since 2026-10-20
 >    (the hop was dropped; the audited inference keys already 401), so the
 >    orphan is dormant, not dangerous.
 > 2. **E16 — S-B registry key removal: DONE 2026-10-22.** The Hive plaintext
@@ -342,9 +342,9 @@ What the implementing Cline CLI session can and cannot do. The scope markers
 2. **Hardware contingency**: the archived `refusal-interception/`
    local-ollama route is retired reference material only — this gateway never
    revives it and must never treat it as a reachable fallback.
-3. **Anything needing GUI**: browser logins, provider dashboards (NanoGPT web
+3. **Anything needing GUI**: browser logins, provider dashboards (nano web
    console), interactive OAuth flows.
-4. **Payments/subscriptions**: NanoGPT balance top-ups if a credit wall is
+4. **Payments/subscriptions**: nano balance top-ups if a credit wall is
    hit during Tier-2/3 traffic.
 5. **Reboot-persistence verification**: `SetEnvironmentVariable(User)`
    persists, but this session cannot prove post-reboot state.

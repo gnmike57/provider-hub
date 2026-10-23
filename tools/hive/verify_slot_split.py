@@ -1,17 +1,22 @@
-"""Verify the WORKER and SPECIALIST slots resolve to their OWN models.
+"""Verify the SPECIALIST and WORKER slots resolve INDEPENDENTLY (offline).
 
-Operator requirement (2026-10-16): the two NanoGPT-backed slots are distinct -
+The two slots must never collapse onto each other:
 
-  * WORKER (the speculative hedge branch, speculative_hedge.py) is
-    xiaomi/mimo-v2.6-flash-abliterated, bound through WORKER_MODEL.
-  * SPECIALIST (the refusal/failure divert target, proxy_gateway.py) stays
-    abliteration-ai/abliterated-model-large-v2, bound through SPECIALIST_MODEL.
+  * SPECIALIST (the divert target, proxy_gateway.Settings) is
+    SPECIALIST_MODEL (default abliterated-model-large-v2) on
+    SPECIALIST_API_URL (Abliteration.ai by default).
+  * WORKER (the speculative hedge branch, speculative_hedge.HedgeSettings) is
+    WORKER_MODEL / WORKER_API_URL, falling back to FALLBACK_* and finally the
+    local hub default.
 
-Both share the nano-gpt.com endpoint and the NANOGPT_API_KEY credential. This
-script reads the environment the way BOTH modules do (Windows User scope counts
-too), then asserts the split: if WORKER_MODEL were unset, the hedge would
-silently fall back to SPECIALIST_MODEL/FALLBACK_MODEL and the slip would be
-invisible. Reads the key without printing it.
+Both credentials resolve through the same chain (WORKER_API_KEY ->
+SPECIALIST_API_KEY -> FALLBACK_API_KEY -> ABLITERATION_API_KEY -> "none"). An
+empty or "none" key on either slot is the B22 regression: the branch sends no
+Authorization header and every hosted hop dies with a 401. This script asserts
+both slots resolve to a real credential, without printing it.
+
+This process is started before any env broadcast, so the User scope is seeded
+explicitly BEFORE the imports (both Settings objects are built at import time).
 
 Usage:  python tools/hive/verify_slot_split.py
 """
@@ -21,9 +26,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
-NANO_URL = "https://nano-gpt.com/api/v1/chat/completions"
-SPEC_MODEL = "abliteration-ai/abliterated-model-large-v2"
-WORKER_MODEL = "xiaomi/mimo-v2.6-flash-abliterated"
+SPEC_URL = "https://api.abliteration.ai/v1/chat/completions"
+SPEC_MODEL = "abliterated-model-large-v2"
 
 
 def _win_value(name):
@@ -42,20 +46,15 @@ def _resolve(name, default=""):
 
 
 def main() -> int:
-    key = _resolve("NANOGPT_API_KEY")
-    print(f"NANOGPT_API_KEY: {'present' if key else 'MISSING'} (len={len(key)})")
-
-    # The environment must be set BEFORE the imports: proxy_gateway builds its
-    # Settings at import time (module-level SETTINGS); speculative_hedge builds
-    # HedgeSettings the same way. New shells see the persisted User values, but
-    # THIS process was started before the broadcast, so seed them explicitly.
+    # Seed the persisted User values into this process before importing the
+    # modules: both build their Settings at import time.
     for var in ("WORKER_API_URL", "WORKER_MODEL", "WORKER_API_KEY",
-                "SPECIALIST_API_URL", "SPECIALIST_MODEL", "NANOGPT_API_KEY"):
+                "SPECIALIST_API_URL", "SPECIALIST_MODEL", "SPECIALIST_API_KEY",
+                "FALLBACK_API_URL", "FALLBACK_MODEL", "FALLBACK_API_KEY",
+                "ABLITERATION_API_KEY", "ABLITERATION_API_URL"):
         val = _resolve(var)
         if val:
             os.environ[var] = val
-    os.environ.setdefault("SPECIALIST_API_URL", NANO_URL)
-    os.environ.setdefault("WORKER_API_URL", NANO_URL)
     # never used here, but both Settings want a primary.
     os.environ.setdefault("PRIMARY_API_URL", "http://127.0.0.1:1/v1/chat/completions")
     os.environ.setdefault("PRIMARY_MODEL", "unused")
@@ -66,25 +65,32 @@ def main() -> int:
     spec = proxy_gateway.SETTINGS
     worker = speculative_hedge.HedgeSettings()
 
-    print("\n--- SPECIALIST slot (divert target, proxy_gateway.Settings) ---")
+    expect_spec = _resolve("SPECIALIST_MODEL", SPEC_MODEL)
+    expect_spec_url = _resolve("SPECIALIST_API_URL", SPEC_URL)
+
+    print("--- SPECIALIST slot (divert target, proxy_gateway.Settings) ---")
     print(f"  url   = {spec.fallback_api_url}")
     print(f"  model = {spec.fallback_model}")
-    print(f"  key   = {'NANOGPT_API_KEY' if spec.fallback_api_key == key else 'OTHER/none'}")
+    print(f"  key   = {'set' if spec.fallback_api_key not in ('', 'none') else 'NONE'} "
+          f"(len={len(spec.fallback_api_key)})")
 
     print("\n--- WORKER slot (hedge branch, speculative_hedge.HedgeSettings) ---")
     print(f"  url   = {worker.worker_url}")
     print(f"  model = {worker.worker_model}")
-    print(f"  key   = {'NANOGPT_API_KEY' if worker.worker_key == key else 'OTHER/none'}")
+    print(f"  key   = {'set' if worker.worker_key not in ('', 'none') else 'NONE'} "
+          f"(len={len(worker.worker_key)})")
 
     print("\n--- assertions ---")
     checks = [
-        ("specialist model == v2-large", spec.fallback_model == SPEC_MODEL),
-        ("worker model == mimo 2.6 flash abliterated", worker.worker_model == WORKER_MODEL),
-        ("the two models DIFFER (slots are split)", spec.fallback_model != worker.worker_model),
-        ("specialist key is the NanoGPT key", spec.fallback_api_key == key),
-        ("worker key is the NanoGPT key", worker.worker_key == key),
-        ("both slots on the nano-gpt endpoint",
-         spec.fallback_api_url == NANO_URL and worker.worker_url == NANO_URL),
+        ("specialist model is the resolved SPECIALIST_MODEL",
+         spec.fallback_model == expect_spec),
+        ("specialist endpoint is the resolved SPECIALIST_API_URL",
+         spec.fallback_api_url == expect_spec_url),
+        ("worker model is not empty", bool(worker.worker_model)),
+        ("the two models DIFFER (slots are split)",
+         spec.fallback_model != worker.worker_model),
+        ("specialist key resolved (not none - B22)", spec.fallback_api_key not in ("", "none")),
+        ("worker key resolved (not none - B22)", worker.worker_key not in ("", "none")),
     ]
     ok = True
     for label, passed in checks:

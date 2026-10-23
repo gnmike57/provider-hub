@@ -1,4 +1,4 @@
-"""LIVE proof that both slots answer on their OWN model (2026-10-16).
+"""LIVE proof that both slots answer on their OWN model (2026-10-16, upd. 2026-10-23).
 
 Calls the exact payloads the two modules build, straight at their resolved
 endpoints, so nothing about the wiring is simulated:
@@ -9,7 +9,7 @@ endpoints, so nothing about the wiring is simulated:
               (proxy_gateway.SETTINGS.fallback_*).
 
 Each is asked a one-word PONG; the reply's `model` field must echo the id we
-sent, which proves the endpoint accepted THAT model (NanoGPT returns the
+sent, which proves the endpoint accepted THAT model (the provider returns the
 requested id only when it resolves). Reads the key without printing it.
 
 Usage:  python tools/hive/verify_slots_live.py
@@ -22,8 +22,8 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
-WORKER_EXPECT = "xiaomi/mimo-v2.6-flash-abliterated"
-SPEC_EXPECT = "abliteration-ai/abliterated-model-large-v2"
+WORKER_EXPECT = "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"  # local gx10 router
+SPEC_EXPECT = "abliterated-model-large-v2"  # Abliteration.ai
 
 
 def _win_value(name):
@@ -36,7 +36,7 @@ def _win_value(name):
 
 
 def _seed():
-    for var in ("NANOGPT_API_KEY", "SPECIALIST_API_URL", "SPECIALIST_MODEL",
+    for var in ("ABLITERATION_API_KEY", "SPECIALIST_API_URL", "SPECIALIST_MODEL",
                 "WORKER_API_URL", "WORKER_MODEL"):
         val = os.environ.get(var) or _win_value(var)
         if val:
@@ -45,17 +45,26 @@ def _seed():
     os.environ.setdefault("PRIMARY_MODEL", "unused")
 
 
-def _pong(url, key, model, timeout=120.0):
-    body = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": "Reply with the single word: PONG"}],
-        "max_tokens": 32,
-        "stream": False,
-    }).encode()
+def _pong(url, key, model, timeout=120.0, dual_budget=True):
+    """Mirror the payload each module actually builds.
+
+    dual_budget=True  -> hedge worker branch: max_tokens AND max_completion_tokens
+                         (Hive-style self-hosted backends honour only the latter).
+    dual_budget=False  -> gateway divert branch: max_tokens alone (specialist
+                         providers are OpenAI-strict and 400 on both fields).
+    """
+    body = {"model": model,
+            "messages": [{"role": "user", "content": "Reply with the single word: PONG"}],
+            "stream": False}
+    if dual_budget:
+        body["max_tokens"] = 256
+        body["max_completion_tokens"] = 256
+    else:
+        body["max_tokens"] = 256
     headers = {"Content-Type": "application/json"}
     if key and key != "none":
         headers["Authorization"] = f"Bearer {key}"
-    req = urllib.request.Request(url, body, headers)
+    req = urllib.request.Request(url, json.dumps(body).encode(), headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         doc = json.loads(r.read())
     text = ((doc.get("choices") or [{}])[0].get("message") or {}).get("content", "")
@@ -71,10 +80,10 @@ def main() -> int:
     worker = speculative_hedge.HedgeSettings()
 
     ok = True
-    for label, url, key, model, expect in (
-        ("WORKER (hedge)", worker.worker_url, worker.worker_key, worker.worker_model, WORKER_EXPECT),
+    for label, url, key, model, expect, dual in (
+        ("WORKER (hedge)", worker.worker_url, worker.worker_key, worker.worker_model, WORKER_EXPECT, True),
         ("SPECIALIST (divert)", spec.fallback_api_url, spec.fallback_api_key,
-         spec.fallback_model, SPEC_EXPECT),
+         spec.fallback_model, SPEC_EXPECT, False),
     ):
         print(f"\n=== {label} ===")
         print(f"  url={url}\n  model={model}\n  key={'set' if key and key != 'none' else 'NONE'}")
@@ -83,7 +92,7 @@ def main() -> int:
             ok = False
             continue
         try:
-            echoed, text = _pong(url, key, model)
+            echoed, text = _pong(url, key, model, dual_budget=dual)
         except Exception as exc:  # noqa: BLE001
             print(f"  [FAIL] live call: {type(exc).__name__}: {exc}")
             ok = False

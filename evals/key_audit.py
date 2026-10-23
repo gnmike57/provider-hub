@@ -35,8 +35,6 @@ HIVE_URL = "https://api-cdn.thehive.ai/api/v3/chat/completions"
 HIVE_MODEL = "zai-org/glm-5.3-flash"
 AB_URL = "https://api.abliteration.ai/v1/chat/completions"
 AB_MODEL = "abliterated-model-large-v2"
-NANO_URL = "https://nano-gpt.com/api/v1/chat/completions"
-NANO_MODEL = "xiaomi/mimo-v2.6-flash-abliterated"
 ADMIN_BASE = "https://api.abliteration.ai/v1"
 
 KEY_RE = re.compile(r"^\S{12,}$")  # any plausible single-token secret
@@ -128,8 +126,7 @@ def refresh_env_from_user_scope():
     except ImportError:
         return
     for name in ("ABLITERATION_API_KEY", "ABLITERATION_ADMIN_KEY",
-                 "HIVE_SECRET_KEY", "HIVE_ACCESS_KEY", "NANOGPT_API_KEY",
-                 "NANOGPT_MGMT_API_KEY", "ADMIN_API_KEY"):
+                 "HIVE_SECRET_KEY", "HIVE_ACCESS_KEY", "ADMIN_API_KEY"):
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
                 val, _ = winreg.QueryValueEx(k, name)
@@ -164,8 +161,7 @@ def collect() -> list:
         except Exception as exc:
             print(f"WARN: account_pool.json unreadable: {exc}")
     for name in ("ABLITERATION_API_KEY", "ABLITERATION_ADMIN_KEY",
-                 "HIVE_SECRET_KEY", "HIVE_ACCESS_KEY", "NANOGPT_API_KEY",
-                 "NANOGPT_MGMT_API_KEY", "ADMIN_API_KEY"):
+                 "HIVE_SECRET_KEY", "HIVE_ACCESS_KEY", "ADMIN_API_KEY"):
         add(f"env:{name}", name, "", os.getenv(name, ""))
     for rel in ("tars/gx10-router/router.env", ".tars-setup/router/router.env"):
         p = ROOT / rel
@@ -208,8 +204,6 @@ def probe_one(surface: str, key: str, timeout: float):
         return chat_probe(AB_URL, key, AB_MODEL, timeout)
     if surface == "ablit-admin":
         return admin_probe(key, timeout)
-    if surface == "nano":
-        return chat_probe(NANO_URL, key, NANO_MODEL, timeout)
     if key.startswith("sk_"):
         return admin_probe(key, timeout)
     # Unknown surface: try the three knowns in order, report best evidence.

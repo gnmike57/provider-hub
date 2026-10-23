@@ -1,11 +1,11 @@
 """LIVE credit tests (operator directive 2026-10-22): real API spend.
 
 Set LIVE_CREDITS=1 to run (default: skipped - they spend real money on
-Hive / NanoGPT and the chains' escalation terminals). LIVE_HUB_URL /
+Hive / Abliteration and the chains' escalation terminals). LIVE_HUB_URL /
 LIVE_HUB_KEY override the target (default: the local frost hub).
 
 Covers every NON-ablit catalog surface: the Hive brains (deepseek/glm,
-plain + max-think), the NanoGPT hub aliases, and the chains whose helm
+plain + max-think), and the chains whose helm
 and middle are the cheap brains (the ablit terminal only burns on
 escalation) - plus the benign -> full-offensive-hacking -> benign
 conversation lifecycle on a real chain with all three real models.
@@ -31,11 +31,6 @@ MODELS = [
     "glm-5.3-flash",
     "deepfrost-max-think",
     "glmfrost-max-think",
-    # NanoGPT hub aliases (real credits)
-    "DeepMaxNano",
-    "GLMMaxNano",
-    "DeepNano",
-    "GLMNano",
     # chains: hive helm/middle brains; ablit terminal only on escalation
     "GLMMAX>DEEP>ABLITV2L",
     "DEEPMAX>GLM>ABLITV2L",

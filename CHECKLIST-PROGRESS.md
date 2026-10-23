@@ -32,7 +32,7 @@
 
 Note: the gx10 tree has no git; compare with
 `git ls-files … | Get-FileHash` locally vs `find . -name … -print0 | xargs -0 md5sum` over SSH
-(exclusions: `nanogpt/ tars/ .tars-setup/ __pycache__ evals/results/ .staging/ .loki/`).
+(exclusions: `tars/ .tars-setup/ __pycache__ evals/results/ .staging/ .loki/`).
 
 ## Checklist (the 4 places, current state)
 
@@ -48,4 +48,4 @@ Note: the gx10 tree has no git; compare with
   1. "prove the escalation ladder on a real stall" — done (5 attempts, escalated to L4; ALERTS.md logged L3→L4 before the operator fixed the stall)
   2. "prove no-exceptions completion" — done (0 attempts)
 - The `/goal` engine (`goal_engine.py`) proves its own laws: NO EXCEPTIONS (status complete only when every item is done), SURVIVES ANYTHING (atomic ledger), THROUGHPUT (30s polls + L1→L4 escalation — all five escalation levels fired live during item 1).
-- Repo-wide checklists: `docs/epic-ultra-edit-ledger.md` — **129 / 129 edits ticked**; mission ledger (`.loki/mission.json`) — 14 open (pre-remediation rows, superseded), 1 blocked-operator (NanoGPT mgmt token, E15), 3 completed (E16–E18). No `[ ]` checkboxes remain open anywhere in the tree.
+- Repo-wide checklists: `docs/epic-ultra-edit-ledger.md` — **129 / 129 edits ticked**; mission ledger (`.loki/mission.json`) — 14 open (pre-remediation rows, superseded), 1 blocked-operator (retired nano mgmt token, E15), 3 completed (E16–E18). No `[ ]` checkboxes remain open anywhere in the tree.

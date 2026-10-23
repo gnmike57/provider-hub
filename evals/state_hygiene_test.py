@@ -343,10 +343,7 @@ def test_hub_display_is_derived_from_hub_model_aliases():
     import providers
 
     expected = {
-        "deepmaxnano": ("DeepMaxNano", "deepseek/deepseek-v4.1-flash", "nano", True),
-        "glmmaxnano": ("GLMMaxNano", "zai-org/glm-5.3-flash", "nano", True),
-        "deepnano": ("DeepNano", "deepseek/deepseek-v4.1-flash", "nano", False),
-        "glmnano": ("GLMNano", "zai-org/glm-5.3-flash", "nano", False),
+        # (the four nano aliases retired with the provider, 2026-10-23)
         "deepmaxablit.ai": ("DeepMaxAblit.ai", "abliterated-model-large", "ablit.ai", True),
         "glmmaxablit.ai": ("GLMMaxAblit.ai", "abliterated-model-large-v2", "ablit.ai", True),
         "deepablit.ai": ("DeepAblit.ai", "abliterated-model-large", "ablit.ai", False),
@@ -356,14 +353,18 @@ def test_hub_display_is_derived_from_hub_model_aliases():
         "teamdeep": ("TeamDeep", "deepseek-ai/deepseek-v4.1-flash-1017", "hive", False),
         "teamabliterated": ("TeamAblit.ai", "abliterated-model-large-v2", "ablit.ai", False),
         "team": ("Team", "abliterated-model-large-v2", "ablit.ai", False),
+        # REACTIVATION WAVE (2026-10-23): glmvision = the multimodal
+        # abliterated-model via the tars-router. "glm" is a known stem, the
+        # rest keeps verbatim (the W5 unknown-stem rule).
+        "glmvision": ("GLMvision", "abliterated-model", "tars-router", False),
     }
     assert providers._HUB_DISPLAY == expected
     assert list(providers._HUB_DISPLAY) == list(providers.HUB_MODEL_ALIASES)
     listing = providers.hub_models_for_listing()
     assert [m["description"] for m in listing] == [
-        "DeepMaxNano", "GLMMaxNano", "DeepNano", "GLMNano",
         "DeepMaxAblit.ai", "GLMMaxAblit.ai", "DeepAblit.ai", "GLMAblit.ai",
         "TeamGLM", "TeamDeep", "TeamAblit.ai", "Team",
+        "GLMvision",
     ]
     # the derivation is total: an unknown stem never breaks the listing
     assert providers._hub_display_name("deepfrost") == "Deepfrost"

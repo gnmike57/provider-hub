@@ -375,7 +375,7 @@ def test_clean_multi_turn_conversation_does_not_divert(client, script):
 def test_divert_bounds_the_specialist_budget(client, script):
     """The divert used to send NO max_tokens (found live 2026-10-18).
 
-    A prepaid specialist (NanoGPT) then reserved funds for 64000 output tokens
+    A prepaid specialist then reserved funds for 64000 output tokens
     on every divert and 402'd on a balance the actual answer would have fit
     into many times over. /v1/execute (4096) and the hedge (HEDGE_MAX_TOKENS)
     already bounded their specialist calls; the divert was the only unbounded

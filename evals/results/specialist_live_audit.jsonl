@@ -1,1 +1,2 @@
 {"ts": 1792080156.975, "request_id": "gw-558758be3cbb", "principal": "", "primary_model": "unused-on-forced-divert", "worker_model": "abliteration-ai/abliterated-model-large-v2", "routing_signal": "forced_attack_content", "mode": "stream", "artifact_sha256": null, "deliverable_sha256": null}
+{"ts": 1792755414.656, "request_id": "gw-e01c675209a4", "principal": "", "primary_model": "zai-org/glm-5.3-flash", "worker_model": "glm-5.3-flash", "routing_signal": "gx10_offload_hit", "mode": "offload", "artifact_sha256": null, "deliverable_sha256": null}

@@ -1,7 +1,0 @@
-# NanoGPT A2A server dependencies (verified installed on this machine).
-# The A2A guide's install line; http-server extra pulls Starlette + SSE.
-a2a-sdk[http-server]>=1,<2
-openai>=1.0
-uvicorn
-fastapi
-# MCP server (Node) is separate: npm install -g @nanogpt/mcp  (or run via npx)

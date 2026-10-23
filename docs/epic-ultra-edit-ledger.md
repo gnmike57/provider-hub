@@ -1124,7 +1124,7 @@ Edit #1: account_pool.py (NEW) - the adapted design: token buckets per
   reference's asyncio.Lock): the hook runs in header construction on the
   event loop. ACCOUNT_POOL_FILE/_KEYS/_ENABLED/_*_RPS/_COOLDOWN_S envs.
 Edit #2: account_pool.json (NEW, gitignored) - 9 accounts: 5 Hive secrets,
-  3 Abliteration ak_ keys, 1 NanoGPT cat_ key. Hive auth = SECRET key only
+  3 Abliteration ak_ keys, 1 nano cat_ key. Hive auth = SECRET key only
   (access keys answer 401; tools/hive/README.md) - access keys not stored.
 Edit #3: proxy_gateway.py - open_primary/open_fallback re-pick the account
   on EVERY attempt (429 rotates accounts instead of retrying the same
@@ -1139,7 +1139,7 @@ Edit #5: abliteration_pool.json - the minted hub-pool keys DELETED from
 Edit #6: DeepSeek 1017 replacement across live code + tools + registry +
   tars/gx10-router yaml + test pins (providers.py alias/chain/team tables,
   FROST_REGISTRY, escalation middle, gateway_registry.json, tools/hive/*,
-  10 eval files). Historical evidence (evals/results/) and the NanoGPT
+  10 eval files). Historical evidence (evals/results/) and the nano
   catalog id (deepseek/deepseek-v4.1-flash) intentionally unchanged.
 Edit #7: evals/account_pool_test.py (NEW) - 19 hermetic tests: bucket
   refill/burst, 429-vs-depletion semantics, sticky hash determinism, WLIF

@@ -1,10 +1,10 @@
-"""LIVE proof the hedge DIVERTS to the mimo worker when the sovereign refuses.
+"""LIVE proof the hedge DIVERTS to the worker when the sovereign refuses.
 
 The gateway's real hedge commit rule means a clean sovereign wins the race and
 the worker buffer is discarded (correct). So to observe the worker branch
 actually SERVING, the sovereign must be screened out - a refusal. Here the
 sovereign is a local refusing mock and the worker is the REAL resolved slot
-(xiaomi/mimo-v2.6-flash-abliterated on NanoGPT), so the divert is end-to-end
+(the local gx10 router's CYBER-FROST model), so the divert is end-to-end
 real on the worker side.
 
 Usage:  python tools/hive/verify_hedge_worker_live.py
@@ -17,8 +17,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
-WORKER_EXPECT = "xiaomi/mimo-v2.6-flash-abliterated"
+WORKER_EXPECT = "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw"
 SOV_URL = "http://sovereign.test/v1/chat/completions"
+
 
 REFUSAL = (
     'data: {"id":"s1","object":"chat.completion.chunk","model":"sovereign",'
@@ -39,7 +40,7 @@ def _win_value(name):
 
 
 def _seed():
-    for var in ("NANOGPT_API_KEY", "WORKER_API_URL", "WORKER_MODEL"):
+    for var in ("ABLITERATION_API_KEY", "WORKER_API_URL", "WORKER_MODEL"):
         val = os.environ.get(var) or _win_value(var)
         if val:
             os.environ[var] = val
@@ -93,7 +94,7 @@ async def _run():
     print(f"head={snippet!r}")
 
     ok = WORKER_EXPECT in body and "taking over" in body
-    print("\nRESULT:", "PASS - hedge diverted to the mimo worker" if ok else "FAIL")
+    print("\nRESULT:", "PASS - hedge diverted to the worker" if ok else "FAIL")
     return 0 if ok else 1
 
 

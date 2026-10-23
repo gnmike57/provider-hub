@@ -14,7 +14,7 @@ import pytest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SECRET_PATTERNS = [
-    re.compile(r"sk-[A-Za-z0-9_\-]{8,}"),   # OpenAI/NanoGPT-style keys
+    re.compile(r"sk-[A-Za-z0-9_\-]{8,}"),   # OpenAI-style keys
     re.compile(r"\bak_[A-Za-z0-9_\-]{6,}"), # Abliteration ak_ keys
     re.compile(r"Bearer\s+[A-Za-z0-9_\-]{12,}"),  # pasted Authorization headers
 ]

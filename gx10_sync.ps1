@@ -61,7 +61,7 @@ $PUSH_PATTERNS = @("*.py", "*.ps1", "*.sh", "*.md", "*.json", "*.yaml", "*.yml")
 $EXCL_DIRS = @("\.git\", "\__pycache__\", "\.loki\", "\.mypy_cache\",
                "\.pytest_cache\", "\.ruff_cache\", "\.staging\",
                "\.tars-setup\", "\.tars\", "\node_modules\",
-               "\.idea\", "\evals\results\", "\nanogpt\", "\tars\")
+               "\.idea\", "\evals\results\", "\tars\")
 # never push live-secret state files (the box serves from its own registry;
 # the credential pools are local vaults and must not leave this machine)
 $EXCL_FILES = @("gateway_registry.json", "account_pool.json",
@@ -125,7 +125,7 @@ function Invoke-Verify {
     # to $HOME) and find swept the whole home tree (osint/venv, .cargo).
     # Direct ssh command form + explicit venv/vendor exclusions = the
     # check now scopes to the mirrored project only.
-    $find = "find . -name '*.py' -not -path '*__pycache__*' -not -path '*/venv/*' -not -path '*/.venv/*' -not -path '*/.cargo/*' -not -path '*/node_modules/*' -not -path './nanogpt/*' -not -path './tars/*' -not -path './evals/results/*' -not -path './.tars-setup/*' -print0 | xargs -0 -n 32 python3 -m py_compile && echo GX10_COMPILE_OK || echo GX10_COMPILE_FAIL"
+    $find = "find . -name '*.py' -not -path '*__pycache__*' -not -path '*/venv/*' -not -path '*/.venv/*' -not -path '*/.cargo/*' -not -path '*/node_modules/*' -not -path './tars/*' -not -path './evals/results/*' -not -path './.tars-setup/*' -print0 | xargs -0 -n 32 python3 -m py_compile && echo GX10_COMPILE_OK || echo GX10_COMPILE_FAIL"
     ssh $SSH "cd $Remote && $find"
 }
 
@@ -173,7 +173,7 @@ if ($Watch) {
     $onEvent = {
         $e = $Event.SourceEventArgs
         $full = $e.FullPath
-        if (($full -notmatch '__pycache__|\.git\\|\.loki|\.mypy_cache|\.pytest_cache|\.ruff_cache|\.staging|\.tars|\.idea|evals\\results|nanogpt\\|node_modules') -and
+        if (($full -notmatch '__pycache__|\.git\\|\.loki|\.mypy_cache|\.pytest_cache|\.ruff_cache|\.staging|\.tars|\.idea|evals\\results|node_modules') -and
             ($EXCL_FILES -notcontains (Split-Path $full -Leaf))) {
             if ($full -match '\.(py|ps1|sh|md|json|ya?ml)$') {
                 $rel = $full.Substring($ROOT.Length).TrimStart('\', '/') -replace '\\', '/'

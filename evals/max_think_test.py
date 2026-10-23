@@ -5,8 +5,8 @@ pushed to maximum. The gateway injects the knob set server-side (never
 trusted from the body), raises the token floor, and skips the speculative
 race (COMMIT_TOKENS=10 would commit the flash worker mid-deliberation).
 When the primary refuses, the existing divert machinery routes to the
-NanoGPT abliterated specialist (worker slot) - exactly like a plain Frost
-name. The max-reasoning names are published as dedicated endpoints.
+abliterated specialist (worker slot, Abliteration.ai) - exactly like a plain
+Frost name. The max-reasoning names are published as dedicated endpoints.
 """
 
 import providers
@@ -41,7 +41,7 @@ def test_max_think_detector_matches_the_names_and_nothing_else():
 
 def test_max_think_name_streams_and_hits_the_primary(script):
     """Max-reasoning names stay on the PRIMARY slot (Hive / thehive.ai keys)
-    with the Hive upstream id - the NanoGPT abliterated specialist is reached
+    with the Hive upstream id - the abliterated specialist is reached
     only through the normal divert path, not by alias routing."""
     script.script(PRIMARY, [("sse", [chunk("deep", finish="stop"), DONE])])
     with TestClient(proxy_gateway.app) as tc:
@@ -117,10 +117,10 @@ def test_max_think_never_races_the_speculative_hedge(script):
         "a max-think request must never dispatch the worker slot")
 
 
-def test_max_think_refusal_diverts_to_the_nanogpt_specialist(script):
+def test_max_think_refusal_diverts_to_the_specialist(script):
     """The max-think name is a PRIMARY model; when the primary refuses, the
-    existing divert machinery routes to the worker slot (the NanoGPT
-    abliterated specialist) - exactly like a plain Frost name."""
+    existing divert machinery routes to the worker slot (the abliterated
+    specialist on Abliteration.ai) - exactly like a plain Frost name."""
     script.script(PRIMARY, [("sse", [chunk("I cannot help with that", finish="stop"), DONE])])
     script.script(WORKER, [("sse", [chunk("specialist-answer", finish="stop"), DONE])])
     with TestClient(proxy_gateway.app) as tc:

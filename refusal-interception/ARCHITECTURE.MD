@@ -252,7 +252,7 @@ Cline config fallback (with warning). The gateway itself only reads env vars.
 | Group | Variables | Default |
 |---|---|---|
 | Primary | `PRIMARY_API_URL/KEY/MODEL` (bridged to `HIVE_API_BASE`/`HIVE_SECRET_KEY` when unset) | Hive `zai-org/glm-5.3-flash`, else OpenAI `gpt-4o` |
-| Specialist | `SPECIALIST_API_URL/KEY/MODEL` (override `FALLBACK_*`; key falls through to `NANOGPT_API_KEY`) | local vLLM `:8000`, `Qwen3.6-35B-A3B-abliterated-NVFP4-MTP` |
+| Specialist | `SPECIALIST_API_URL/KEY/MODEL` (override `FALLBACK_*`; key falls through to `ABLITERATION_API_KEY`) | local vLLM `:8000`, `Qwen3.6-35B-A3B-abliterated-NVFP4-MTP` |
 | Buffer | `BUFFER_CONTENT_TOKENS`, `BUFFER_REASONING` | `10`, `0` (reasoning never counted) |
 | Retry | `MAX_ATTEMPTS`, `RETRY_BASE_DELAY`, `FALLBACK_MAX_ATTEMPTS` | `3`, `0.5`, `3` |
 | Assembly | `ASSEMBLY_ENABLED`, `ORCHESTRATOR_MODEL`, `FANOUT_MAX_PARALLEL` | `1`, = primary, `4` |
@@ -316,6 +316,20 @@ load without litellm installed.
 Run all: `./run_all_tests.sh`. See `README.md` for results and `corrections-ledger.md`
 for the B/E defect IDs referenced above. (`evals/tinfoil_live_test.py` from the old doc
 no longer exists; `evals/live_stack_test.py` is the live-suite home.)
+
+---
+
+## S1 / tier1 contract (2026-10-23, master plan Phase 0.4)
+
+The `tier1_thinking_only` divert sits BEHIND the reasoning-aware S1 length
+auto-continue: a reasoning-only stream cut at `finish_reason="length"`
+continues seamlessly BEFORE the state machine's end-of-stream judges can see
+it, so the divert now only fires on genuine stop-finishes that produced
+reasoning but zero content (never ship "thinking" as the answer). Both
+layers are required: S1 heals the cut; tier1 rescues the thought-only
+finish. The same zero-refusal law now covers the race continuation tail
+(`race_refusal_tail_total`): a continuation that answers with a refusal
+escalates to the terminal instead of shipping.
 
 
 

@@ -220,6 +220,81 @@ CONSTELLATION_CHAINS = {
         "redhands": True,
         "sustained": True,
     },
+    # REACTIVATION WAVE (2026-10-23, operator correction): the two disabled
+    # ABLIT-helm chains return to the live catalog (HIDE_ABLIT_MODELS=0 at
+    # launch) and three SLIGHT variations join - same general scope
+    # (censorship-survival offensive constellation), different
+    # order/composition. ADDITIVE: the seven published chains above stay
+    # byte-identical (option-parity law). CYBER-FROST stays retired.
+    #   8. DEEPMAX unc-middle - the mirror of chain 4: a DeepSeek-max helm
+    #      meets the uncensored middle before the V2 terminal burns.
+    #   9. SUB-DEEP/GLM - the order mirror of ABLITV2L>SUB-GLM/DEEP.
+    #  10. DEEP-PROBE sustained - the order mirror of the sustained chain.
+    #  11. GLM reasoning-mode race - GLMMAX vs GLM (thinking disabled) in
+    #      parallel: the same brain in two modes.
+    #  12. DEEP reasoning-mode race - DEEPMAX vs DEEP (effort none) in
+    #      parallel: the same brain in two modes.
+    "DEEPMAX>ABLIT-UNC>ABLITV2L": {
+        "description": "DeepSeek max-reasoning helm; uncensored Abliterated "
+                       "Large middle; Abliterated V2 Large terminal (REDHANDS "
+                       "on offense).",
+        "helm": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", True),
+        "middle": ("ablit.ai", "abliterated-model-large", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": False,
+    },
+    "ABLITV2L>SUB-DEEP/GLM": {
+        "description": "Abliterated V2 Large brain under the REDHANDS laws; "
+                       "DeepSeek blind sub-agent raced, GLM secondary worker "
+                       "(the order mirror of ABLITV2L>SUB-GLM/DEEP).",
+        "helm": ("ablit.ai", "abliterated-model-large-v2", False),
+        "middle": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": True,
+    },
+    "ABLITV2L-HELM>DEEP-PROBE>GLM-VERIFY": {
+        "description": "Abliterated V2 Large helm under the REDHANDS laws "
+                       "(sustained offense); DeepSeek cheap pre-probe screens "
+                       "simple asks; GLM verifies the evidence claims (the "
+                       "order mirror of ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY).",
+        "helm": ("ablit.ai", "abliterated-model-large-v2", False),
+        "middle": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "verify": ("primary", "zai-org/glm-5.3-flash", False),
+        "redhands": True,
+        "sustained": True,
+    },
+    # REASONING-MODE RACES (operator directive 2026-10-23): one for GLM, one
+    # for DeepSeek - the same brain races ITSELF in two modes: the max-
+    # reasoning candidate deliberates while the no-reasoning candidate answers
+    # fast. The first clean substantive answer commits and wins (the fast
+    # lane on simple asks, the deep lane on hard ones).
+    "RACE:GLMMAX/GLM>ABLITV2L": {
+        "description": "GLM-5.3 races ITSELF in two reasoning modes - the "
+                       "max-reasoning candidate and the no-reasoning "
+                       "candidate (thinking disabled) fire in parallel; the "
+                       "first clean substantive answer commits and wins; "
+                       "both refusing climbs to the Abliterated V2 Large "
+                       "terminal (REDHANDS on offense).",
+        "helm": ("primary", "zai-org/glm-5.3-flash", True),
+        "middle": ("primary", "zai-org/glm-5.3-flash", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": False,
+        "race": True,
+    },
+    "RACE:DEEPMAX/DEEP>ABLITV2L": {
+        "description": "DeepSeek races ITSELF in two reasoning modes - the "
+                       "max-reasoning candidate (reasoning_effort=max) and "
+                       "the no-reasoning candidate (reasoning_effort=none) "
+                       "fire in parallel; the first clean substantive answer "
+                       "commits and wins; both refusing climbs to the "
+                       "Abliterated V2 Large terminal (REDHANDS on offense).",
+        "helm": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", True),
+        "middle": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", False),
+        "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
+        "redhands": False,
+        "race": True,
+    },
 }
 
 _CONSTELLATION_LOOKUP = {
@@ -244,15 +319,10 @@ def resolve_constellation_chain(model: str):
 # a provider, an upstream model id, and a reasoning mode.
 #
 #   <Provider><Model><Reasoning>
-#   Provider: nano        -> NanoGPT (NANOGPT_API_URL/KEY)
-#             ablit.ai    -> Abliteration.ai (ABLITERATION_API_URL/KEY)
+#   Provider: ablit.ai    -> Abliteration.ai (ABLITERATION_API_URL/KEY)
+#             (nano -> the retired nano provider, gone from the hub 2026-10-23)
 #   Model:    deep/glm name the matrix SLOT, resolved per provider (verified
 #             against each live catalog, 2026-10-18):
-#               nano     deep -> deepseek/deepseek-v4.1-flash (nano's own
-#                                catalog id; Hive's deepseek-ai/ prefix is
-#                                not carried there - measured live; a
-#                                ":thinking" deployment variant also exists)
-#               nano     glm  -> zai-org/glm-5.3-flash
 #               ablit.ai deep -> abliterated-model-large (their catalog has no
 #                                DeepSeek model; this is their other frontier
 #                                reasoning model, prev-gen GLM-4 based)
@@ -262,8 +332,7 @@ def resolve_constellation_chain(model: str):
 #   Reasoning: max        -> reasoning knobs pushed to maximum
 #                       (absent)  -> normal reasoning
 #
-# Eight aliases: DeepMaxNano, GLMMaxNano, DeepNano, GLMNano,
-#                DeepMaxAblit.ai, GLMMaxAblit.ai, DeepAblit.ai, GLMAblit.ai
+# Four aliases: DeepMaxAblit.ai, GLMMaxAblit.ai, DeepAblit.ai, GLMAblit.ai
 # --------------------------------------------------------------------------
 
 HUB_PROVIDERS = {
@@ -277,22 +346,25 @@ HUB_PROVIDERS = {
             "HIVE_API_URL", "https://api-cdn.thehive.ai/api/v3/chat/completions"),
         "key": os.getenv("HIVE_SECRET_KEY", ""),
     },
-    "nano": {
-        "url": os.getenv("NANOGPT_API_URL", "https://nano-gpt.com/api/v1/chat/completions"),
-        "key": os.getenv("NANOGPT_API_KEY", ""),
-    },
     "ablit.ai": {
         "url": os.getenv("ABLITERATION_API_URL", "https://api.abliteration.ai/v1/chat/completions"),
+        "key": os.getenv("ABLITERATION_API_KEY", ""),
+    },
+    # (CYBER-FROST stayed retired per the operator's correction, 2026-10-23.)
+    # TARS HYBRID ROUTER (multimodal reactivation 2026-10-23): the gx10
+    # router's MULTIMODAL abliterated-model (vision-capable passthrough) -
+    # auth is the Abliteration chat key (the router forwards to V2 large).
+    "tars-router": {
+        "url": os.getenv("TARS_ROUTER_API_URL",
+                         "http://gx10.ayu-sidewinder.ts.net:4001/v1/chat/completions"),
         "key": os.getenv("ABLITERATION_API_KEY", ""),
     },
 }
 
 # normalized alias -> (provider_key, upstream_model_id, max_reasoning)
 HUB_MODEL_ALIASES = {
-    "deepmaxnano": ("nano", "deepseek/deepseek-v4.1-flash", True),
-    "glmmaxnano": ("nano", "zai-org/glm-5.3-flash", True),
-    "deepnano": ("nano", "deepseek/deepseek-v4.1-flash", False),
-    "glmnano": ("nano", "zai-org/glm-5.3-flash", False),
+    # (nano aliases retired 2026-10-23 with the provider: DeepMaxNano,
+    # GLMMaxNano, DeepNano, GLMNano no longer resolve.)
     "deepmaxablit.ai": ("ablit.ai", "abliterated-model-large", True),
     "glmmaxablit.ai": ("ablit.ai", "abliterated-model-large-v2", True),
     "deepablit.ai": ("ablit.ai", "abliterated-model-large", False),
@@ -307,6 +379,9 @@ HUB_MODEL_ALIASES = {
     "teamdeep": ("hive", "deepseek-ai/deepseek-v4.1-flash-1017", False),
     "teamabliterated": ("ablit.ai", "abliterated-model-large-v2", False),
     "team": ("ablit.ai", "abliterated-model-large-v2", False),
+    # REACTIVATION WAVE (2026-10-23): glmvision = the MULTIMODAL
+    # abliterated-model via the tars-router (vision-capable).
+    "glmvision": ("tars-router", "abliterated-model", False),
 }
 # W5 hygiene: the display derivation IS the aliases (test_hub_display_
 # is_derived_from_hub_model_aliases). "team" is a word stem, so it joins the
@@ -327,7 +402,6 @@ _HUB_DISPLAY_TOKENS = (
     ("deep", "Deep"),
     ("glm", "GLM"),
     ("max", "Max"),
-    ("nano", "Nano"),
 )
 
 
@@ -365,7 +439,7 @@ def _normalize_model_name(model: str) -> str:
 
 
 def resolve_hub_alias(model: str):
-    """`"DeepMaxNano"` -> `("nano", "deepseek-ai/deepseek-v4.1-flash-1017", True)`.
+    """`"DeepMaxAblit.ai"` -> `("ablit.ai", "abliterated-model-large", True)`.
 
     Returns None for anything that is not a hub alias, so raw upstream ids and
     Frost names keep their existing behaviour.

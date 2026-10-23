@@ -24,6 +24,8 @@ import contextlib
 import json
 import logging
 import os
+import re
+import time
 import uuid
 from typing import AsyncGenerator
 
@@ -67,12 +69,13 @@ class HedgeSettings:
         # the two slots resolve the SAME way - a hedge branch that is handed
         # "none" sends no Authorization header and dies with a 401 against any
         # hosted provider. Order: WORKER_API_KEY -> SPECIALIST_API_KEY ->
-        # FALLBACK_API_KEY -> NANOGPT_API_KEY -> "none" (the local hub's sentinel).
+        # FALLBACK_API_KEY -> ABLITERATION_API_KEY -> "none" (the local hub's
+        # sentinel; the retired nano provider's key left the chain 2026-10-23).
         self.worker_key = (
             os.getenv("WORKER_API_KEY")
             or os.getenv("SPECIALIST_API_KEY")
             or os.getenv("FALLBACK_API_KEY")
-            or os.getenv("NANOGPT_API_KEY")
+            or os.getenv("ABLITERATION_API_KEY")
             or "none"
         )
         self.worker_model = os.getenv("WORKER_MODEL") or os.getenv(
@@ -111,6 +114,186 @@ SETTINGS = HedgeSettings()
 
 log = logging.getLogger("speculative_hedge")
 
+
+# (I1, 2026-10-23 live matrix) MARKER LAW: [[GW-*]] protocol markers never
+# ship. The completion contract teaches the checklist, so race winners echo
+# it into the client stream - scrub every winner line before it yields.
+_GW_MARKER_RE = re.compile(r"\s*\[\[GW-[A-Z]+(?::[^\]]*)?\]\]")
+
+
+def _scrub_gw_markers(text):
+    return _GW_MARKER_RE.sub("", text or "")
+
+
+def _scrub_line(line):
+    """A `data: ...` SSE line with [[GW-*]] markers stripped from its
+    content (trailing newlines preserved on the rebuilt line)."""
+    if "[" not in (line or ""):
+        return line
+    core = (line or "").rstrip("\r\n")
+    tail = (line or "")[len(core):]
+    try:
+        ev = json.loads(core[5:].strip())
+        ch = (ev.get("choices") or [{}])[0] or {}
+        d = ch.get("delta") or {}
+        if isinstance(d.get("content"), str) and d["content"]:
+            d["content"] = _scrub_gw_markers(d["content"])
+            return "data: " + json.dumps(ev, ensure_ascii=False) + tail
+    except Exception:  # noqa: BLE001 - unparseable: verbatim
+        pass
+    return line
+
+
+# (I1b, 2026-10-23 live forensic) a marker SPLIT across delta chunks
+# ([[GW-CHE|CKLIST]]) reassembled in the client stream past the line-local
+# scrub. Worse: Hive streams ~2-4 chars per delta, so the marker arrives
+# SHATTERED across many lines and no single line even contains "[[GW-" -
+# every substring guard missed it. This scrubber engages on ANY "[[" and
+# carries an unterminated marker-ish tail between lines: a complete marker
+# never ships, however finely it is split; flush() releases any plain
+# remainder (dropping a never-closed fragment) at stream end.
+
+
+# (RACE v2, operator directive 2026-10-23 evening) LIVE PEER-LEARNING: the
+# second candidate opens WITH the first candidate's clean partial in context
+# ("learn from each other as they are both working towards the same
+# solution"). A draft that anchors a refusal - or reads watered-down
+# ("possibly refusing") - NEVER seeds a peer: such a candidate is SILENCED
+# for the remainder of the race.
+
+
+def _race_peer_learning_on():
+    return os.getenv("RACE_PEER_LEARNING", "1").strip().lower() not in (
+        "0", "false", "no", "off")
+
+
+def _race_peer_min_chars():
+    try:
+        return max(20, int(os.getenv("RACE_PEER_MIN_CHARS", "120")))
+    except ValueError:
+        return 120
+
+
+def _race_peer_max_wait_ms():
+    try:
+        return max(200, int(os.getenv("RACE_PEER_MAX_WAIT_MS", "2500")))
+    except ValueError:
+        return 2500
+
+
+def _race_grace_ms():
+    """(RACE v2) the winner chooser's grace: after the first clean commit,
+    other candidates get this long to also commit; the best FINAL answer
+    (substantiveness + completion) wins instead of merely the fastest."""
+    try:
+        return max(0, int(os.getenv("RACE_GRACE_MS", "2000")))
+    except ValueError:
+        return 2000
+
+
+def _inject_peer_draft(messages, draft):
+    """The peer draft rides BEFORE the trailing user turn - the pinned
+    presignal shape holds (the conversation still ends on the ask)."""
+    msgs = [m for m in (messages or []) if isinstance(m, dict)]
+    note = ("PEER DRAFT - another model is working the same ask and has "
+            "produced the partial answer below. Learn from it, correct "
+            "anything wrong in it, and give your OWN complete answer:\n\n"
+            + (draft or ""))
+    last = msgs[-1] if msgs and msgs[-1].get("role") == "user" else None
+    if last is None:
+        return msgs + [{"role": "user", "content": note}]
+    return msgs[:-1] + [{"role": "user", "content": note}, last]
+
+
+def _peer_seed_ok(text):
+    """A peer draft may seed only when CLEAN: no refusal core AND no
+    watered-down/deflection costume (zero_refusal_violation)."""
+    t = (text or "").strip()
+    if len(t) < 40:
+        return False
+    return routing_patterns.zero_refusal_violation(t) is None
+
+
+class _MarkerScrubber:
+    # any unterminated marker-ish tail: a lone "[", "[[", "[[G, "[[GW-",
+    # "[[GW-CHEC", "[[GW-CHECKLIST, and 0-2 closing brackets. (Live capture
+    # 2026-10-23: the marker arrived as ["[", "[GW-C", "HECKLIST", "]]..."] -
+    # a SINGLE bracket opened it, so the hold must engage from "[" alone.
+    # Whitespace is held ONLY as a marker prefix (\s*\[) - a bare trailing
+    # space is payload, never held.
+    _PARTIAL = re.compile(r"(?:\s*\[\[(?:G?W?-?[A-Z]*(?::[^\]]*)?)?\]?\]?|\s*\[)?$")
+
+    def __init__(self):
+        self.carry = ""
+        self.last_id = None
+
+    def text(self, t):
+        buf = self.carry + (t or "")
+        self.carry = ""
+        m = self._PARTIAL.search(buf)
+        if m:
+            self.carry = m.group(0)
+            buf = buf[:m.start()]
+        return _GW_MARKER_RE.sub("", buf)
+
+    def line(self, ln):
+        """A `data: ...` SSE line scrubbed through the carry state. The
+        input may carry its own trailing newlines (the relay passes whole
+        byte-chunks) - they are preserved on the rebuilt line."""
+        if "[" not in (ln or "") and not self.carry:
+            return ln
+        core = (ln or "").rstrip("\r\n")
+        tail = (ln or "")[len(core):]
+        try:
+            ev = json.loads(core[5:].strip())
+            if ev.get("id"):
+                self.last_id = ev["id"]
+            ch = (ev.get("choices") or [{}])[0] or {}
+            d = ch.get("delta") or {}
+            if isinstance(d.get("content"), str) and d["content"]:
+                d["content"] = self.text(d["content"])
+                out = "data: " + json.dumps(ev, ensure_ascii=False) + tail
+                if "[[GW-" in out:
+                    # (I1b live forensic) a marker escaped the scrub - the
+                    # regexes must cover every shipped shape; log it loudly.
+                    log.error("marker escape after scrub: %s", out[:200])
+                return out
+        except Exception:  # noqa: BLE001 - unparseable: verbatim
+            pass
+        return ln
+
+    def flush_line(self):
+        """The final content line releasing any held plain text, or None."""
+        out = _GW_MARKER_RE.sub("", self.carry)
+        out = self._PARTIAL.sub("", out)  # a never-closed marker is dropped
+        self.carry = ""
+        if not out:
+            return None
+        return ("data: " + json.dumps(
+            {"id": self.last_id,
+             "choices": [{"delta": {"content": out}}]},
+            ensure_ascii=False) + "\n\n")
+
+# (2026-10-23 efficiency matrix) TRUE upstream spend: every generated char
+# the hub receives from any provider branch - winners, shadow-race losers,
+# escalations, continuations - counted exactly once. Surfaced via
+# proxy_gateway.metrics_snapshot() as hedge_upstream_chars_total; the
+# efficiency matrix divides by 4 for a token estimate.
+_UPSTREAM_CHARS = {"n": 0}
+
+
+def _bump_upstream(n):
+    try:
+        _UPSTREAM_CHARS["n"] += int(n or 0)
+    except Exception:  # noqa: BLE001 - accounting never kills the stream
+        pass
+
+
+def hedge_upstream_chars():
+    """Snapshot for the gateway's /metrics + /healthz."""
+    return _UPSTREAM_CHARS["n"]
+
+
 # F8 observability. A worker branch that failed used to collapse into a bare
 # `worker = None` with the exception discarded, so a request could fall back to
 # the sovereign without a single trace in any log or metric. Counted and logged
@@ -123,7 +306,8 @@ _FAILURES = {"transport_error": 0, "bad_status": 0, "empty_sovereign": 0}
 # many length-finish continuations fired - surfaced through
 # proxy_gateway.metrics_snapshot() as race_won_<role>_total /
 # race_length_continue_total (same accessor pattern as hedge_failure_counts).
-_RACE_OUTCOMES = {"won_helm": 0, "won_middle": 0, "length_continue": 0}
+_RACE_OUTCOMES = {"won_helm": 0, "won_middle": 0, "length_continue": 0,
+                 "refusal_tail": 0}
 
 
 def race_outcome_counts() -> dict:
@@ -247,6 +431,38 @@ async def hedge_stream(
     drain-and-footnote behaviour."""
     s = settings or SETTINGS
     from context_formatter import DEFAULT_SYSTEM  # local: avoids an import cycle
+
+    # (BR-1, operator directive 2026-10-23 evening) HEDGE_RACE_MODE: the
+    # hedge's shadow-race becomes a TRUE commit-race - both branches stream
+    # for real, the first clean substantive answer commits and WINS (the race
+    # rules: F1/B21 screening, refusal-silencing, peer-learning, the grace
+    # chooser, cancel-on-commit). The DEEP/GLM middle stops being a
+    # failure-only fallback and contributes on every request; both refusing
+    # escalates via `escalate` exactly as before. Kill switch:
+    # HEDGE_RACE_MODE=0 restores the shadow-race.
+    if (os.getenv("HEDGE_RACE_MODE", "1").strip().lower()
+            not in ("0", "false", "no", "off")
+            and s.worker_url and s.sovereign_url and escalate is not None):
+        _own = client is None
+        if _own:
+            client = make_client()
+        async for chunk in race_stream(
+                messages,
+                settings=s,
+                candidates=[
+                    (s.sovereign_url, s.sovereign_key, s.sovereign_model,
+                     True),
+                    (s.worker_url, s.worker_key, s.worker_model, False)],
+                escalate=escalate,
+                client=client,
+                tools=tools,
+                tool_choice=tool_choice,
+                labels=("helm", "middle")):
+            yield chunk
+        if _own:
+            with contextlib.suppress(Exception):
+                await client.aclose()
+        return
     sid = f"hedge-{uuid.uuid4().hex[:12]}"  # R1: one id for the whole stream
 
     worker_msgs = [
@@ -408,6 +624,12 @@ async def hedge_stream(
                         if finish == "timeout" or delta.get("error") or ev.get("error"):
                             use_worker = True  # Tier 1: timeout/error -> worker
                             break
+                        # (efficiency matrix) the sovereign's true spend
+                        _bump_upstream(
+                            len(str(delta.get("content") or ""))
+                            + len(str(delta.get("reasoning_content")
+                                      or delta.get("reasoning")
+                                      or delta.get("thinking") or "")))
                         reasoning = (
                             delta.get("reasoning_content")
                             or delta.get("reasoning")
@@ -512,9 +734,22 @@ async def hedge_stream(
             await client.aclose()
 
 async def _replay_sovereign(sovereign, buffered, *, exhausted: bool = False) -> AsyncGenerator[bytes, None]:
+    # (I1b, 2026-10-23 live matrix) the sovereign's replayed buffer is where
+    # a terminal's [[GW-SKILL]]/[[GW-CHECKLIST]] echo shipped raw (chain-1
+    # L_story leak) - the marker law holds on EVERY shipped line, and the
+    # scrubber carries a chunk-split marker across lines.
+    scrub = _MarkerScrubber()
     for line in buffered:
-        yield f"{line}\n\n".encode()
+        if (line.startswith("data:") and line[5:].strip() == "[DONE]"
+                and scrub.carry):
+            _fl = scrub.flush_line()
+            if _fl:
+                yield _fl.encode()  # carry never trails [DONE]
+        yield f"{scrub.line(line)}\n\n".encode()
     if exhausted:
+        _fl = scrub.flush_line()  # a bare-ended buffer releases the carry
+        if _fl:
+            yield _fl.encode()
         return  # body fully read at [DONE]; re-iterating raises StreamConsumed
     # remaining sovereign stream verbatim - single continuous pass (B7)
     try:
@@ -522,7 +757,13 @@ async def _replay_sovereign(sovereign, buffered, *, exhausted: bool = False) -> 
             line = raw.strip()
             if not line:
                 continue
-            yield f"{line}\n\n".encode()
+            if (line.startswith("data:")
+                    and line.replace("data:", "", 1).strip() == "[DONE]"
+                    and scrub.carry):
+                _fl = scrub.flush_line()
+                if _fl:
+                    yield _fl.encode()
+            yield f"{scrub.line(line)}\n\n".encode()
             if line.replace("data:", "").strip() == "[DONE]":
                 return
     except httpx.StreamConsumed:
@@ -548,6 +789,7 @@ async def _drain_worker(worker, s, stream_id: str = "",
     finish_reason = None
     screen_text = ""
     screened_tokens = 0
+    scrub = _MarkerScrubber()  # (I1b) the marker law on every shipped line
     async for raw in worker.aiter_lines():
         line = raw.strip()
         if not line or not line.startswith("data:"):
@@ -565,6 +807,13 @@ async def _drain_worker(worker, s, stream_id: str = "",
                 stream_id = ev["id"]
         except (json.JSONDecodeError, AttributeError, IndexError):
             ev, choice, reason = None, {}, None
+        if ev is not None:
+            # (efficiency matrix) the worker branch's true spend
+            _d = choice.get("delta") or {}
+            _bump_upstream(
+                len(str(_d.get("content") or ""))
+                + len(str(_d.get("reasoning_content") or _d.get("reasoning")
+                          or "")))
         if screen and ev is not None:
             # M1 parity: screen BEFORE any yield so a refusal chunk carrying
             # finish_reason can never ship first.
@@ -587,9 +836,12 @@ async def _drain_worker(worker, s, stream_id: str = "",
             if not any(delta.get(k) for k in ("content", "reasoning_content", "tool_calls")):
                 continue  # pure finish marker: held until after the footnote
             ev["choices"][0]["finish_reason"] = None  # keep the content, hold the finish
-            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n".encode()
+            yield f"{scrub.line('data: ' + json.dumps(ev, ensure_ascii=False))}\n\n".encode()
             continue
-        yield f"{line}\n\n".encode()
+        yield f"{scrub.line(line)}\n\n".encode()
+    _fl = scrub.flush_line()
+    if _fl:
+        yield _fl.encode()  # any held plain text releases before the footnote
     yield (
         f"data: {_chunk({'content': footnote(s.worker_model)}, finish=None, model=s.worker_model, stream_id=stream_id)}\n\n".encode()
     )
@@ -662,7 +914,14 @@ async def race_stream(
         try:
             ev = json.loads(line[5:].strip())
             ch = (ev.get("choices") or [{}])[0]
-            content = str(((ch.get("delta") or {}).get("content")) or "")
+            d = ch.get("delta") or {}
+            content = str(d.get("content") or "")
+            # S1 REASONING (2026-10-23): a reasoning-only cut line still
+            # carries a payload the client must see - keep the line, hold
+            # only the finish (the winner's replay must not drop it).
+            if not content:
+                content = str(d.get("reasoning_content")
+                              or d.get("reasoning") or "")
             if not content:
                 return None
             ev2 = dict(ev)
@@ -719,17 +978,24 @@ async def race_stream(
         return resp
 
     def _clean_commit(r):
-        """The commit rule: past COMMIT_TOKENS content tokens, refusal-free,
+        """The commit rule: past COMMIT_TOKENS output tokens, refusal-free,
         and substantive (the answer must be worth committing)."""
-        return (r["content_tokens"] >= commit_window
+        # S1 REASONING (live defect 2026-10-23): reasoning deltas count as
+        # OUTPUT for the commit window - a reasoning-only candidate used to
+        # never commit (content_tokens stayed 0) so the race escalated to the
+        # terminal on a perfectly alive stream. Refusal SCREENING stays
+        # content-only (F1/B21): a model deliberating "I cannot" must not trip
+        # the refusal detector on its thinking.
+        return (r["content_tokens"] + r["reasoning_tokens"] >= commit_window
                 and not r["refused"]
-                and len(r["screen_text"].strip()) >= min_subst)
+                and len((r["screen_text"] + r["reasoning_text"]).strip()) >= min_subst)
 
     def _exhaust_clean_commit(r):
         """Stream ended without refusing, with substantive content on the
         record: the full buffer replays verbatim (hedge's [DONE] commit)."""
-        return (not r["refused"] and r["content_tokens"] > 0
-                and len(r["screen_text"].strip()) >= min_subst)
+        return (not r["refused"]
+                and r["content_tokens"] + r["reasoning_tokens"] > 0
+                and len((r["screen_text"] + r["reasoning_text"]).strip()) >= min_subst)
     # RACE-PART-1B
     own_client = client is None
     if own_client:
@@ -737,10 +1003,48 @@ async def race_stream(
     try:
         async with contextlib.AsyncExitStack() as stack:
             racers = []
+            queue: asyncio.Queue = asyncio.Queue()
+            _END = object()
+
+            async def _reader(r):
+                try:
+                    async for raw in r["resp"].aiter_lines():
+                        await queue.put((r, raw))
+                except Exception as exc:  # noqa: BLE001 - a dead reader must not sink the race
+                    log.warning("race reader %s failed: %s", r["model"], type(exc).__name__)
+                finally:
+                    await queue.put((r, _END))
+
+            readers = []
             for i, (url, key, model_id, max_reasoning) in enumerate(candidates):
+                _draft = ""
+                if i > 0 and racers and _race_peer_learning_on():
+                    # (RACE v2, operator directive) LIVE PEER-LEARNING: hold
+                    # this candidate until the FIRST has a clean partial (or
+                    # the wait cap) - then open it WITH the peer's draft in
+                    # context. Both models work the same solution and the
+                    # second learns from the first's live progress. A draft
+                    # that anchors a refusal NEVER seeds a peer.
+                    _t0w = time.monotonic()
+                    while True:
+                        _lead = racers[0]
+                        if (len(_lead.get("screen_text") or "")
+                                >= _race_peer_min_chars()
+                                or (time.monotonic() - _t0w) * 1000.0
+                                >= _race_peer_max_wait_ms()
+                                or _lead.get("dead")):
+                            break
+                        await asyncio.sleep(0.15)
+                    _draft = (racers[0].get("screen_text") or "").strip()
+                    if _peer_seed_ok(_draft):
+                        _RACE_OUTCOMES["peer_seeded"] = (
+                            _RACE_OUTCOMES.get("peer_seeded", 0) + 1)
+                    else:
+                        _draft = ""
                 payload = {
                     "model": model_id,
-                    "messages": messages,
+                    "messages": (_inject_peer_draft(messages, _draft)
+                                if _draft else messages),
                     "stream": True,
                     "max_tokens": s.max_tokens,
                     "max_completion_tokens": s.max_tokens,
@@ -758,6 +1062,24 @@ async def race_stream(
                     payload["enable_thinking"] = True
                     payload["chat_template_kwargs"] = {"thinking": True}
                     payload["thinking"] = {"type": "enabled"}
+                else:
+                    # REASONING-MODE RACE (2026-10-23): the NO-reasoning
+                    # candidate of a max-vs-plain self-race - the thinking-
+                    # disable conventions of the gateway's _thinking_off_knobs
+                    # (DeepSeek exposes the real reasoning_effort:none; GLM
+                    # flash is low/high/max only, so it gets the full disable
+                    # set - docs/single-model-chain-plan). Only race chains
+                    # with a plain-flagged middle reach this branch (the
+                    # twin-max race flags both candidates).
+                    if "deep" in str(model_id or "").lower():
+                        payload["reasoning_effort"] = "none"
+                    else:
+                        payload.update({
+                            "reasoning_effort": "none",
+                            "enable_thinking": False,
+                            "chat_template_kwargs": {"thinking": False},
+                            "thinking": {"type": "disabled"},
+                        })
                 if tools:
                     payload["tools"] = tools
                 if tool_choice:
@@ -800,10 +1122,19 @@ async def race_stream(
                     "buffered": [],      # held lines, replayed verbatim on commit
                     "screen_text": "",  # delta.content ONLY (F1/B21)
                     "content_tokens": 0,
+                    # S1 REASONING (live defect 2026-10-23): reasoning deltas
+                    # are output - they arm the commit window and the length
+                    # continuation, but are never refusal-screened.
+                    "reasoning_text": "",
+                    "reasoning_tokens": 0,
+                    "full_text": "",    # content + reasoning in arrival order
                     "refused": False,
                     "exhausted": False,
                     "dead": False,
                 })
+                # (RACE v2) the reader starts IMMEDIATELY - the peer-hold for
+                # the next candidate watches this one's live text.
+                readers.append(asyncio.create_task(_reader(racers[-1])))
 
             if not racers:
                 if escalate is not None:
@@ -818,98 +1149,158 @@ async def race_stream(
             # the main loop applies the commit rules per line. Queue order is
             # arrival order, so the first candidate to actually DELIVER a
             # clean substantive window wins the race (never the open order).
-            queue: asyncio.Queue = asyncio.Queue()
-            _END = object()
-
-            async def _reader(r):
-                try:
-                    async for raw in r["resp"].aiter_lines():
-                        await queue.put((r, raw))
-                except Exception as exc:  # noqa: BLE001 - a dead reader must not sink the race
-                    log.warning("race reader %s failed: %s", r["model"], type(exc).__name__)
-                finally:
-                    await queue.put((r, _END))
-
-            readers = [asyncio.create_task(_reader(r)) for r in racers]
-            winner = None
-            saw_done = False
-
             def _any_alive():
                 return any(not r["dead"] for r in racers)
 
+            def _race_decided():
+                if committers:
+                    if any(c.get("exhausted") for c in committers):
+                        return True  # a complete answer settles the race
+                    if not any(r not in committers and not r["dead"]
+                               for r in racers):
+                        return True  # nobody else can commit
+                    if grace_ms and ((time.monotonic()
+                                      - committers[0]["committed"])
+                                     * 1000.0 >= grace_ms):
+                        return True
+                    return False
+                return not _any_alive()
+
+            winner = None
+            saw_done = False
+            committers = []  # (RACE v2) the grace-chooser's collector
+            grace_ms = _race_grace_ms()
+
             try:
-                while winner is None:
-                    r, item = await queue.get()
-                    if r["dead"]:
-                        # dropped candidate: discard its tail lines; when the
-                        # LAST candidate drops the race is decided (lost).
-                        if not _any_alive():
-                            break
-                        continue
-                    if item is _END:
-                        r["exhausted"] = True
-                        r["dead"] = True
-                        if _exhaust_clean_commit(r):
-                            winner = r
-                        elif not _any_alive():
-                            break
-                        continue
-                    line = (item or "").strip()
-                    if not line:
-                        continue
-                    if not line.startswith("data:"):
-                        r["buffered"].append(line)  # upstream SSE comment: keep
-                        continue
-                    body = line[5:].strip()
-                    if body == "[DONE]":
-                        r["buffered"].append(line)
-                        r["exhausted"] = True
-                        r["dead"] = True
-                        if _exhaust_clean_commit(r):
-                            winner = r
-                        elif not _any_alive():
-                            break
-                        continue
+                while True:
+                    _timeout = None
+                    if committers and grace_ms:
+                        _timeout = max(0.05, committers[0]["committed"]
+                                       + grace_ms / 1000.0 - time.monotonic())
                     try:
-                        ev = json.loads(body)
-                    except json.JSONDecodeError:
-                        r["buffered"].append(line)
-                        continue
-                    if not isinstance(ev, dict):
-                        r["buffered"].append(line)
-                        continue
-                    raw_choices = ev.get("choices")
-                    choice = (
-                        raw_choices[0]
-                        if isinstance(raw_choices, list)
-                        and raw_choices
-                        and isinstance(raw_choices[0], dict)
-                        else {}
-                    )
-                    delta = choice.get("delta") or {}
-                    r["buffered"].append(line)
-                    # Tier-1 metadata intercept (hedge parity): a timeout or
-                    # an error event kills the candidate, never the stream.
-                    if choice.get("finish_reason") == "timeout" or delta.get("error") or ev.get("error"):
-                        r["dead"] = True
-                        if not _any_alive():
-                            break
-                        continue
-                    content = delta.get("content")
-                    if content:
-                        r["screen_text"] += content
-                        r["content_tokens"] += 1
-                        if is_routable(r["screen_text"]):
-                            # Zero-refusal law: a candidate that opens (or
-                            # stays) in a refusal never wins the race.
-                            r["refused"] = True
-                            r["dead"] = True
-                            log.info("race candidate %s refused; dropped", r["model"])
+                        r, item = await asyncio.wait_for(
+                            queue.get(), timeout=_timeout)
+                    except asyncio.TimeoutError:
+                        r, item = None, None
+                    if r is not None:
+                        if r["dead"]:
                             if not _any_alive():
                                 break
                             continue
-                        if _clean_commit(r):
-                            winner = r
+                        if item is _END:
+                            r["exhausted"] = True
+                            r["dead"] = True
+                            if _exhaust_clean_commit(r):
+                                r["committed"] = time.monotonic()
+                                committers.append(r)
+                            elif not _any_alive():
+                                break
+                            continue
+                        line = (item or "").strip()
+                        if not line:
+                            continue
+                        if not line.startswith("data:"):
+                            r["buffered"].append(line)  # upstream SSE comment
+                            continue
+                        body = line[5:].strip()
+                        if body == "[DONE]":
+                            r["buffered"].append(line)
+                            r["exhausted"] = True
+                            r["dead"] = True
+                            if _exhaust_clean_commit(r):
+                                r["committed"] = time.monotonic()
+                                committers.append(r)
+                            elif not _any_alive():
+                                break
+                            continue
+                        try:
+                            ev = json.loads(body)
+                        except json.JSONDecodeError:
+                            r["buffered"].append(line)
+                            continue
+                        if not isinstance(ev, dict):
+                            r["buffered"].append(line)
+                            continue
+                        raw_choices = ev.get("choices")
+                        choice = (
+                            raw_choices[0]
+                            if isinstance(raw_choices, list)
+                            and raw_choices
+                            and isinstance(raw_choices[0], dict)
+                            else {}
+                        )
+                        delta = choice.get("delta") or {}
+                        r["buffered"].append(line)
+                        if choice.get("finish_reason") == "timeout" or delta.get("error") or ev.get("error"):
+                            r["dead"] = True
+                            if not _any_alive():
+                                break
+                            continue
+                        content = delta.get("content")
+                        if content:
+                            r["screen_text"] += content
+                            r["content_tokens"] += 1
+                            r["full_text"] += content
+                            _bump_upstream(len(content))
+                            if is_routable(r["screen_text"]):
+                                # (RACE v2, operator directive) a candidate
+                                # that BRINGS UP REFUSING is SILENCED for
+                                # the remainder of the race.
+                                r["refused"] = True
+                                r["dead"] = True
+                                _RACE_OUTCOMES["silenced"] = (
+                                    _RACE_OUTCOMES.get("silenced", 0) + 1)
+                                log.info("race candidate %s refused; silenced",
+                                         r["model"])
+                                if not _any_alive():
+                                    break
+                                continue
+                            _pv = routing_patterns.zero_refusal_violation(
+                                r["screen_text"])
+                            if _pv:
+                                # "possibly refusing" (watered-down) too.
+                                r["refused"] = True
+                                r["dead"] = True
+                                _RACE_OUTCOMES["silenced"] = (
+                                    _RACE_OUTCOMES.get("silenced", 0) + 1)
+                                log.info("race candidate %s reads %s; silenced",
+                                         r["model"], _pv)
+                                if not _any_alive():
+                                    break
+                                continue
+                            if _clean_commit(r):
+                                r["committed"] = time.monotonic()
+                                committers.append(r)
+                        else:
+                            # S1 REASONING: output; never refusal-screened
+                            # (F1/B21), counts toward the commit window.
+                            _r = delta.get("reasoning_content") or delta.get("reasoning")
+                            if _r:
+                                _r = str(_r)
+                                r["reasoning_text"] += _r
+                                r["reasoning_tokens"] += 1
+                                r["full_text"] += _r
+                                _bump_upstream(len(_r))
+                    if _race_decided():
+                        break
+                if committers:
+                    # (RACE v2) the improved FINAL-RESPONSE chooser: among
+                    # the committers collected inside the grace window, the
+                    # best answer wins - substantiveness first, a COMPLETED
+                    # answer (exhausted-clean) outranks a partial.
+                    def _commit_score(c):
+                        _sc = len((c["screen_text"] + c["reasoning_text"]).strip())
+                        if c.get("exhausted"):
+                            _sc += 500
+                        return _sc
+
+                    winner = max(committers, key=_commit_score)
+                    if len(committers) > 1:
+                        _RACE_OUTCOMES["grace_decided"] = (
+                            _RACE_OUTCOMES.get("grace_decided", 0) + 1)
+                    else:
+                        _RACE_OUTCOMES["fast_lane"] = (
+                            _RACE_OUTCOMES.get("fast_lane", 0) + 1)
                 # RACE-PART-3
                 if winner is not None:
                     # CANCEL-ON-COMMIT: the loser is cancelled mid-stream -
@@ -928,58 +1319,95 @@ async def race_stream(
                     # winner actually said something, ONE seamless continuation
                     # round closes the stream instead.
                     held_finish = None
-                    winner_text = winner["screen_text"]
+                    # S1 REASONING (live defect 2026-10-23): the continuation
+                    # context is the winner's FULL output (content + reasoning
+                    # in arrival order) - a reasoning-only winner used to seed
+                    # an EMPTY partial and the gate below shipped the cut.
+                    # (I1b) the scrubber is STATEFUL across the winner's
+                    # lines - a chunk-split marker never reassembles.
+                    scrub = _MarkerScrubber()
+                    winner_text = winner["full_text"] or winner["screen_text"]
                     for line in winner["buffered"]:
                         if line.startswith("data:") \
                                 and _finish_reason_of(line) == "length":
                             kept = _strip_length_finish(line)
                             if kept is not None:
-                                winner_text += kept[1]
-                                yield f"{kept[0]}\n\n".encode()
+                                # (0.1, 2026-10-23) the payload riding a
+                                # BUFFERED length line was already tallied into
+                                # full_text when the line first arrived - do
+                                # NOT count it twice: the continuation seed
+                                # must contain it exactly once. (Tail and
+                                # continuation lines below were never in
+                                # full_text - their kept[1] adds stay.)
+                                yield f"{scrub.line(kept[0])}\n\n".encode()
                             held_finish = line
                             continue
                         if (held_finish is not None and line.startswith("data:")
                                 and line[5:].strip() == "[DONE]"):
                             continue  # suppressed: the continuation closes it
-                        yield f"{line}\n\n".encode()
+                        if (line.startswith("data:")
+                                and line[5:].strip() == "[DONE]"
+                                and scrub.carry):
+                            _fl = scrub.flush_line()
+                            if _fl:
+                                yield _fl.encode()  # carry never trails [DONE]
+                        yield f"{scrub.line(line)}\n\n".encode()
                     if winner["exhausted"] and held_finish is None:
                         # the exhausted-clean commit carries its own [DONE] as
                         # the last buffered line - the stream is complete.
+                        _fl = scrub.flush_line()
+                        if _fl:
+                            yield _fl.encode()
                         return
                     # The winner's remaining lines keep flowing through the
                     # queue (single continuous pass, B7 parity): forward
-                    # them live until its [DONE] / stream end.
-                    while True:
-                        r, item = await queue.get()
-                        if r is not winner:
-                            continue
-                        if item is _END:
-                            break
-                        line = (item or "").strip()
-                        if not line:
-                            continue
-                        if line.replace("data:", "", 1).strip() == "[DONE]":
-                            saw_done = True
-                            if held_finish is None:
-                                yield f"{line}\n\n".encode()
-                            break
-                        if line.startswith("data:"):
-                            if _finish_reason_of(line) == "length":
-                                kept = _strip_length_finish(line)
-                                if kept is not None:
-                                    winner_text += kept[1]
-                                    yield f"{kept[0]}\n\n".encode()
-                                held_finish = line
+                    # them live until its [DONE] / stream end. (RACE v2) an
+                    # EXHAUSTED winner has no remaining lines - the battle
+                    # already consumed its _END - skip the tail entirely.
+                    if not winner.get("exhausted"):
+                        while True:
+                            r, item = await queue.get()
+                            if r is not winner:
                                 continue
-                            try:  # tally the live tail for the continuation
-                                _d = (((json.loads(line[5:].strip())
-                                        .get("choices") or [{}])[0]
-                                       .get("delta")) or {})
-                                if _d.get("content"):
-                                    winner_text += str(_d["content"])
-                            except Exception:  # noqa: BLE001 - tally only
-                                pass
-                        yield f"{line}\n\n".encode()
+                            if item is _END:
+                                break
+                            line = (item or "").strip()
+                            if not line:
+                                continue
+                            if line.replace("data:", "", 1).strip() == "[DONE]":
+                                saw_done = True
+                                if held_finish is None:
+                                    if scrub.carry:
+                                        _fl = scrub.flush_line()
+                                        if _fl:
+                                            yield _fl.encode()
+                                    yield f"{line}\n\n".encode()
+                                break
+                            if line.startswith("data:"):
+                                if _finish_reason_of(line) == "length":
+                                    kept = _strip_length_finish(line)
+                                    if kept is not None:
+                                        winner_text += kept[1]
+                                        yield f"{scrub.line(kept[0])}\n\n".encode()
+                                    held_finish = line
+                                    continue
+                                try:  # tally the live tail for the continuation
+                                    _d = (((json.loads(line[5:].strip())
+                                            .get("choices") or [{}])[0]
+                                           .get("delta")) or {})
+                                    if _d.get("content"):
+                                        winner_text += str(_d["content"])
+                                        _bump_upstream(len(str(_d["content"])))
+                                    elif _d.get("reasoning_content") or _d.get("reasoning"):
+                                        winner_text += str(
+                                            _d.get("reasoning_content")
+                                            or _d.get("reasoning"))
+                                        _bump_upstream(len(str(
+                                            _d.get("reasoning_content")
+                                            or _d.get("reasoning"))))
+                                except Exception:  # noqa: BLE001 - tally only
+                                    pass
+                            yield f"{scrub.line(line)}\n\n".encode()
                     if (held_finish is not None and _length_continue_on()
                             and winner_text.strip()):
                         # S1 OVERKILL (2026-10-22): up to
@@ -989,7 +1417,20 @@ async def race_stream(
                         # continuation that cannot open ships the honest cut.
                         _rounds = 0
                         while True:
-                            cont = await _open_winner_continue(winner, winner_text)
+                            # (RACE v2) CROSS-LEARNING: the continuation
+                            # seed carries the OTHER candidate's clean partial
+                            # too - both were working the same solution.
+                            _seed_txt = _scrub_gw_markers(winner_text)
+                            for _pr in racers:
+                                if (_pr is not winner and not _pr.get("refused")
+                                        and _peer_seed_ok(_pr.get("screen_text"))):
+                                    _seed_txt += (
+                                        "\n\nPEER ATTEMPT (another model's "
+                                        "take on the same ask - use it, do not "
+                                        "repeat it):\n"
+                                        + _pr["screen_text"].strip()[:3000])
+                                    break
+                            cont = await _open_winner_continue(winner, _seed_txt)
                             if cont is None:
                                 break  # ships the held finish below
                             _RACE_OUTCOMES["length_continue"] += 1
@@ -998,6 +1439,11 @@ async def race_stream(
                                 "run command: continue past the token limit")
                             cont_done = False
                             cont_held = None
+                            # (0.2, 2026-10-23) refusal screen state for this
+                            # round (content only - F1/B21: reasoning never
+                            # trips the refusal detector).
+                            cont_screen = ""
+                            cont_refused = False
                             try:
                                 async for raw in cont.aiter_lines():
                                     cline = (raw or "").strip()
@@ -1012,7 +1458,7 @@ async def race_stream(
                                         kept = _strip_length_finish(cline)
                                         if kept is not None:
                                             winner_text += kept[1]
-                                            yield f"{kept[0]}\n\n".encode()
+                                            yield f"{scrub.line(kept[0])}\n\n".encode()
                                         cont_held = cline
                                         continue
                                     if cline.startswith("data:"):
@@ -1021,10 +1467,29 @@ async def race_stream(
                                                     .get("choices") or [{}])[0]
                                                     .get("delta")) or {})
                                             if _d.get("content"):
+                                                cont_screen += str(_d["content"])
+                                                # (0.2, 2026-10-23) ZERO-REFUSAL
+                                                # LAW on the continuation tail:
+                                                # a continuation that answers
+                                                # with a refusal must never
+                                                # ship as the race's final
+                                                # answer (the primary path's
+                                                # end-of-stream judges already
+                                                # enforce this; the race tail
+                                                # bypassed them).
+                                                if is_routable(cont_screen):
+                                                    cont_refused = True
                                                 winner_text += str(_d["content"])
+                                            elif _d.get("reasoning_content") or _d.get("reasoning"):
+                                                winner_text += str(
+                                                    _d.get("reasoning_content")
+                                                    or _d.get("reasoning"))
                                         except Exception:  # noqa: BLE001
                                             pass
-                                    yield f"{cline}\n\n".encode()
+                                    if cont_refused:
+                                        # the refusal chunk never ships
+                                        break
+                                    yield f"{scrub.line(cline)}\n\n".encode()
                                     if cline.replace("data:", "", 1).strip() \
                                             == "[DONE]":
                                         cont_done = True
@@ -1032,15 +1497,38 @@ async def race_stream(
                             finally:
                                 with contextlib.suppress(Exception):
                                     await cont.aclose()
+                            if cont_refused:
+                                # (0.2, 2026-10-23) the continuation answered
+                                # with a refusal: NEVER ship it. Escalate to the
+                                # terminal when wired; else the honest cut (the
+                                # winner's clean partial + its held finish).
+                                _RACE_OUTCOMES["refusal_tail"] += 1
+                                if escalate is not None:
+                                    async for chunk in escalate(
+                                            "race continuation refused"):
+                                        yield chunk
+                                    return
+                                _fl = scrub.flush_line()
+                                if _fl:
+                                    yield _fl.encode()
+                                yield f"{held_finish}\n\n".encode()
+                                yield b"data: [DONE]\n\n"
+                                return
                             if cont_held is None:
                                 if not cont_done:
                                     # the continuation ended bare: close properly
+                                    _fl = scrub.flush_line()
+                                    if _fl:
+                                        yield _fl.encode()
                                     yield f"data: {_chunk({}, finish='stop', model=winner['model'], stream_id=sid)}\n\n".encode()
                                     yield b"data: [DONE]\n\n"
                                 return
                             _rounds += 1
                             if (_rounds >= _race_length_continue_max_rounds()
                                     or not winner_text.strip()):
+                                _fl = scrub.flush_line()
+                                if _fl:
+                                    yield _fl.encode()
                                 yield f"{cont_held}\n\n".encode()
                                 yield b"data: [DONE]\n\n"
                                 return
@@ -1049,12 +1537,18 @@ async def race_stream(
                     if held_finish is not None:
                         # switch off / empty winner / continuation failed to
                         # open: the cut finish ships exactly as before.
+                        _fl = scrub.flush_line()
+                        if _fl:
+                            yield _fl.encode()
                         yield f"{held_finish}\n\n".encode()
                         yield b"data: [DONE]\n\n"
                         return
                     if not saw_done:
                         # The winner's stream ended bare (upstream dropped
                         # the tail): terminate the client stream properly.
+                        _fl = scrub.flush_line()
+                        if _fl:
+                            yield _fl.encode()
                         yield f"data: {_chunk({}, finish='stop', model=winner['model'], stream_id=sid)}\n\n".encode()
                         yield b"data: [DONE]\n\n"
                     return

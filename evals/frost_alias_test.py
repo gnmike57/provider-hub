@@ -26,7 +26,7 @@ def fresh_envs(monkeypatch):
                  "FALLBACK_API_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL",
                  "WORKER_API_URL", "WORKER_API_KEY", "WORKER_MODEL",
                  "HIVE_API_BASE", "HIVE_SECRET_KEY", "HIVE_API_URL",
-                 "NANOGPT_API_KEY", "ABLITERATION_API_KEY"):
+                 "ABLITERATION_API_KEY"):
         monkeypatch.delenv(name, raising=False)
 
 

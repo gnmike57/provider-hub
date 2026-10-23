@@ -71,4 +71,4 @@ stream; no cross-stream dependencies in git history.
 ## Out of scope (gated)
 
 deep*/glm* chain implementation (separate plan doc); key rotation beyond the
-already-updated Abliteration pair; NanoGPT catalog changes.
+already-updated Abliteration pair; nano catalog changes.

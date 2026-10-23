@@ -46,12 +46,8 @@ BODIES = {
     "ablit-admin": {"model": ka.AB_MODEL, "messages": [{"role": "user",
                                                         "content": PROMPT}],
                     "max_tokens": 16, "stream": False},
-    "nano": {"model": ka.NANO_MODEL, "messages": [{"role": "user",
-                                                   "content": PROMPT}],
-             "max_tokens": 16, "stream": False},
 }
-URLS = {"hive": ka.HIVE_URL, "ablit": ka.AB_URL,
-        "ablit-admin": ka.AB_URL, "nano": ka.NANO_URL}
+URLS = {"hive": ka.HIVE_URL, "ablit": ka.AB_URL, "ablit-admin": ka.AB_URL}
 
 
 def sync_env_from_user_scope():
@@ -66,8 +62,7 @@ def sync_env_from_user_scope():
     except ImportError:
         return
     for name in ("ABLITERATION_API_KEY", "ABLITERATION_ADMIN_KEY",
-                 "HIVE_SECRET_KEY", "HIVE_ACCESS_KEY", "NANOGPT_API_KEY",
-                 "NANOGPT_MGMT_API_KEY", "ADMIN_API_KEY"):
+                 "HIVE_SECRET_KEY", "HIVE_ACCESS_KEY", "ADMIN_API_KEY"):
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
                 val, _ = winreg.QueryValueEx(k, name)

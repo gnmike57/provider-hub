@@ -1,10 +1,11 @@
-"""Live end-to-end check: a refusal-class request reaches the NanoGPT specialist
-THROUGH the gateway (the forced-divert path, which skips the primary and goes
-straight to the worker slot).
+"""Live end-to-end check: a refusal-class request reaches the Abliteration.ai
+specialist THROUGH the gateway (the forced-divert path, which skips the primary
+and goes straight to the specialist slot).
 
-Proves the wiring the operator asked about:
+Proves the wiring:
   - the specialist URL/model come from SPECIALIST_API_URL/MODEL,
-  - the credential is NANOGPT_API_KEY (read from the environment / HKCU),
+  - the credential resolves through SPECIALIST_API_KEY -> FALLBACK_API_KEY ->
+    ABLITERATION_API_KEY (read from the environment / HKCU),
   - the divert is disclosed with the provenance footnote.
 
 No primary credits are spent (the forced divert never calls the primary).
@@ -19,24 +20,24 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
-SPEC_URL = "https://nano-gpt.com/api/v1/chat/completions"
-SPEC_MODEL = "abliteration-ai/abliterated-model-large-v2"
+SPEC_URL = "https://api.abliteration.ai/v1/chat/completions"
+SPEC_MODEL = "abliterated-model-large-v2"
 
 
-def _nanogpt_key():
-    key = os.environ.get("NANOGPT_API_KEY", "")
+def _ablit_key():
+    key = os.environ.get("ABLITERATION_API_KEY", "")
     if key:
         return key, "process env"
     try:
         import winreg  # type: ignore
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
-            return str(winreg.QueryValueEx(k, "NANOGPT_API_KEY")[0]), "HKCU"
+            return str(winreg.QueryValueEx(k, "ABLITERATION_API_KEY")[0]), "HKCU"
     except Exception:  # noqa: BLE001
         return "", "absent"
 
 
 def main() -> int:
-    key, where = _nanogpt_key()
+    key, where = _ablit_key()
     renv, ruser = os.environ.get("SPECIALIST_API_URL"), None
     try:
         import winreg  # type: ignore
@@ -44,11 +45,11 @@ def main() -> int:
             ruser = str(winreg.QueryValueEx(k, "SPECIALIST_API_URL")[0])
     except Exception:  # noqa: BLE001
         pass
-    print(f"NANOGPT_API_KEY: {'present' if key else 'MISSING'} (source={where}, len={len(key)})")
+    print(f"ABLITERATION_API_KEY: {'present' if key else 'MISSING'} (source={where}, len={len(key)})")
     print(f"SPECIALIST_API_URL: proc={renv!r} user={ruser!r}")
 
     # Environment must be set BEFORE proxy_gateway import (Settings is built at import).
-    os.environ["NANOGPT_API_KEY"] = key
+    os.environ["ABLITERATION_API_KEY"] = key
     os.environ.setdefault("SPECIALIST_API_URL", SPEC_URL)
     os.environ.setdefault("SPECIALIST_MODEL", SPEC_MODEL)
     # never used on the forced-divert path, but Settings wants a primary.
@@ -63,7 +64,7 @@ def main() -> int:
     print(f"effective specialist: url={s.fallback_api_url}")
     print(f"                      model={s.fallback_model}")
     print(f"                      key_len={len(s.fallback_api_key)} "
-          f"(is_nanogpt={s.fallback_api_key == key})")
+          f"(is_abliteration_key={s.fallback_api_key == key})")
 
     with TestClient(proxy_gateway.app) as tc:
         resp = tc.post("/v1/chat/completions",

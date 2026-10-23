@@ -33,6 +33,7 @@ import asyncio
 import contextlib
 import copy
 import json
+import logging
 import os
 import hashlib
 import re
@@ -76,6 +77,7 @@ from context_formatter import (
     skill_frame,
     assert_clean,
     format_messages,
+    prune_artifacts,
     specialist_messages,
 )
 from ingress_assembler import (
@@ -108,6 +110,11 @@ from routing_patterns import (
 
 __all__ = ["app", "fallback_stream", "Settings"]
 
+# Module logger (live defect 2026-10-23): stream-path scrub events must land
+# in the err log next to the uvicorn tracebacks - a silent scrub is a silent
+# upstream misbehaviour nobody can audit.
+log = logging.getLogger("proxy_gateway")
+
 # --------------------------------------------------------------------------
 # Configuration surface (section 9) - env-derived once, monkeypatchable.
 # --------------------------------------------------------------------------
@@ -131,16 +138,16 @@ def _specialist_key() -> str:
     Resolution, highest first:
       1. SPECIALIST_API_KEY  - explicit override (plan W-A env trio)
       2. FALLBACK_API_KEY    - historical name / the local hub's "none"
-      3. NANOGPT_API_KEY     - the operator's Windows-env NanoGPT key
-      4. ABLITERATION_API_KEY - BUILT IN (2026-10-21): the Abliteration LARGE
+      3. ABLITERATION_API_KEY - BUILT IN (2026-10-21): the Abliteration LARGE
                                V2 brain is the terminal of the constellation,
                                so its key closes the chain - a deployment
                                that configured NOTHING but the Abliteration
                                key still gets a working uncensored specialist.
+    (the retired nano key left the chain 2026-10-23: that provider left
+    the constellation, so its key no longer contributes to any slot.)
     Falls back to "none" (no Authorization header) when none is set.
     """
     return (os.getenv("SPECIALIST_API_KEY") or os.getenv("FALLBACK_API_KEY")
-            or os.getenv("NANOGPT_API_KEY")
             or os.getenv("ABLITERATION_API_KEY") or "none")
 
 
@@ -228,9 +235,9 @@ class Settings:
     primary_model: str = field(default_factory=_primary_model)
     # The worker/specialist binding. SPECIALIST_API_URL/MODEL (plan W-A) override
     # the historical FALLBACK_* names; the key resolves through
-    # SPECIALIST_API_KEY -> FALLBACK_API_KEY -> NANOGPT_API_KEY (see
+    # SPECIALIST_API_KEY -> FALLBACK_API_KEY -> ABLITERATION_API_KEY (see
     # _specialist_key) so the uncensored specialist can run on the operator's
-    # Windows-env NanoGPT key with no extra secret to manage.
+    # Windows-env Abliteration key with no extra secret to manage.
     fallback_api_url: str = field(default_factory=lambda: (
         os.getenv("SPECIALIST_API_URL")
         or os.getenv("FALLBACK_API_URL", "http://127.0.0.1:8000/v1/chat/completions")))
@@ -240,7 +247,7 @@ class Settings:
         or os.getenv("FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP")))
     # Frost worker names (cyberfrost): their own endpoint, which must NOT
     # collapse onto the specialist binding above. SPECIALIST_API_URL repoints
-    # the DIVERT target at the uncensored specialist (NanoGPT), while the
+    # the DIVERT target at the uncensored specialist (Abliteration.ai), while the
     # Frost worker names address the gx10 hub - a CYBER-FROST id on the
     # specialist URL is a guaranteed 400 (measured live 2026-10-18).
     # Unset ("") keeps the previous behaviour: the fallback slot's URL.
@@ -308,7 +315,7 @@ class Settings:
         default_factory=lambda: float(os.getenv("SPECIALIST_TEMPERATURE")) if os.getenv("SPECIALIST_TEMPERATURE") else None
     )
     # Specialist budget per divert (found live 2026-10-18): fallback_stream sent
-    # NO max_tokens, so a prepaid specialist (NanoGPT) reserved funds for
+    # NO max_tokens, so a prepaid specialist (the retired nano provider) reserved funds for
     # 64000 output tokens on EVERY divert and 402'd on a balance the actual
     # answer would have fit into many times over. /v1/execute already bounds
     # this at 4096 and the hedge at HEDGE_MAX_TOKENS; the divert was the only
@@ -613,6 +620,8 @@ _METRICS = {
     # T-D WAVE (2026-10-22): the three NEW constellation chains.
     "race_total": 0,                      # RACE-chain dual-sovereign dispatches
     "race_terminal_total": 0,              # races where BOTH candidates refused -> terminal
+    "race_marker_escape_total": 0,        # (I1c) [[GW-*]] that survived the relay scrub
+    "upstream_chars_total": 0,            # (efficiency matrix) specialist-stream spend
     "conductor_total": 0,                 # CONDUCTOR-chain planner dispatches
     "conductor_fanout_total": 0,          # conductor requests that fanned out subtask hops
     "conductor_repair_total": 0,          # completion-contract repair rounds (uncovered items)
@@ -647,6 +656,11 @@ _METRICS = {
     "gx10_offload_total": 0,           # eligible requests that tried the free box first
     "gx10_offload_hit_total": 0,       # requests answered entirely by the free box
     "gx10_offload_fallthrough_total": 0,  # tries that fell back to the paid path
+    # ARTEFACT LEAK (live defect 2026-10-23): a provider artefact that survived
+    # pruning used to raise INSIDE the streaming generator (after headers) and
+    # kill the response; now it is scrubbed and the stream lives. This counter
+    # makes every such scrub visible.
+    "artefact_leak_total": 0,          # leaked artefacts scrubbed from a live stream
 }
 
 
@@ -696,6 +710,8 @@ def metrics_snapshot() -> dict:
     counts = dict(_METRICS)
     for name, value in speculative_hedge.hedge_failure_counts().items():
         counts[f"hedge_{name}_total"] = value
+    # (efficiency matrix 2026-10-23) the hedge branches' true upstream spend
+    counts["hedge_upstream_chars_total"] = speculative_hedge.hedge_upstream_chars()
     # S4 RACE OUTCOMES (2026-10-22): which candidate role wins + continuation
     # rounds - same lazy-import surfacing pattern as the hedge failures.
     for name, value in speculative_hedge.race_outcome_counts().items():
@@ -862,10 +878,23 @@ def _terminal_system_prompt(settings: Settings):
     """The TERMINAL stage's system: the specialist persona plus the
     constellation awareness + reverse-handback protocol. The MIDDLE keeps the
     plain frame (it is one of the sub-agents); REDHANDS stays verbatim - the
-    awareness rides alongside, never replacing the measured wording."""
+    awareness rides alongside, never replacing the measured wording.
+
+    (Operator directive 2026-10-23) REDHANDS ON EVERY TAKEOVER: whenever
+    the specialist has to take over on ANY chain - refusal diverts, sticky/
+    continue/forced legs, the race/hedge escalations - it runs under the
+    REDHANDS laws, not the neutral persona. The redhands-flagged chains
+    already proved the persona safe across all probe classes (matrix
+    2026-10-23: chains 3/7/9/10 scored 22-23/28 with REDHANDS on every
+    answer). Kill switch: REDHANDS_AUTO_TAKEOVER=0 restores the persona
+    frame for non-redhands chains."""
     base = _specialist_system_prompt(settings)
     if base is None:
         return None
+    if (getattr(settings, "specialist_system_mode", "") != "redhands"
+            and (os.getenv("REDSHANDS_AUTO_TAKEOVER", "1") or "1")
+            .strip().lower() not in ("0", "false", "no", "off")):
+        base = redhands.redhands_system()
     return base + "\n\n" + TERMINAL_AWARENESS
 
 
@@ -1702,13 +1731,31 @@ async def fallback_stream(
     # OUTPUT side - the reply that comes back is judged before it ships
     # (see the loop below). The client's messages are forwarded untouched.
     msgs = specialist_messages(original_messages, system=system_prompt)
-    assert_clean(msgs)
+    try:
+        assert_clean(msgs)
+    except ValueError as exc:
+        # LIVE DEFECT 2026-10-23 - a divert must NEVER die on its own context.
+        # A TARS tool turn carried a provider artefact that survived pruning;
+        # assert_clean raised INSIDE this streaming generator - after the
+        # response headers were on the wire - and uvicorn aborted the body:
+        # the client saw a 200 that just died (no finish marker, no [DONE]),
+        # the access log showed a clean 200, and the watchdog kept reporting
+        # the hub healthy. A content-hygiene defect must never escalate into a
+        # stream defect: scrub the turn and continue (prune_artifacts now
+        # sweeps every _LEAK_MARKERS entry, so this is belt-and-braces; the
+        # artefact_leak_total counter + stderr line make it auditable).
+        incr("artefact_leak_total")
+        print(f"[gateway] fallback_stream: {exc} (scrubbed; stream continues)",
+              file=sys.stderr, flush=True)
+        for _m in msgs:
+            if isinstance(_m, dict) and isinstance(_m.get("content"), str):
+                _m["content"] = prune_artifacts(_m["content"])
     is_continue = _CONTINUE_PROMPT_RE.match(
         _last_user_text(msgs).strip().lower()) is not None
     sid = f"fallback-{uuid.uuid4().hex[:12]}"  # R1: stable for the whole stream
     payload = {"model": s.fallback_model, "messages": msgs, "stream": True}
     # Budget bound (found live 2026-10-18): without a max_tokens the divert
-    # asked the specialist for an UNLIMITED completion - NanoGPT reserved funds
+    # asked the specialist for an UNLIMITED completion - the prepaid nano provider reserved funds
     # for 64000 output tokens and 402'd on a balance that would have covered
     # the actual answer many times over. Every other specialist surface already
     # bounds this (run_specialist: 4096, hedge: HEDGE_MAX_TOKENS); 0 disables.
@@ -1767,6 +1814,7 @@ async def fallback_stream(
         disclosure (or None) and the adopted stream id. The response is
         closed before returning."""
         lines, text, broke_msg = [], "", None
+        reasoning = ""  # S1: reasoning deltas are OUTPUT for the length gate
         try:
             async for raw in resp.aiter_lines():
                 line = raw.strip()
@@ -1786,6 +1834,26 @@ async def fallback_stream(
                         delta = (ev.get("choices") or [{}])[0].get("delta") or {}
                     if isinstance(delta, dict) and delta.get("content"):
                         text += delta["content"]
+                        incr("upstream_chars_total", len(delta["content"]))
+                    # S1 REASONING (live defect 2026-10-23): a reasoning model
+                    # can burn its entire output budget on delta.reasoning or
+                    # delta.reasoning_content with NO delta.content at all and
+                    # be cut at finish_reason="length". The drain used to fold
+                    # ONLY content into `text`, so the S1 gate's `text.strip()`
+                    # was falsy on a perfectly alive reasoning-only stream and
+                    # the cut shipped verbatim - the "ABLITERATED takes over
+                    # and the answer dies mid-thought" defect. Reasoning is
+                    # tracked SEPARATELY from `text` (the commitment judge and
+                    # the refusal screen must keep seeing content only - a
+                    # model deliberating "I cannot" must not trip them), but it
+                    # arms the gate and, when it is the only output there is,
+                    # seeds the continuation context.
+                    elif isinstance(delta, dict):
+                        _r = (delta.get("reasoning_content")
+                              or delta.get("reasoning"))
+                        if _r:
+                            reasoning += str(_r)
+                            incr("upstream_chars_total", len(str(_r)))
                 lines.append(line)
         except httpx.TransportError as exc:
             broke_msg = f"specialist stream broke: {exc}"
@@ -1798,7 +1866,7 @@ async def fallback_stream(
         finally:
             with contextlib.suppress(Exception):
                 await resp.aclose()
-        return lines, text, broke_msg, sid
+        return lines, text, reasoning, broke_msg, sid
 
     for _attempt in range(2):
         try:
@@ -1817,7 +1885,7 @@ async def fallback_stream(
             yield _delta_chunk({"content": msg}, finish=None, model=s.fallback_model, stream_id=sid)
             break
 
-        lines, text, broke_msg, sid = await _drain_specialist(resp, sid)
+        lines, text, reasoning, broke_msg, sid = await _drain_specialist(resp, sid)
         if broke_msg:
             # F11 parity: make a mid-stream break visible as content too, so
             # clients that only read delta.content are not left with a
@@ -1842,13 +1910,23 @@ async def fallback_stream(
         # open, breaks, or answers nothing ships the honest cut); kill
         # switch LENGTH_AUTO_CONTINUE=0 (or MAX_ROUNDS=0).
         _lc_rounds = 0
-        while (not broke_msg and lines and text.strip()
+        # S1 GATE, REASONING-ARMed (live defect 2026-10-23): the old gate
+        # required `text.strip()` - folded from delta.content ONLY - so a
+        # reasoning-only stream cut at its token cap (finish_reason="length",
+        # zero delta.content) never continued and the cut shipped verbatim.
+        # Reasoning is output: it arms the gate exactly like content.
+        while (not broke_msg and lines
+               and (text.strip() or reasoning.strip())
                and _chain_env_flag("LENGTH_AUTO_CONTINUE")
                and _lc_rounds < _length_continue_max_rounds()
                and _finish_reason_of_line(lines[-1]) == "length"):
             _cont_payload = dict(payload)
+            # Continuation context: the accumulated ANSWER when there is one;
+            # otherwise the accumulated reasoning (the only output the cut
+            # stream produced - the model continues from its own thinking).
+            _cont_text = text if text.strip() else reasoning
             _cont_payload["messages"] = list(msgs) + [
-                {"role": "assistant", "content": text},
+                {"role": "assistant", "content": _cont_text},
                 {"role": "user", "content": LENGTH_CONTINUE_INSTRUCTION},
             ]
             _lc_rounds += 1
@@ -1858,9 +1936,9 @@ async def fallback_stream(
                     app.state.http, _cont_payload, headers, s)
             except PrimaryOpenError:
                 break  # the honest cut (the finish line is still in place)
-            _c_lines, _c_text, _c_broke, sid = await _drain_specialist(
+            _c_lines, _c_text, _c_reasoning, _c_broke, sid = await _drain_specialist(
                 _cont_resp, sid)
-            if not _c_text.strip():
+            if not _c_text.strip() and not _c_reasoning.strip():
                 break  # nothing gained: ship the honest cut
             # success: swap the cut finish for its content-only line, then
             # append the continuation's lines verbatim (a broke continuation
@@ -1872,6 +1950,7 @@ async def fallback_stream(
                     lines.append(_held[0])
             lines = lines + _c_lines
             text = text + _c_text
+            reasoning = reasoning + _c_reasoning
             broke_msg = _c_broke  # a broke continuation surfaces on ship
 
         # REVERSE HANDBACK (operator directive 2026-10-21): the terminal
@@ -2712,7 +2791,13 @@ def _strip_length_finish_line(line):
     ch = (ev.get("choices") or [{}])[0] or {}
     if ch.get("finish_reason") != "length":
         return None
-    content = str((ch.get("delta") or {}).get("content") or "")
+    d = ch.get("delta") or {}
+    content = str(d.get("content") or "")
+    # S1 REASONING (2026-10-23): a reasoning-only cut line still carries a
+    # payload the client must see - keep the line, hold only the finish.
+    # (Callers treat the returned text as "the line carries a payload".)
+    if not content:
+        content = str(d.get("reasoning_content") or d.get("reasoning") or "")
     ch2 = dict(ch)
     ch2["finish_reason"] = None
     ev2 = dict(ev)
@@ -3066,6 +3151,7 @@ async def _sustained_probe(user_query, *, probe, settings=None, client=None):
     try:
         text = str(((resp.json().get("choices") or [{}])[0]
                     .get("message", {}).get("content", "")) or "").strip()
+        incr("upstream_chars_total", len(text))
     except Exception:  # noqa: BLE001
         return None
     min_subst = max(1, int(getattr(settings, "min_substantive_chars", 20) or 20))
@@ -3207,6 +3293,7 @@ async def _sustained_verified(inner, *, verify, settings=None, client=None):
             if resp.status_code < 400:
                 verdict = str(((resp.json().get("choices") or [{}])[0]
                                .get("message", {}).get("content", "")) or "").strip()
+                incr("upstream_chars_total", len(verdict))
         except Exception:  # noqa: BLE001 - fail open, answer already shipped
             verdict = ""
         upper = verdict.upper()
@@ -3218,7 +3305,9 @@ async def _sustained_verified(inner, *, verify, settings=None, client=None):
             verdict = ""  # ambiguous verdict: no footnote (fail-open)
     if verdict:
         yield stage_comment("verify", v_model)
-        yield _delta_chunk({"content": f"\n\n[[GW-VERIFY: {verdict}]]"},
+        # (I8, 2026-10-23 live matrix) the marker law: [[GW-*]] never ships -
+        # the verdict rides as clean text (single brackets, still greppable).
+        yield _delta_chunk({"content": f"\n\n[deep-verify: {verdict}]"},
                            finish=None, model=v_model, stream_id=stream_id)
     if held_finish is not None:
         yield held_finish
@@ -3354,9 +3443,10 @@ async def chat_proxy(request: Request):
     # B11 gate: the speculative hedge only fires on latency hints or force.
     hedge_requested = should_hedge(user_query, force=body.get("hedge") is True)
 
-    # Hub model matrix: DeepMaxNano, GLMMaxNano, DeepNano, GLMNano,
+    # Hub model matrix: DeepMaxAblit.ai, GLMMaxAblit.ai, DeepAblit.ai,
+    # GLMAblit.ai (the nano aliases retired with the provider, 2026-10-23).
     # DeepMaxAblit.ai, GLMMaxAblit.ai, DeepAblit.ai, GLMAblit.ai.
-    # Selects provider (nano=NanoGPT, ablit.ai=Abliteration.ai), upstream model
+    # Selects provider (ablit.ai=Abliteration.ai), upstream model
     # id, and reasoning mode directly - bypassing the primary/worker slots.
     requested = requested_model
     # Bound only on the frost-name branch below; the continue-divert checks it
@@ -3432,7 +3522,7 @@ async def chat_proxy(request: Request):
         # resolved upstream id) so the reasoning knobs below are injected exactly
         # once, before the payload is dispatched. The max-think names stay on the
         # PRIMARY slot (Hive / thehive.ai keys) - they are the SAME thinking
-        # primaries, just with reasoning pushed to max; the NanoGPT abliterated
+        # primaries, just with reasoning pushed to max; the nano-provider abliterated
         # specialist is reached only through the normal divert path.
         max_think = wants_max_think(requested)
         if frost and frost[0] == "worker":
@@ -3587,7 +3677,7 @@ async def chat_proxy(request: Request):
         # Abliteration.ai rejects a payload carrying BOTH token caps ("Use
         # max_completion_tokens or max_tokens, not both", measured live
         # 2026-10-18 and again on the chain-3 helm 2026-10-21), while Hive
-        # needs max_completion_tokens and NanoGPT accepts either. The hub
+        # needs max_completion_tokens and the nano provider accepted either. The hub
         # matrix and the ablit-helmed chains send the one field every
         # OpenAI-compatible upstream accepts: plain max_tokens.
         primary_payload.pop("max_completion_tokens", None)
@@ -3596,8 +3686,8 @@ async def chat_proxy(request: Request):
             # effort knobs (reasoning_effort / reasoning / reasoning_content)
             # but reserves runtime controls to itself - enable_thinking and
             # chat_template_kwargs 400 with provider_control_forbidden, and
-            # `thinking` fails schema validation (422). NanoGPT accepts the
-            # full set, so the trim is per provider.
+            # `thinking` fails schema validation (422). The nano provider accepted
+            # the full set, so the trim is per provider.
             for k in ("enable_thinking", "chat_template_kwargs", "thinking"):
                 primary_payload.pop(k, None)
     primary_headers = {**_auth_header(call_settings.primary_api_key), "Content-Type": "application/json"}
@@ -3793,6 +3883,11 @@ async def chat_proxy(request: Request):
             return _esc()
 
         async def race_gen() -> AsyncGenerator[bytes, None]:
+            # (I1b, 2026-10-23 live matrix) BELT-AND-SUSPENDERS: every byte
+            # the race machinery ships crosses this relay - a [[GW-*]] marker
+            # that escapes any internal path dies here.
+            scrub = speculative_hedge._MarkerScrubber()
+            _joined = []  # (I1c) escape forensics: the relay's full content
             try:
                 if _chain_env_flag("CHAIN_HOP_STATUS"):
                     # PROGRESSIVE DISPLAY: the first byte out the door, long
@@ -3809,13 +3904,44 @@ async def chat_proxy(request: Request):
                         tools=body.get("tools"),
                         tool_choice=body.get("tool_choice"),
                         labels=("helm", "middle")):
+                    if chunk.startswith(b"data:"):
+                        if chunk.rstrip().endswith(b"[DONE]") and scrub.carry:
+                            _fl = scrub.flush_line()
+                            if _fl:
+                                yield _fl.encode()
+                        if b"[" in chunk or scrub.carry:
+                            chunk = scrub.line(
+                                chunk.decode("utf-8", "replace")).encode("utf-8")
+                        try:  # (I1c) tally the relay's shipped content
+                            _ev = json.loads(
+                                chunk[5:].decode("utf-8", "replace").strip())
+                            _d = ((_ev.get("choices") or [{}])[0]
+                                  .get("delta")) or {}
+                            if isinstance(_d.get("content"), str):
+                                _joined.append(_d["content"])
+                        except Exception:  # noqa: BLE001 - tally only
+                            pass
                     yield chunk
+                if "[[GW-" in "".join(_joined):
+                    incr("race_marker_escape_total")
+                    # (I1c post-mortem) dump the escaping fragments for study
+                    with contextlib.suppress(Exception):
+                        with open("evals/results/marker_escape_frags.json",
+                                  "a", encoding="utf-8") as fh:
+                            fh.write(json.dumps(_joined, ensure_ascii=False)
+                                    + "\n")
             finally:
                 _stream_closed()
 
         return StreamingResponse(race_gen(), media_type="text/event-stream")
     # TD-GRAFT-PART-B
-    if chain and chain.get("conductor") and _chain_env_flag("CONDUCTOR_CHAIN_ENABLED"):
+    if (chain and chain.get("conductor")
+            and _chain_env_flag("CONDUCTOR_CHAIN_ENABLED")
+            # (I3, 2026-10-23 live matrix) FOLLOW-UP SHORT-CIRCUIT: a
+            # correction turn must not re-decompose (token-hungry, and the
+            # re-plan loses the thread) - the helm answers directly below.
+            and not any(isinstance(m, dict) and m.get("role") == "assistant"
+                        for m in (messages or []))):
         # Chain 6 - GLMMAX-CONDUCTOR>DEEP+ABLITV2L. The GLMMAX helm runs
         # the conductor: PLAN -> SHARPEN + ASSIGN -> FAN OUT
         # (FANOUT_MAX_PARALLEL) -> ASSEMBLE + VERIFY (completion contract).
@@ -3852,10 +3978,21 @@ async def chat_proxy(request: Request):
     # GLM pre-probe pre-screens the next turn here (clean + simple skips
     # the expensive V2), and the DEEP verifier wraps the outgoing stream at
     # the final return.
+    # (I2, 2026-10-23 live matrix) MULTI-TURN CONTEXT: the pre-probe sees
+    # ONLY the last user turn, so on a follow-up turn it answers
+    # context-blind and its answer ships ("we don't have the prior
+    # conversation"). A conversation that already has an assistant turn is a
+    # follow-up: skip the PROBE - the V2 terminal answers with FULL context.
+    # The verify wrapper (5075) stays on for follow-ups - its verdict rides
+    # as clean text and never depends on turn shape.
     _sustained_active = bool(
         chain and chain.get("sustained")
         and _chain_env_flag("SUSTAINED_CHAIN_ENABLED"))
-    if _sustained_active:
+    _sustained_probe_ok = bool(
+        _sustained_active
+        and not any(isinstance(m, dict) and m.get("role") == "assistant"
+                   for m in (messages or [])))
+    if _sustained_probe_ok:
         _probe_hop = _hop(chain["middle"])
         probe_text = await _sustained_probe(
             user_query,
@@ -3951,7 +4088,7 @@ async def chat_proxy(request: Request):
             # tokens are invisible to the commit counter), so the race's value
             # proposition (fast first token) is void here anyway. Hub aliases
             # do not race either: the alias is an explicit provider selection
-            # (NanoGPT / Abliteration.ai), so a worker commit would answer on
+            # (nano / Abliteration.ai), so a worker commit would answer on
             # a provider the client did not address - and /v1/models advertises
             # every hub model as hedged: False.
             if hedge_requested and not hub and (not max_think or chain):
@@ -4306,8 +4443,21 @@ async def chat_proxy(request: Request):
                                         # flowing, hold ONLY the finish.
                                         held = line
                                         d = ch.get("delta") or {}
+                                        _rv = (d.get("reasoning_content")
+                                               or d.get("reasoning"))
+                                        # S1 REASONING (2026-10-23): the delta
+                                        # riding the cut finish can be
+                                        # reasoning-only (deepseek/glm cut
+                                        # mid-deliberation) - count it or the
+                                        # gate below sees an empty partial and
+                                        # the cut ships as a thinking-only
+                                        # stream the tier1 gate re-dispatches
+                                        # from scratch.
                                         if d.get("content"):
                                             partial += str(d["content"])
+                                        elif _rv:
+                                            partial += str(_rv)
+                                        if d.get("content") or _rv:
                                             ev2 = dict(ev)
                                             ch2 = dict(ch)
                                             ch2["finish_reason"] = None
@@ -4317,7 +4467,15 @@ async def chat_proxy(request: Request):
                                     d = ch.get("delta") or {}
                                     if d.get("content"):
                                         partial += str(d["content"])
-                            yield line
+                                    # S1 REASONING (2026-10-23): reasoning
+                                    # deltas arm the length gate too - a
+                                    # reasoning-only cut is still a cut - and
+                                    # still flow to the client unchanged.
+                                    elif d.get("reasoning_content") or d.get("reasoning"):
+                                        partial += str(
+                                            d.get("reasoning_content")
+                                            or d.get("reasoning"))
+                                yield line
                         if held is None:
                             return  # a clean finish closed the stream
                         if (not _chain_env_flag("LENGTH_AUTO_CONTINUE")
@@ -4372,6 +4530,11 @@ async def chat_proxy(request: Request):
                             if saw_reasoning and content_tokens == 0:
                                 # thinking-only: reasoning content but no text content
                                 # when the stream ends - re-dispatch to worker.
+                                # (0.4, 2026-10-23 S1 CONTRACT: a length cut
+                                # continues UPSTREAM of this gate, so this
+                                # divert only sees genuine stop-finishes with
+                                # zero content - do not "fix" it to continue;
+                                # that would double-handle the cut.)
                                 routed_reason = "tier1_thinking_only"
                                 break
                             # ZERO-REFUSAL LAW (2026-10-22): judge the FULL
@@ -4675,6 +4838,9 @@ async def chat_proxy(request: Request):
                                 # GLMFrost) print a hidden reasoning block and stop
                                 # writing text, so delivering it would give the client
                                 # nothing but "thinking". Re-dispatch to the worker.
+                                # (0.4 S1 CONTRACT: length cuts continue upstream
+                                # of this gate; this divert sees only genuine
+                                # stop-finishes with zero content.)
                                 routed_reason = "tier1_thinking_only"
                                 break
                             # ZERO-REFUSAL LAW (2026-10-22): same full-reply
@@ -4813,6 +4979,8 @@ async def chat_proxy(request: Request):
                     # thinking-only: the thinking-on primaries print a hidden
                     # reasoning block and stop writing text; re-dispatch to the
                     # worker instead of shipping "thinking" as the answer.
+                    # (0.4 S1 CONTRACT: length cuts continue upstream of this
+                    # gate; this divert sees only genuine stop-finishes.)
                     routed_reason = "tier1_thinking_only"
                 elif refusal_presignal:
                     # Continue-with-primary: presignal detected but grace

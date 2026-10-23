@@ -51,7 +51,7 @@ Phase 1, keep the LIVE hub on Hive/CYBER-FROST, make Phase 3 live.
    v2-first preset can resolve provider+model (registry resolution requires the
    model to be exposed by the provider).
 2. launch_frost_hub.ps1: PRIMARY_API_URL/KEY/MODEL and SPECIALIST_API_URL/KEY/MODEL
-   now Abliteration-direct (NanoGPT hop + sk-nano dropped), HEDGE_MAX_TOKENS
+   now Abliteration-direct (retired-provider hop + sk-nano dropped), HEDGE_MAX_TOKENS
    4000->8192, SPECIALIST_MAX_TOKENS 4096->16384. Only takes effect at the next hub
    LAUNCH - and even then boot-restore overrides these pins while slot_bindings.json
    still ends on the Hive snapshot. Edge: if slot_bindings.json were missing at

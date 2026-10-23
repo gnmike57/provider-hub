@@ -39,7 +39,12 @@ export default defineConfig({
     apiKey: process.env.ABLITERATION_API_KEY ?? '',
     baseURL: 'http://gx10.ayu-sidewinder.ts.net:4001/v1',
     // V2 large has a 1M-token context; Agent TARS defaults maxTokens to 8192.
-    // maxTokens: 32768, // ← uncomment if you want a larger generation window.
+    // RAISED 2026-10-23 (live defect): 8192 is smaller than the reasoning
+    // burn on long agentic turns - the model dies mid-thought at the cap and
+    // every stitch round costs another paid call. 32768 + the gateway's S1
+    // auto-continue is the bulletproof pairing; the gateway still clamps the
+    // divert to min(SPECIALIST_MAX_TOKENS=16384, client).
+    maxTokens: 32768, // ← uncomment if you want a larger generation window.
   },
 
   // ── Browser ───────────────────────────────────────────────────────────────

@@ -27,14 +27,9 @@ siphon_state.json.tmp
 abliteration_pool.json
 abliteration_pool.json.tmp
 
-# Multi-account credential pool (Hive/Abliteration/NanoGPT - full key values)
+# Multi-account credential pool (Hive/Abliteration - full key values)
 account_pool.json
 account_pool.json.tmp
-
-# nanogpt helper folder: machine-specific config (hardcoded npx path) holding an
-# osint.cat API key in plaintext - re-set per Windows environment, never commit
-nanogpt/.mcp.json
-nanogpt/.mcp.json.bak
 
 # loki runtime state (autonomous session ledger)
 .loki/

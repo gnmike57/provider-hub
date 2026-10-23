@@ -13,6 +13,13 @@ ALL_CHAIN_IDS = [
     "ABLITV2L>SUB-GLM/DEEP", "GLMMAX>ABLIT-UNC>ABLITV2L",
     "RACE:DEEPMAX/GLMMAX>ABLITV2L", "GLMMAX-CONDUCTOR>DEEP+ABLITV2L",
     "ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY",
+    # REACTIVATION WAVE (2026-10-23): three additive variations
+    "DEEPMAX>ABLIT-UNC>ABLITV2L",
+    "ABLITV2L>SUB-DEEP/GLM",
+    "ABLITV2L-HELM>DEEP-PROBE>GLM-VERIFY",
+    # REASONING-MODE RACES (2026-10-23): GLM and DeepSeek self-races
+    "RACE:GLMMAX/GLM>ABLITV2L",
+    "RACE:DEEPMAX/DEEP>ABLITV2L",
 ]
 
 
@@ -39,7 +46,8 @@ def test_default_catalog_hides_ablit_prefixed_ids(monkeypatch):
     assert "RACE:DEEPMAX/GLMMAX>ABLITV2L" in ids
     # exactly the two ablit-helm chains are hidden
     assert set(ALL_CHAIN_IDS) - set(ids) == {
-        "ABLITV2L>SUB-GLM/DEEP", "ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY"}
+        "ABLITV2L>SUB-GLM/DEEP", "ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY",
+        "ABLITV2L>SUB-DEEP/GLM", "ABLITV2L-HELM>DEEP-PROBE>GLM-VERIFY"}
 
 
 def test_kill_switch_restores_the_full_catalog(monkeypatch):
@@ -54,4 +62,4 @@ def test_legacy_catalog_branch_hides_ablit_too(monkeypatch):
     # the legacy branch keeps its real shapes (FROST_REGISTRY + the
     # lowercase hub aliases) - only ablit-prefixed ids would drop
     assert "deepfrost" in ids
-    assert "deepmaxnano" in ids
+    assert "deepmaxablit.ai" in ids

@@ -71,7 +71,7 @@ current deployment.
 | Secret | Where | Committed? |
 |---|---|---|
 | Hive `HIVE_SECRET_KEY` | `launch_frost_hub.ps1:173` | **Yes — present at `HEAD`** |
-| NanoGPT chat key (x2: `SPECIALIST_API_KEY`, `NANOGPT_API_KEY`) | `launch_frost_hub.ps1:181,183` | Working tree (file is tracked) |
+| nano chat key (x2: `SPECIALIST_API_KEY`, `nano key env (retired)`) | `launch_frost_hub.ps1:181,183` | Working tree (file is tracked) |
 | Abliteration chat key | `launch_frost_hub.ps1:184`, `audit_cards.py:15`, `check_balance.py:7` | Working tree / untracked |
 | Abliteration **admin** key | `launch_frost_hub.ps1:185`, `audit_cards.py:16`, `check_balance.py:8` | Working tree / untracked |
 
@@ -842,7 +842,7 @@ artefacts and should not be versioned.
    `/admin/models`; stop trusting `X-User-Id` as identity.
 4. **Slot bindings** — delete or repair `slot_bindings.json`, validate restored
    bindings against the registry, reject `*.test`, restart, confirm
-   `/healthz` → `ok:true` and a real request reaches Hive/NanoGPT.
+   `/healthz` → `ok:true` and a real request reaches Hive/the nano provider.
 5. **Divert regression** — fix the `[DONE]`/`finish` handling; target **green**
    `pytest evals/`.
 6. **`/healthz`** — correct URL, shared client, short cache, no live probe in

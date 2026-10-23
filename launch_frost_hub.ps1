@@ -228,7 +228,7 @@ try {
     $env:FALLBACK_API_KEY  = $ablAk
     $env:FALLBACK_MODEL    = "abliterated-model-large-v2"
     $env:SPECIALIST_API_URL = "https://api.abliteration.ai/v1/chat/completions"
-    $env:SPECIALIST_API_KEY = $ablAk # Abliteration direct (NanoGPT hop dropped 2026-10-20)
+    $env:SPECIALIST_API_KEY = $ablAk # Abliteration direct (retired-provider hop dropped 2026-10-20)
     $env:SPECIALIST_MODEL   = "abliterated-model-large-v2"
     $env:ABLITERATION_API_KEY = $ablAk  # Abliteration.ai (hub matrix ablit.ai provider; SIPHON brain chat key)
     $env:ABLITERATION_ADMIN_KEY = $ablSk  # Abliteration.ai admin (org balance + SIPHON card charging)
@@ -252,10 +252,17 @@ try {
     $env:KEEPALIVE_URL      = "https://api.abliteration.ai/v1/models"  # keep the constellation TERMINAL warm (CyberFrost retired)
     $env:MAX_THINK_MIN_TOKENS = "32768"
     $env:NO_GO_ENABLED        = "1"
-    $env:HEDGE_MAX_TOKENS     = "8192"    # raised for V2-large hedge capacity (was 4000)
-    $env:SPECIALIST_MAX_TOKENS = "16384"  # V2-large divert budget (was 4096 NanoGPT reserve)
+    $env:HEDGE_MAX_TOKENS     = "16384"   # (I5/Phase 1, 2026-10-23) raced thinking reaches its commit window on ONE budget
+    $env:SPECIALIST_MAX_TOKENS = "32768"  # (I5/Phase 1, 2026-10-23) aligns with TARS maxTokens - no forced continuation rounds
     $env:MAX_CONCURRENT_STREAMS = "64"    # DoS guard on open streams (0 = unlimited)
     $env:COMMIT_TOKENS        = "10"
+    # REACTIVATION WAVE (2026-10-23, operator correction): the two disabled
+    # ABLIT-helm chains (ABLITV2L>SUB-GLM/DEEP and
+    # ABLITV2L-HELM>GLM-PROBE>DEEP-VERIFY) rejoin the live catalog - the
+    # ablit-hide is OFF. The multimodal abliterated-model returns as the
+    # glmvision hub alias via the tars-router. CYBER-FROST stays retired.
+    $env:HIDE_ABLIT_MODELS   = "0"
+    $env:TARS_ROUTER_API_URL  = "http://gx10.ayu-sidewinder.ts.net:4001/v1/chat/completions"
 $env:SKILL_MEMORY="1"
     # Phase 3: /v1/computer (Agent TARS runner, admin-authed).
     $env:COMPUTER_USE_ENABLED="1"

@@ -11,7 +11,8 @@ Actions (all backed up, all logged masked):
          reuses the ak_ key as its master key, so both get the healthy value)
        - gateway_registry.json provider "key" fields holding the dead value
   2. REMOVE every other failed/foreign key:
-       - account_pool.json rows whose key failed (e.g. the 401 NanoGPT row)
+       - account_pool.json rows whose key failed (e.g. the 401'd row of a
+         since-retired provider)
        - Windows User-scope env vars whose CURRENT value failed (value-guarded:
          a var already re-pointed to a healthy key is left alone)
 

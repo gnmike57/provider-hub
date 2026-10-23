@@ -28,16 +28,16 @@ beside this module, gitignored - full key values) with env overrides:
 
     ACCOUNT_POOL_FILE        file path override (tests)
     ACCOUNT_POOL_KEYS        live override: comma-separated "provider:key"
-                             pairs ("hive:...", "ablit:...", "nano:...")
+                             pairs ("hive:...", "ablit:...")
     ACCOUNT_POOL_ENABLED     0 disables the pool entirely (passthrough)
-    ACCOUNT_POOL_HIVE_RPS / _ABLIT_RPS / _NANO_RPS  per-provider bucket rate
+    ACCOUNT_POOL_HIVE_RPS / _ABLIT_RPS / _DEFAULT_RPS  per-provider bucket rate
     ACCOUNT_POOL_COOLDOWN_S  429 cooldown seconds (default 5.0)
     ACCOUNT_POOL_METRICS     0 freezes the additive rotation metrics
                              (metrics_snapshot(); default ON)
     HUB_IPC_LOCKS            0 disables cross-process file locking globally
                              (hub_ipc kill switch; default on, best-effort)
 
-Storage shape: {"accounts": [{"provider": "hive"|"ablit"|"nano",
+Storage shape: {"accounts": [{"provider": "hive"|"ablit",
                               "key": "<secret>", "label": "..."}]}
 
 Hive auth note (tools/hive/README.md, verified live 2026-10-07): the SECRET key
@@ -88,8 +88,6 @@ def _sniff_provider(url: str) -> str:
         return "hive"
     if "abliteration.ai" in u:
         return "ablit"
-    if "nano-gpt.com" in u:
-        return "nano"
     return ""
 
 
@@ -313,7 +311,7 @@ class AccountPool:
             return _env_float("ACCOUNT_POOL_HIVE_RPS", 4.5)
         if provider == "ablit":
             return _env_float("ACCOUNT_POOL_ABLIT_RPS", 10.0)
-        return _env_float("ACCOUNT_POOL_NANO_RPS", 10.0)
+        return _env_float("ACCOUNT_POOL_DEFAULT_RPS", 10.0)
 
     def _reload(self) -> None:
         # Re-resolve the path from env on EVERY reload (unless an explicit

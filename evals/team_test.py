@@ -34,7 +34,7 @@ def fresh_envs(monkeypatch):
                  "FALLBACK_API_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL",
                  "WORKER_API_URL", "WORKER_API_KEY", "WORKER_MODEL",
                  "HIVE_API_BASE", "HIVE_SECRET_KEY", "HIVE_API_URL",
-                 "NANOGPT_API_KEY", "ABLITERATION_API_KEY"):
+                 "ABLITERATION_API_KEY"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -72,14 +72,12 @@ def test_team_routes_resolve_through_the_hub_alias_table():
 def test_specialist_key_chain_closes_on_the_abliteration_key(monkeypatch):
     monkeypatch.delenv("SPECIALIST_API_KEY", raising=False)
     monkeypatch.delenv("FALLBACK_API_KEY", raising=False)
-    monkeypatch.delenv("NANOGPT_API_KEY", raising=False)
     monkeypatch.setenv("ABLITERATION_API_KEY", "ak-v2-large")
     assert proxy_gateway._specialist_key() == "ak-v2-large"
 
 
 def test_specialist_key_explicit_overrides_still_win(monkeypatch):
     monkeypatch.setenv("SPECIALIST_API_KEY", "sk-explicit")
-    monkeypatch.setenv("NANOGPT_API_KEY", "sk-nano")
     monkeypatch.setenv("ABLITERATION_API_KEY", "ak-v2-large")
     assert proxy_gateway._specialist_key() == "sk-explicit"
 
