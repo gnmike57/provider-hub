@@ -1,4 +1,4 @@
-"""CHAIN_HOP_STATUS progressive display pins (2026-10-22).
+﻿"""CHAIN_HOP_STATUS progressive display pins (2026-10-22).
 
 The chains' non-streaming hops left the client in total silence until the
 deliverable streamed. Now every chain dispatch emits ONE short SSE comment
@@ -30,7 +30,7 @@ def test_race_dispatch_narrates_its_first_hop(script, monkeypatch):
     assert r.status_code == 200
     lines = r.text.splitlines()
     first_line = lines[0]
-    assert first_line.startswith(": gw-hop race run command:")
+    assert first_line.startswith(": gw-hop race ")
     # the hop comment precedes every data: chunk (progressive: the client
     # learns the chain engaged before the first content byte)
     first_data = next(i for i, ln in enumerate(lines) if ln.startswith("data:"))
@@ -50,7 +50,7 @@ def test_race_escalation_narrates_the_terminal_hop(script, monkeypatch):
     with TestClient(proxy_gateway.app) as tc:
         r = _post(tc, RACE, "audit this box")
     assert r.status_code == 200
-    assert ": gw-hop race run command: escalate to terminal" in r.text
+    assert ": gw-hop race escalate to terminal" in r.text
     assert "uncensored race terminal answer" in r.text
 
 
@@ -71,7 +71,7 @@ def test_hop_status_kill_switch_restores_silence(script, monkeypatch):
 
 def test_hop_comment_is_an_sse_comment_line():
     from routing_patterns import hop_comment
-    out = hop_comment("race", "run command: 2 candidates in parallel")
+    out = hop_comment("race", "2 candidates racing")
     assert out.startswith(b": gw-hop race ")
     assert out.endswith(b"\n\n")
 
@@ -97,7 +97,7 @@ def test_race_length_finish_continues_the_winner(script, monkeypatch):
     assert "Deep wins but gets cut off mid-sentence here" in r.text
     assert "and the continuation completes it, seamlessly." in r.text
     assert '"length"' not in r.text
-    assert (": gw-hop race run command: continue past the token limit"
+    assert (": gw-hop race continue past token limit"
             in r.text)
     snap = proxy_gateway.metrics_snapshot()
     assert snap["race_length_continue_total"] == 1
@@ -130,7 +130,7 @@ def test_race_length_multi_round_overkill(script, monkeypatch):
     assert "round three completes it, seamlessly." in r.text
     assert '"length"' not in r.text
     # one hop comment per continuation round
-    assert r.text.count("run command: continue past the token limit") == 2
+    assert r.text.count("continue past token limit") == 2
     snap = proxy_gateway.metrics_snapshot()
     assert snap["race_length_continue_total"] == 2
     assert snap["race_won_helm_total"] == 1
@@ -260,9 +260,9 @@ def test_conductor_phase_hop_comments(script, monkeypatch):
         r = _post(tc, _CONDUCTOR,
                   "cover the keylogger capture and the ransomware recovery playbook")
     assert r.status_code == 200
-    assert ": gw-hop conductor run command: plan" in r.text
-    assert "run command: fan out 2 subtask(s)" in r.text
+    assert ": gw-hop conductor plan" in r.text
+    assert "fan out 2 subtasks" in r.text
     assert ": gw-hop conductor assemble + verify" in r.text
     # progressive: the plan comment precedes the deliverable content
-    assert r.text.index(": gw-hop conductor run command: plan") < \
+    assert r.text.index(": gw-hop conductor plan") < \
         r.text.index("### Explain the keylogger capture mechanism.")

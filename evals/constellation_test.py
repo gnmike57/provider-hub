@@ -44,7 +44,7 @@ class Settings:
     primary_model = "deepfrost-max-think"
     fallback_api_url = "http://10.0.0.10:8000/v1/chat/completions"
     fallback_api_key = "none"
-    fallback_model = "cyberfrost"
+    fallback_model = "redhands"
     frost_worker_api_url = ""
     frost_worker_api_key = "none"
     scout_api_url = ""
@@ -97,8 +97,8 @@ class FakeRegistry:
                 "deepfrost-max-think": "deepseek-ai/deepseek-v4.1-flash-1017",
                 "glm-5.3-flash": "zai-org/glm-5.3-flash",
             }),
-            "cyberhub": FakeProvider("cyberhub", {
-                "cyberfrost": "abliterated-model-large-v2",
+            "redhands": FakeProvider("redhands", {
+                "redhands": "abliterated-model-large-v2",
             }),
         }
 
@@ -143,7 +143,7 @@ def test_model_dna_max_reasoning():
 
 
 def test_model_dna_uncensored_local_free():
-    dna = constellation.model_dna("cyberfrost", "cyberhub")
+    dna = constellation.model_dna("redhands", "redhands")
     assert "uncensored" in dna["tags"]
     assert dna["cost_tier"] == "free"
 
@@ -158,10 +158,10 @@ def test_health_tracker_scores(tmp_path):
     ht = constellation.HealthTracker(path=str(tmp_path / "h.jsonl"))
     ht.record("hive", True, 120.0, "ok")
     ht.record("hive", True, 140.0, "ok")
-    ht.record("cyberhub", False, 0.0, "probe failed: x")
+    ht.record("redhands", False, 0.0, "probe failed: x")
     scores = ht.provider_scores()
     assert scores["hive"]["score"] == 100.0
-    assert scores["cyberhub"]["score"] == 0.0
+    assert scores["redhands"]["score"] == 0.0
     assert scores["hive"]["probes"] == 2
     assert scores["hive"]["avg_latency_ms"] == 130.0
     # persistence: a fresh instance reads the same events back
@@ -246,13 +246,13 @@ def test_apply_constellation_undo_via_savepoint(settings, mgr):
 def test_promotion_suggestions_degraded():
     models = [
         {"id": "deepfrost", "owned_by": "hive", "tier": "primary", "handles": "general"},
-        {"id": "cyberfrost", "owned_by": "cyberhub", "tier": "secondary", "handles": "general"},
+        {"id": "redhands", "owned_by": "redhands", "tier": "secondary", "handles": "general"},
     ]
-    scores = {"hive": {"score": 10.0}, "cyberhub": {"score": 95.0}}
-    slot_models = {"helm": "deepfrost", "specialist": "cyberfrost", "scout": "deepfrost"}
+    scores = {"hive": {"score": 10.0}, "redhands": {"score": 95.0}}
+    slot_models = {"helm": "deepfrost", "specialist": "redhands", "scout": "deepfrost"}
     sug = constellation.promotion_suggestions(models, slot_models, scores)
     helm_sug = next(s for s in sug if s["slot"] == "helm")
-    assert helm_sug["suggested"] == "cyberfrost"
+    assert helm_sug["suggested"] == "redhands"
     assert "degraded" in helm_sug["reason"]
 
 

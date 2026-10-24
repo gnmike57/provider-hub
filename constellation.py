@@ -440,7 +440,7 @@ def model_dna(exposed_name: str, provider_id: str, upstream_id: str = "") -> dic
         handles = "reasoning"
     if any(k in name for k in ("coder", "code", "qwen")):
         tags.append("coding")
-    if any(k in name for k in ("abliterated", "uncensored", "cyber")):
+    if any(k in name for k in ("abliterated", "uncensored", "cyber", "redhands")):
         tags.append("uncensored")
     if "frost" in name:
         tags.append("legacy-frost")  # CyberFrost deleted 2026-10-23 (was "speculative")
@@ -451,7 +451,7 @@ def model_dna(exposed_name: str, provider_id: str, upstream_id: str = "") -> dic
     elif any(k in name for k in ("480b", "large", "max")):
         latency_tier = "slow"
     # Local providers (the gx10 hub) are effectively free to run.
-    cost_tier = "free" if provider_id in ("cyberhub", "env-worker") else (
+    cost_tier = "free" if provider_id in ("redhands", "env-worker") else (
         "low" if "flash" in name else "mid"
     )
     if not tags:

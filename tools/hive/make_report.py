@@ -20,8 +20,8 @@ DESK = Path(os.path.expanduser("~")) / "Desktop"
 FROST = {
     "deepseek-ai/deepseek-v4.1-flash-1017": "DeepFrost v4.1",
     "zai-org/glm-5.3-flash": "GLMFrost 5.3 Flash",
-    "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw": "CyberFrost 3.8 SAGE (deleted)",
-    "abliterated-model-large-v2": "CyberFrost (uncensored terminal)",
+    "CYBER-FROST-3.8-EXL3-SAGE-3.87bpw": "RedHands 3.8 SAGE (deleted)",
+    "abliterated-model-large-v2": "RedHands (uncensored terminal)",
 }
 
 
@@ -47,7 +47,7 @@ def defects_section(L):
     L.append("| 2 | empty sovereign was committed to the client | a finish with 0 content tokens "
              "shipped a blank 200 with no footnote and no signal | empty-sovereign rule diverts "
              "instead of committing (`hedge_empty_sovereign_total`) | `evals/hedge_empty_test.py`; "
-             "the GLM live case now DIVERTS to CyberFrost |")
+             "the GLM live case now DIVERTS to RedHands |")
     L.append("| 3 | registry aliases were never resolved | `model: \"deepfrost-v4.1\"` went "
              "upstream verbatim -> `Invalid Model Name`; `providers.py` was not even imported by "
              "the gateway | Frost names resolve to slot + exact upstream id | "
@@ -115,7 +115,7 @@ def endpoints_section(L):
     L.append("| 9310 | any Frost name or raw id | general | Abliteration terminal (default `abliterated-model-large-v2`) |")
     L.append("| 9311 | optional | DeepFrost v4.1 | Hive `deepseek-ai/deepseek-v4.1-flash-1017` |")
     L.append("| 9312 | optional | GLMFrost 5.3 Flash | Hive `zai-org/glm-5.3-flash` |")
-    L.append("| 9313 | retired | CyberFrost 3.8 SAGE | deleted 2026-10-23 - the gx10 no longer serves it |")
+    L.append("| 9313 | retired | RedHands 3.8 SAGE | deleted 2026-10-23 - the gx10 no longer serves it |")
     L.append("| 9314 | optional | DeepFrost Max Think | Hive `deepseek-ai/deepseek-v4.1-flash-1017` (max-think, no hedge) |")
     L.append("| 9315 | optional | GLMFrost Max Think | Hive `zai-org/glm-5.3-flash` (max-think, no hedge) |")
     L.append("")
@@ -128,7 +128,7 @@ def endpoints_section(L):
     L.append("* `\"hedge\": true` forces the speculative dual-dispatch; omitting it means the "
              "hedge fires only on the latency hints.")
     L.append("* Frost names verified live: `DeepFrost v4.1` reached Hive as "
-             "`deepseek-ai/deepseek-v4.1-flash-1017`; `CyberFrost 3.8 SAGE` routed "
+             "`deepseek-ai/deepseek-v4.1-flash-1017`; `RedHands 3.8 SAGE` routed "
              "to the worker slot, which is the constellation's UNCENSORED TERMINAL "
              "(Abliteration.ai `abliterated-model-large-v2` - the same id all three "
              "constellations terminate on). The old local weights were deleted "

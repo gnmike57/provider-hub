@@ -8,7 +8,7 @@ deepseek-ai/deepseek-v4.1-flash-1017 deployment - the plain id is gone.
 - Cline CLI  : ~/.cline/data/settings/providers.json  (restore the local hub
   entry that `cline auth` clobbered, then add a separate `hive` provider)
 - opencode   : ~/.config/opencode/opencode.json (merge a `hive` provider,
-  keeping cyberhub / gx10 / 111-gx10 untouched)
+  keeping redhands / gx10 / 111-gx10 untouched)
 
 Secrets are read from ufo.env and never printed.
 """

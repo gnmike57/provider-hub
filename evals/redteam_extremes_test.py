@@ -308,7 +308,7 @@ def test_uncensored_middle_option_swaps_the_secondary(script, monkeypatch):
     assert r.status_code == 200
     assert "uncensored middle answer" in r.text
     mid = _calls(script, SPEC)[0]
-    assert mid["json"]["model"] == "abliterated-model-large"
+    assert mid["json"]["model"] == "abliterated-model-large-v2"
     # ablit-safety: no runtime-control knobs, single token cap
     assert "enable_thinking" not in mid["json"]
     assert "max_completion_tokens" not in mid["json"]

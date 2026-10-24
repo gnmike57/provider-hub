@@ -1,6 +1,6 @@
 """T5.2 secrets hygiene: the committed launchers stay free of provider keys.
 
-Pins (ledger T5.2 edit #5): launch_frost_hub.ps1 + launch_frost_hub.sh must
+Pins (ledger T5.2 edit #5): launch_redhands_hub.ps1 + launch_redhands_hub.sh must
 never contain sk-…/ak_… provider literals or "Bearer <token>" strings. The
 deliberate local ops config (Fernet ENCRYPTION_KEY, ADMIN_API_KEY) is the
 W2-committed exception and is NOT matched by these patterns.
@@ -20,7 +20,7 @@ SECRET_PATTERNS = [
 ]
 
 
-@pytest.mark.parametrize("launcher", ["launch_frost_hub.ps1", "launch_frost_hub.sh"])
+@pytest.mark.parametrize("launcher", ["launch_redhands_hub.ps1", "launch_redhands_hub.sh"])
 def test_launcher_is_key_free(launcher):
     path = os.path.join(REPO, launcher)
     if not os.path.exists(path):

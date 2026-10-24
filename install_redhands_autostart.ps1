@@ -1,31 +1,31 @@
-# install_frost_autostart.ps1 - auto-launch + auto-recover, always-on wiring.
+# install_redhands_autostart.ps1 - auto-launch + auto-recover, always-on wiring.
 #
-# Registers (or repairs) TWO Task Scheduler entries so the Frost hub is running
+# Registers (or repairs) TWO Task Scheduler entries so the RedHands hub is running
 # from boot and is put back if it ever dies:
 #
-#   1. "Frost Hub"          - launches launch_frost_hub.ps1 at boot AND at logon.
-#                             Start-on-batteries is ALLOWED and going on battery
-#                             does NOT stop it (the previous task had both set the
-#                             wrong way, so a laptop never started it on battery
-#                             and killed it the moment the charger came out).
-#                             RestartOnFailure retries the action if it exits 1.
+#   1. "RedHands Hub"          - launches launch_redhands_hub.ps1 at boot AND at logon.
+#                                Start-on-batteries is ALLOWED and going on battery
+#                                does NOT stop it (the previous task had both set the
+#                                wrong way, so a laptop never started it on battery
+#                                and killed it the moment the charger came out).
+#                                RestartOnFailure retries the action if it exits 1.
 #
-#   2. "Frost Hub Watchdog" - runs watchdog_frost_hub.ps1 -Once every minute
-#                             (plus at boot/logon). Task Scheduler itself is the
-#                             supervisor, so recovery survives PowerShell dying.
+#   2. "RedHands Hub Watchdog" - runs watchdog_redhands_hub.ps1 -Once every minute
+#                                (plus at boot/logon). Task Scheduler itself is the
+#                                supervisor, so recovery survives PowerShell dying.
 #
-#   3. Desktop shortcut     - "Frost Hub" shortcut on user's Desktop so the hub
+#   3. Desktop shortcut     - "RedHands Hub" shortcut on user's Desktop so the hub
 #                             can be launched manually with a double-click.
 #
 # Both run as SYSTEM / HighestAvailable / unlimited runtime / IgnoreNew, so they
 # work with no user logged in and never stack up duplicates.
 #
 # Usage (self-elevates; UAC prompt appears if not already admin):
-#   powershell -ExecutionPolicy Bypass -File install_frost_autostart.ps1            # install/repair
-#   powershell -ExecutionPolicy Bypass -File install_frost_autostart.ps1 -Status    # show state
-#   powershell -ExecutionPolicy Bypass -File install_frost_autostart.ps1 -Uninstall # remove both
-#   powershell -ExecutionPolicy Bypass -File install_frost_autostart.ps1 -Install -WatchdogIntervalMinutes 1
-#   powershell -ExecutionPolicy Bypass -File install_frost_autostart.ps1 -Shortcut   # desktop shortcut only
+#   powershell -ExecutionPolicy Bypass -File install_redhands_autostart.ps1            # install/repair
+#   powershell -ExecutionPolicy Bypass -File install_redhands_autostart.ps1 -Status    # show state
+#   powershell -ExecutionPolicy Bypass -File install_redhands_autostart.ps1 -Uninstall # remove both
+#   powershell -ExecutionPolicy Bypass -File install_redhands_autostart.ps1 -Install -WatchdogIntervalMinutes 1
+#   powershell -ExecutionPolicy Bypass -File install_redhands_autostart.ps1 -Shortcut   # desktop shortcut only
 [CmdletBinding()]
 param(
     [switch]$Install,
@@ -40,19 +40,19 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ROOT = "C:\Users\lnxzf\Desktop\projects\provider-hub"
-$LAUNCHER = "$ROOT\launch_frost_hub.ps1"
-$WATCHDOG = "$ROOT\watchdog_frost_hub.ps1"
-$SHORTCUT_NAME = "Frost Hub.lnk"
-$CONTROL_ROOM_NAME = "Frost Control Room.lnk"
+$LAUNCHER = "$ROOT\launch_redhands_hub.ps1"
+$WATCHDOG = "$ROOT\watchdog_redhands_hub.ps1"
+$SHORTCUT_NAME = "RedHands Hub.lnk"
+$CONTROL_ROOM_NAME = "RedHands Control Room.lnk"
 $CONTROL_ROOM_OPENER = "$ROOT\open_control_room.ps1"
-$HUB_TASK = "Frost Hub"
-$WD_TASK = "Frost Hub Watchdog"
+$HUB_TASK = "RedHands Hub"
+$WD_TASK = "RedHands Hub Watchdog"
 $HEALTH_URL = "http://127.0.0.1:9000/healthz"
 
 # Shared helpers (ONE health definition: 200 AND ok:true; listener pids; log
 # rotation) - dot-sourced so this script can never drift from the watchdog and
 # launcher copies again.
-. (Join-Path $ROOT "frost_common.ps1")
+. (Join-Path $ROOT "redhands_common.ps1")
 
 # Default to Install when no verb is supplied.
 if (-not ($Install -or $Uninstall -or $Status)) { $Install = $true }
@@ -86,7 +86,7 @@ function Create-DesktopShortcut {
     $shortcut.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$LAUNCHER`""
     $shortcut.WorkingDirectory = $ROOT
     $shortcut.WindowStyle = 7  # minimized: no console flash on manual double-click
-    $shortcut.Description = "Launch the Frost interception hub (uvicorn :9000)"
+    $shortcut.Description = "Launch the RedHands interception hub (uvicorn :9000)"
     $shortcut.IconLocation = "$PSHOME\powershell.exe,0"
     $shortcut.Save()
     Write-Host ("  [ok] desktop shortcut -> '{0}'" -f $shortcutPath)
@@ -157,7 +157,7 @@ function New-FrostSettings([switch]$RetryOnFailure) {
 function New-FrostAction([string]$script, [string[]]$extraArgs) {
     # -WindowStyle Hidden keeps the boot/logon launch invisible (no console
     # flash). The uvicorn child is already launched hidden inside
-    # launch_frost_hub.ps1; this hides the parent powershell.exe too.
+    # launch_redhands_hub.ps1; this hides the parent powershell.exe too.
     $argv = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"") + $extraArgs
     # -WorkingDirectory takes a BARE path: NO embedded quotes. Task Scheduler
     # stores the string verbatim, so the previous "`"$ROOT`"" made every task
@@ -184,9 +184,9 @@ function Invoke-Install {
     $hubAction = New-FrostAction $LAUNCHER @()
     Register-ScheduledTask -TaskName $HUB_TASK -Action $hubAction `
         -Trigger $hubTriggers -Settings (New-FrostSettings -RetryOnFailure) -Principal (New-FrostPrincipal) `
-        -Description "Auto-launch the Frost interception hub (uvicorn :9000) at boot/logon." `
+        -Description "Auto-launch the RedHands interception hub (uvicorn :9000) at boot/logon." `
         -Force | Out-Null
-    Write-Host ("  [ok] '{0}' -> launch_frost_hub.ps1 (boot + logon)" -f $HUB_TASK)
+    Write-Host ("  [ok] '{0}' -> launch_redhands_hub.ps1 (boot + logon)" -f $HUB_TASK)
 
     # 2) Watchdog: boot + logon + every N minutes indefinitely.
     $repeat = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
@@ -200,9 +200,9 @@ function Invoke-Install {
     $wdAction = New-FrostAction $WATCHDOG @('-Once')
     Register-ScheduledTask -TaskName $WD_TASK -Action $wdAction `
         -Trigger $wdTriggers -Settings (New-FrostSettings) -Principal (New-FrostPrincipal) `
-        -Description "Auto-recover the Frost hub: health-probe every $WatchdogIntervalMinutes min and relaunch on failure." `
+        -Description "Auto-recover the RedHands hub: health-probe every $WatchdogIntervalMinutes min and relaunch on failure." `
         -Force | Out-Null
-    Write-Host ("  [ok] '{0}' -> watchdog_frost_hub.ps1 -Once (boot + logon + every {1} min)" -f $WD_TASK, $WatchdogIntervalMinutes)
+    Write-Host ("  [ok] '{0}' -> watchdog_redhands_hub.ps1 -Once (boot + logon + every {1} min)" -f $WD_TASK, $WatchdogIntervalMinutes)
 
     # Start both now so we do not wait for the next boot to be protected.
     # Guarded: a Start-ScheduledTask hiccup (task engine busy, transient
@@ -238,7 +238,7 @@ function Invoke-Uninstall {
 }
 
 function Invoke-Status {
-    Write-Host "`n== Frost autostart status =="
+    Write-Host "`n== RedHands autostart status =="
     foreach ($name in @($HUB_TASK, $WD_TASK)) {
         $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
         if (-not $task) { Write-Host ("  {0,-20} MISSING" -f $name); continue }

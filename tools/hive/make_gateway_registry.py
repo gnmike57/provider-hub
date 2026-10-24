@@ -56,17 +56,17 @@ doc = {
                 "glm-5.3-flash": "zai-org/glm-5.3-flash",
             },
         },
-        "cyberhub": {
+        "redhands": {
             "api": "openai",
             "base_url": ABLIT_BASE,
             "key": "",  # resolved from ABLITERATION_API_KEY at load time
             "models": {
-                "cyberfrost": "abliterated-model-large-v2",
+                "redhands": "abliterated-model-large-v2",
                 "abliterated-model-large-v2": "abliterated-model-large-v2",
             },
         },
     },
-    "defaults": {"primary": "hive", "worker": "cyberhub"},
+    "defaults": {"primary": "hive", "worker": "redhands"},
 }
 
 io.open(OUT, "w", encoding="utf-8").write(json.dumps(doc, indent=2))

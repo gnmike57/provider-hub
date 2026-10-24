@@ -82,9 +82,9 @@ FROST_ALIASES = {
     "glmfrost-5.3-flash": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost": ("primary", "zai-org/glm-5.3-flash"),
     "glmfrost5.3flash": ("primary", "zai-org/glm-5.3-flash"),
-    "cyberfrost 3.8 sage": ("worker", "abliterated-model-large-v2"),
-    "cyberfrost-3.8-sage": ("worker", "abliterated-model-large-v2"),
-    "cyberfrost": ("worker", "abliterated-model-large-v2"),
+    "redhands 3.8 sage": ("worker", "abliterated-model-large-v2"),
+    "redhands-3.8-sage": ("worker", "abliterated-model-large-v2"),
+    "redhands": ("worker", "abliterated-model-large-v2"),
     # Max-think variants (operator request, 2026-10): the SAME upstream models
     # with reasoning pushed to maximum - the gateway injects the knob set and
     # skips the hedge race (see proxy_gateway.wants_max_think / chat_proxy).
@@ -168,7 +168,7 @@ CONSTELLATION_CHAINS = {
                        "Large middle; Abliterated V2 Large terminal "
                        "(REDHANDS on offense).",
         "helm": ("primary", "zai-org/glm-5.3-flash", True),
-        "middle": ("ablit.ai", "abliterated-model-large", False),
+        "middle": ("ablit.ai", "abliterated-model-large-v2", False),
         "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
         "redhands": False,
     },
@@ -247,7 +247,7 @@ CONSTELLATION_CHAINS = {
                        "Large middle; Abliterated V2 Large terminal (REDHANDS "
                        "on offense).",
         "helm": ("primary", "deepseek-ai/deepseek-v4.1-flash-1017", True),
-        "middle": ("ablit.ai", "abliterated-model-large", False),
+        "middle": ("ablit.ai", "abliterated-model-large-v2", False),
         "terminal": ("ablit.ai", "abliterated-model-large-v2", False),
         "redhands": False,
     },
@@ -331,7 +331,7 @@ def resolve_constellation_chain(model: str):
 #             (nano -> the retired nano provider, gone from the hub 2026-10-23)
 #   Model:    deep/glm name the matrix SLOT, resolved per provider (verified
 #             against each live catalog, 2026-10-18):
-#               ablit.ai deep -> abliterated-model-large (their catalog has no
+#               ablit.ai deep -> abliterated-model-large-v2 (their catalog has no
 #                                DeepSeek model; this is their other frontier
 #                                reasoning model, prev-gen GLM-4 based)
 #               ablit.ai glm  -> abliterated-model-large-v2 (GLM-5.3 based,
@@ -369,13 +369,24 @@ HUB_PROVIDERS = {
     },
 }
 
+# (2026-10-24 operator rule) MOCK_ABLITERATION=1 routes EVERY abliteration call
+# to the local mock (:4100) - ZERO real Abliteration.ai spend, DEEP/GLM stay real.
+if os.getenv("MOCK_ABLITERATION", "0").strip().lower() not in ("0", "false", "no", "off"):
+    _mock_url = "http://127.0.0.1:4100/v1/chat/completions"
+    _ablit = HUB_PROVIDERS["ablit.ai"]
+    HUB_PROVIDERS["ablit.ai"] = (_mock_url, _ablit["key"], False)
+    for _alias in ("deepmaxablit.ai", "glmmaxablit.ai", "deepablit.ai", "glmablit.ai",
+                   "teamabliterated", "team"):
+        HUB_PROVIDERS[_alias] = (_mock_url, HUB_PROVIDERS[_alias][1], False)
+
 # normalized alias -> (provider_key, upstream_model_id, max_reasoning)
+# V2-only abliteration policy (2026-10-24): abliterated-model-large (prev-gen)
+# and base abliterated-model are removed from active aliases. Only
+# abliterated-model-large-v2 resolves. Non-V2 ablit is fallback-only and not
+# listed here.
 HUB_MODEL_ALIASES = {
-    # (nano aliases retired 2026-10-23 with the provider: DeepMaxNano,
     # GLMMaxNano, DeepNano, GLMNano no longer resolve.)
-    "deepmaxablit.ai": ("ablit.ai", "abliterated-model-large", True),
     "glmmaxablit.ai": ("ablit.ai", "abliterated-model-large-v2", True),
-    "deepablit.ai": ("ablit.ai", "abliterated-model-large", False),
     "glmablit.ai": ("ablit.ai", "abliterated-model-large-v2", False),
     # TEAM ROUTES (2026-10-21): /team is ALWAYS on. These ids address the
     # team sub-agent hops DIRECTLY: the GLM and DeepSeek team brains run on
@@ -387,10 +398,10 @@ HUB_MODEL_ALIASES = {
     "teamdeep": ("hive", "deepseek-ai/deepseek-v4.1-flash-1017", False),
     "teamabliterated": ("ablit.ai", "abliterated-model-large-v2", False),
     "team": ("ablit.ai", "abliterated-model-large-v2", False),
-    # REACTIVATION WAVE (2026-10-23): glmvision = the MULTIMODAL
-    # abliterated-model via the tars-router (vision-capable).
-    "glmvision": ("tars-router", "abliterated-model", False),
 }
+# W5 hygiene: the display derivation IS the aliases (test_hub_display_
+# is_derived_from_hub_model_aliases). "team" is a word stem, so it joins the
+# token table instead of being special-cased in the display builder.
 # W5 hygiene: the display derivation IS the aliases (test_hub_display_
 # is_derived_from_hub_model_aliases). "team" is a word stem, so it joins the
 # token table instead of being special-cased in the display builder.
@@ -447,7 +458,7 @@ def _normalize_model_name(model: str) -> str:
 
 
 def resolve_hub_alias(model: str):
-    """`"DeepMaxAblit.ai"` -> `("ablit.ai", "abliterated-model-large", True)`.
+    """`"GLMMaxAblit.ai"` -> `("ablit.ai", "abliterated-model-large-v2", True)`.
 
     Returns None for anything that is not a hub alias, so raw upstream ids and
     Frost names keep their existing behaviour.

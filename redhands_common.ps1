@@ -1,15 +1,15 @@
-# frost_common.ps1 - shared helpers for the hub ops scripts.
+# redhands_common.ps1 - shared helpers for the hub ops scripts.
 #
 # ONE health definition, ONE listener-pid lookup, ONE log rotator (plus the
 # process-identity helper they share). Before this file existed,
-# install_frost_autostart.ps1, watchdog_frost_hub.ps1, launch_frost_hub.ps1
+# install_redhands_autostart.ps1, watchdog_redhands_hub.ps1, launch_redhands_hub.ps1
 # and open_control_room.ps1 each carried their own drifting copy: one required
 # ok:true, two only required HTTP 200, three different rotation caps - exactly
 # the split-brain that lets a wedged-but-listening hub look healthy to one
 # script and dead to another.
 #
 # Dot-source it (no side effects of its own):
-#   . (Join-Path $ROOT "frost_common.ps1")
+#   . (Join-Path $ROOT "redhands_common.ps1")
 
 # THE health definition for the whole Frost toolchain: the hub answers
 # /healthz with HTTP 200 AND body ok:true. HTTP 200 alone only proves a
@@ -44,7 +44,7 @@ function Get-HubListenerPids {
 }
 
 # Command line of a process, used to make sure scripts only ever kill
-# processes that really are the Frost hub - never an innocent neighbour
+# processes that really are the RedHands hub - never an innocent neighbour
 # that happens to hold the port.
 function Get-ProcIdentity {
     [CmdletBinding()]

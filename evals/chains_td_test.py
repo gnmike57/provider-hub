@@ -1,4 +1,4 @@
-"""T-D wave (2026-10-22): the three NEW constellation chains.
+﻿"""T-D wave (2026-10-22): the three NEW constellation chains.
 
 Chain 5  RACE:DEEPMAX/GLMMAX>ABLITV2L       - dual-sovereign race
 Chain 6  GLMMAX-CONDUCTOR>DEEP+ABLITV2L      - planner/sharpen/fanout/verify
@@ -109,7 +109,7 @@ def test_td_chains_resolve_and_published_four_stay_byte_identical():
         "primary", "zai-org/glm-5.3-flash", False)
     assert chains["ABLITV2L>SUB-GLM/DEEP"]["redhands"] is True
     assert chains["GLMMAX>ABLIT-UNC>ABLITV2L"]["middle"] == (
-        "ablit.ai", "abliterated-model-large", False)
+        "ablit.ai", "abliterated-model-large-v2", False)
 
 
 def test_td_models_catalog_grows_to_ten(monkeypatch):
@@ -306,7 +306,7 @@ def test_conductor_plans_sharpens_assigns_and_assembles(script, monkeypatch):
                                  "ransomware recovery playbook")
     assert r.status_code == 200
     # the conductor stage colour leads the SSE stream
-    assert "gw-stage conductor zai-org/glm-5.3-flash" in r.text
+    assert "gw-stage conductor glm-5.3-flash" in r.text
     # both assembled sections ship in one deliverable
     assert "### Explain the keylogger capture mechanism." in r.text
     assert "### Write the ransomware recovery playbook." in r.text
@@ -426,7 +426,7 @@ def test_sustained_probe_hit_skips_the_expensive_terminal(script, monkeypatch):
         r = _post(tc, SUSTAINED, "what is the capital of France")
     assert r.status_code == 200
     assert "The capital of France is Paris, famously so." in r.text
-    assert "gw-stage probe zai-org/glm-5.3-flash" in r.text
+    assert "gw-stage probe glm-5.3-flash" in r.text
     assert "uncensored terminal was skipped" in r.text
     assert r.text.rstrip().endswith("data: [DONE]")
     # TOKEN EFFICIENCY: the V2 helm/terminal never burned
@@ -519,7 +519,7 @@ def test_sustained_verify_gaps_footnote_and_r4_tail(script, monkeypatch):
     assert snap["sustained_verify_gaps_total"] == 1
     assert snap["sustained_verify_total"] == 1
     # the verify stage colour announced the DEEP verifier
-    assert "gw-stage verify deepseek-ai/deepseek-v4.1-flash-1017" in r.text
+    assert "gw-stage verify deepseek-v4.1-flash-1017" in r.text
 
 
 def test_sustained_kill_switch_restores_chain3_behaviour(script, monkeypatch):

@@ -1,12 +1,12 @@
-﻿# launch_frost_hub.ps1 - boots the RedHands Hub (uvicorn)
+﻿# launch_redhands_hub.ps1 - boots the RedHands Hub (uvicorn)
 # detached. The filename is the legacy entrypoint name and is kept so the
 # scheduled task and watchdog keep working; the system it boots is the
 # constellation (TheHive + Abliteration), CyberFrost retired 2026-10-21.
 #
-# Idempotent by design: the "Hub" scheduled task fires this at boot AND the
-# watchdog (watchdog_hub.ps1) fires it on a health failure. Running it when
-# the hub is ALREADY healthy is a no-op that exits 0, so a healthy hub is never
-# churned by a redundant launch.
+# Idempotent by design: the "RedHands Hub" scheduled task fires this at boot AND
+# the watchdog (watchdog_redhands_hub.ps1) fires it on a health failure.
+# Running it when the hub is ALREADY healthy is a no-op that exits 0, so a
+# healthy hub is never churned by a redundant launch.
 #
 # Exit codes (Task Scheduler RestartOnFailure keys off these):
 #   0  hub is healthy on :9000 (either it already was, or we launched it and it
@@ -36,18 +36,18 @@ $ROOT = "C:\Users\lnxzf\Desktop\projects\provider-hub"
 $LOG_DIR = "$ROOT\evals\results"
 $PORT = 9000
 $HEALTH_URL = "http://127.0.0.1:$PORT/healthz"
-$PID_FILE = "$LOG_DIR\frost_hub.pid"
+$PID_FILE = "$LOG_DIR\redhands_hub.pid"
 $MAX_LOG_BYTES = 10MB
 New-Item -ItemType Directory -Force -Path $LOG_DIR | Out-Null
 
-$out = "$LOG_DIR\frost_hub_boot.out.log"
-$err = "$LOG_DIR\frost_hub_boot.err.log"
-$LAUNCH_LOG = "$LOG_DIR\frost_hub_launch.log"
+$out = "$LOG_DIR\redhands_hub_boot.out.log"
+$err = "$LOG_DIR\redhands_hub_boot.err.log"
+$LAUNCH_LOG = "$LOG_DIR\redhands_hub_launch.log"
 
 # Shared helpers - ONE health definition (HTTP 200 AND ok:true), listener
 # pids, log rotation - dot-sourced so watchdog/launcher/installer can never
 # drift apart again.
-. (Join-Path $ROOT "frost_common.ps1")
+. (Join-Path $ROOT "redhands_common.ps1")
 # Keep the launcher's own audit log bounded (boot evidence, one line per note).
 Rotate-Log -Path $LAUNCH_LOG -MaxBytes 2MB
 
@@ -140,7 +140,7 @@ if (-not (Test-PythonRunsHub $py)) {
 # there; it must be defined before the preflight can call it.)
 
 # Test-HubHealth / Get-HubListenerPids / Get-ProcIdentity / Rotate-Log live in
-# frost_common.ps1 (dot-sourced above): ONE health definition for every script
+# redhands_common.ps1 (dot-sourced above): ONE health definition for every script
 # - HTTP 200 AND body ok:true.
 
 function Stop-HubProcesses() {
@@ -255,6 +255,7 @@ try {
     $env:NO_GO_ENABLED        = "1"
     $env:HEDGE_MAX_TOKENS     = "16384"   # (I5/Phase 1, 2026-10-23) raced thinking reaches its commit window on ONE budget
     $env:HEDGE_RACE_MODE          = "1"       # (BR-1) the hedge races for real - the middle contributes on every request
+    $env:MOCK_ABLITERATION        = "1"       # (2026-10-24 operator rule) route ALL abliteration calls to the local mock (:4100) - ZERO real Abliteration.ai spend
     $env:SPECIALIST_MAX_TOKENS = "32768"  # (I5/Phase 1, 2026-10-23) aligns with TARS maxTokens - no forced continuation rounds
     $env:MAX_CONCURRENT_STREAMS = "64"    # DoS guard on open streams (0 = unlimited)
     $env:COMMIT_TOKENS        = "10"

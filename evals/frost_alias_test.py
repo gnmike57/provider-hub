@@ -1,5 +1,5 @@
-﻿"""Frost names are real model ids: "deepfrost", "glmfrost",
-"cyberfrost" resolve to the configured slot + exact upstream id, so one
+﻿"""RedHands names are real model ids: "deepfrost", "glmfrost",
+"redhands" resolve to the configured slot + exact upstream id, so one
 gateway endpoint can address any of the published specialised systems.
 """
 
@@ -44,9 +44,9 @@ def test_alias_table_covers_the_three_systems():
     # (stale key, not to be enabled) and the constellation (deepseek / glm /
     # abliteration) is the live hub - so the legacy names address its
     # UNCENSORED TERMINAL, Abliteration.ai abliterated-model-large-v2.
-    assert providers.resolve_frost_alias("cyberfrost") == (
+    assert providers.resolve_frost_alias("redhands") == (
         "worker", "abliterated-model-large-v2")
-    assert providers.resolve_frost_alias("cyberfrost-3.8-sage") == (
+    assert providers.resolve_frost_alias("redhands-3.8-sage") == (
         "worker", "abliterated-model-large-v2")
 
 
@@ -79,7 +79,7 @@ def test_glmfrost_name_uses_the_glm_upstream_id(script):
     assert sent[0]["json"]["model"] == "zai-org/glm-5.3-flash"
 
 
-def test_cyberfrost_name_routes_to_the_worker_slot(script):
+def test_redhands_name_routes_to_the_worker_slot(script):
     """CYBER-FROST is RETIRED (2026-10-21): the local weights are gone, so the
     legacy names address the constellation's uncensored terminal
     (abliterated-model-large-v2) on the worker slot - and the answer still
@@ -87,7 +87,7 @@ def test_cyberfrost_name_routes_to_the_worker_slot(script):
     script.script(WORKER, [("sse", [chunk("specialist", finish="stop"), DONE])])
     with TestClient(proxy_gateway.app) as tc:
         resp = tc.post("/v1/chat/completions",
-                       json={"model": "cyberfrost",
+                       json={"model": "redhands",
                              "messages": [{"role": "user", "content": "hi"}]})
     assert resp.status_code == 200
     assert "specialist" in resp.text
@@ -95,7 +95,7 @@ def test_cyberfrost_name_routes_to_the_worker_slot(script):
     assert sent, "the worker slot was never called"
     assert sent[0]["json"]["model"] == "abliterated-model-large-v2"
     assert not [c for c in script.calls if c["url"] == PRIMARY], (
-        "a CyberFrost request must not touch the primary slot")
+        "a RedHands request must not touch the primary slot")
 
 
 def test_raw_upstream_id_is_forwarded_unchanged(script):

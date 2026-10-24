@@ -259,7 +259,7 @@ gets; the switch is stages 5-7.
 
 ### Stage 6 - cutover
 
-* Flip `CHAIN_ROUTING=1` in `launch_frost_hub.ps1` (single line), publish the
+* Flip `CHAIN_ROUTING=1` in `launch_redhands_hub.ps1` (single line), publish the
   chain names, keep every legacy name resolving through the prefix rule.
 * Gate: live curl matrix on the real hub (`deep` -> answer; refusal prompt ->
   hop 2; red-team prompt -> hop 3/4 with footnotes), plus suite green.
@@ -294,7 +294,7 @@ gets; the switch is stages 5-7.
 | Hive drops the plain deepseek id -> hop 1 400s (fail-fast = no escalation!) | probe in stage 4; pin the working id via `CHAIN_DEEP_PRIMARY_MODEL` env; a 404 proves the need for the `-1017` id |
 | Apex model id/price changes (nano catalog is volatile) | id pinned in `CHAIN_APEX_MODEL` env, not code; stage 4 re-probes before cutover |
 | Trees touched mid-refactor | stage 0 first; every stage gates on the full suite |
-| Rollback | flip `CHAIN_ROUTING=0` (single env line / `launch_frost_hub.ps1`), no code revert needed; legacy names were never removed |
+| Rollback | flip `CHAIN_ROUTING=0` (single env line / `launch_redhands_hub.ps1`), no code revert needed; legacy names were never removed |
 
 ## 6. New env surface (proposed)
 
@@ -320,7 +320,7 @@ gets; the switch is stages 5-7.
 | `evals/chain_exec_test.py` (new) | 3 | stub escalation matrix |
 | `evals/helpers.py` | 3 | scriptable hops (already supports per-URL scripts) |
 | `tools/hive/verify_chain_live.py` (new) | 4 | live PONG matrix |
-| `launch_frost_hub.ps1` | 2,6 | pin `CHAIN_*` env (stage 6 flips `CHAIN_ROUTING=1`) |
+| `launch_redhands_hub.ps1` | 2,6 | pin `CHAIN_*` env (stage 6 flips `CHAIN_ROUTING=1`) |
 | `docs/single-model-chain-plan.md` (this) | - | plan of record |
 | `README.md`, `corrections-ledger.md` | 7 | document cutover + defect IDs |
 

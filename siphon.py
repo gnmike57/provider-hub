@@ -915,8 +915,8 @@ class SiphonAgent:
             try:
                 if self.state.get("enabled", True):
                     await self.evaluate()
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"[soak] siphon evaluate failed: {exc}")
             await asyncio.sleep(CHECK_INTERVAL_S)
 
     def start(self):

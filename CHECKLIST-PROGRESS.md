@@ -15,7 +15,7 @@
 >   MISSING: 17 files under `evals/results/` (dated probe/evidence artifacts, ignored-class) + `refusal-interception/architecture.md`. Cosmetic.
 >   Box-only extras: the 2026-10-22 backup tree `provider-hub.bak-20261022-120751` (separate dir, not drift).
 > - **local → V:\SharedProject (bonus mirror):** 20 shared files compared → **7 MATCH / 13 DIFFER**.
->   Root (6 files): `abliteration_keys.py` + `launch_frost_hub.sh` match; `launch_frost_hub.ps1`, `corrections-ledger.md`, `README.md`, `requirements.txt` stale on V:.
+>   Root (6 files): `abliteration_keys.py` + `launch_redhands_hub.sh` match; `launch_redhands_hub.ps1`, `corrections-ledger.md`, `README.md`, `requirements.txt` stale on V:.
 >   `gx10-router/` (6 files): `deploy_key_factory.sh`, `README.md`, `vision_bridge.py` match; `deploy.sh` (pre-SIGPIPE-fix text), `litellm_config.yaml` (old 3-chain surface), `router.env.example` stale.
 >   `docs/` (8 files): `code-review-2026-10-20.md` + `MAC-USAGE.md` match; 6 stale pre-amendment copies — `constellation-hub-plan.md`, `epic-ultra-edit-ledger.md`, `full-remediation-program.md`, `provider-hub-plan.md`, `single-model-chain-plan.md`, `three-tier-routing-plan.md` (at least 4 of these carry the 2026-10-22 verification banners locally).
 > - Suite at local HEAD: **879 tests collected**; last full green run 855 passed / 1 flake (fixed in `b461b4c3`).

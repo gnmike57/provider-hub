@@ -17,7 +17,7 @@ baseline, review the diff, commit it with justification:
     'routes':sorted({getattr(r,'path','') for r in proxy_gateway.app.routes})}; \
     json.dump(d,open('evals/parity_baseline.json','w'),indent=2)"
 
-Also pins the launcher secret law: launch_frost_hub.ps1 resolves secrets
+Also pins the launcher secret law: launch_redhands_hub.ps1 resolves secrets
 from process/User-scope env only (Resolve-Secret preflight) and must never
 again carry a literal key value - committed secrets are burned secrets.
 """
@@ -86,15 +86,14 @@ def test_routes_never_shrink():
 
 
 def test_launcher_resolves_secrets_from_env_not_source():
-    """No literal key material in launch_frost_hub.ps1: a long uninterpolated
+    """No literal key material in launch_redhands_hub.ps1: a long uninterpolated
     base64-ish right-hand side on an $env: assignment is secret-shaped
     (paths contain '$', URLs contain ':/.', so both are excluded; known model
     pins are allowlisted)."""
     safe_literals = {
-        "abliterated-model-large-v2",  # PRIMARY/FALLBACK/SPECIALIST model pin
-        "abliterated-model-large",     # uncensored middle pin
+        "abliterated-model-large-v2",  # PRIMARY/FALLBACK/SPECIALIST model pin (V2-only)
     }
-    src = (ROOT / "launch_frost_hub.ps1").read_text(encoding="utf-8", errors="replace")
+    src = (ROOT / "launch_redhands_hub.ps1").read_text(encoding="utf-8", errors="replace")
     secret_shaped = re.compile(r'\$env:[A-Za-z_]+\s*=\s*"([A-Za-z0-9+/=_-]{20,})"')
     offenders = [
         m.group(1) for m in secret_shaped.finditer(src) if m.group(1) not in safe_literals

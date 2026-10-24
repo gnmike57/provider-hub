@@ -20,14 +20,14 @@ def main(secret):
     with io.open(CONFIG, encoding="utf-8") as fh:
         old = json.load(fh)
     # Featherless cloud aliases dropped 2026-10-23 (stale key, not to be
-    # enabled). `cyberfrost` is the constellation's uncensored terminal on
+    # enabled). `redhands` is the constellation's uncensored terminal on
     # Abliteration.ai (abliterated-model-large-v2); the :4000 gx10 llm-hub is a
     # legacy catalog, not the hub.
     local = [
         ("ablit", "Abliteration.ai (uncensored terminal)", "https://api.abliteration.ai/v1",
-         "sk-local", ["abliterated-model-large-v2", "cyberfrost"]),
-        ("cyberhub", "cyber.local (legacy gx10 llm-hub catalog)",
-         "http://cyber.local:4000/v1", "sk-local",
+         "sk-local", ["abliterated-model-large-v2", "redhands"]),
+        ("redhands", "redhands.local (legacy gx10 llm-hub catalog)",
+         "http://redhands.local:4000/v1", "sk-local",
          ["deepseek-ai/deepseek-v4.1-flash-1017", "glm-5.3-flash"]),
         ("gx10", "local LiteLLM gateway (127.0.0.1:4000)", "http://127.0.0.1:4000/v1", "sk-local",
          ["ufo-host-model", "ufo-vision-model"]),

@@ -1,4 +1,4 @@
-"""FastAPI interception gateway: buffering, routing, metrics, endpoints.
+﻿"""FastAPI interception gateway: buffering, routing, metrics, endpoints.
 
 Endpoints
     POST /v1/chat/completions   streaming ring-buffer proxy (drop-in OpenAI)
@@ -245,7 +245,7 @@ class Settings:
     fallback_model: str = field(default_factory=lambda: (
         os.getenv("SPECIALIST_MODEL")
         or os.getenv("FALLBACK_MODEL", "Qwen3.6-35B-A3B-abliterated-NVFP4-MTP")))
-    # Frost worker names (cyberfrost): their own endpoint, which must NOT
+    # Frost worker names (redhands): their own endpoint, which must NOT
     # collapse onto the specialist binding above. SPECIALIST_API_URL repoints
     # the DIVERT target at the uncensored specialist (Abliteration.ai), while the
     # Frost worker names address the gx10 hub - a CYBER-FROST id on the
@@ -329,7 +329,7 @@ class Settings:
     # GLM no-reasoning middle -> Abliterated V2 Large terminal), and this knob
     # puts every other route on the same cheap-first ladder. 0 (default) keeps
     # the historic single-stage divert so existing deployments change nothing
-    # until the operator opts in; launch_frost_hub.ps1 sets 1.
+    # until the operator opts in; launch_redhands_hub.ps1 sets 1.
     escalation_middle: int = field(
         default_factory=lambda: _int_env("ESCALATION_MIDDLE", 0)
     )
@@ -1815,6 +1815,8 @@ async def fallback_stream(
         closed before returning."""
         lines, text, broke_msg = [], "", None
         reasoning = ""  # S1: reasoning deltas are OUTPUT for the length gate
+        import speculative_hedge  # local: the stateful marker scrubber
+        _fallback_scrub = speculative_hedge._MarkerScrubber()
         try:
             async for raw in resp.aiter_lines():
                 line = raw.strip()
@@ -1854,7 +1856,13 @@ async def fallback_stream(
                         if _r:
                             reasoning += str(_r)
                             incr("upstream_chars_total", len(str(_r)))
-                lines.append(line)
+                # (soak pass 1, 2026-10-24) SHATTERED-MARKER LAW on the
+                # specialist's own stream: Hive streams 2-4 chars per
+                # delta, so a [[GW-CHECKLIST]]/[[GW-SKILL]] echo arrives
+                # split across lines and the old per-line strip missed it
+                # (12 live leaks). The stateful scrubber carries the
+                # fragment; the whole-buffer replays below stay honest.
+                lines.append(_fallback_scrub.line(line))
         except httpx.TransportError as exc:
             broke_msg = f"specialist stream broke: {exc}"
             incr("fallback_errors_total")
@@ -1866,6 +1874,9 @@ async def fallback_stream(
         finally:
             with contextlib.suppress(Exception):
                 await resp.aclose()
+        _fl = _fallback_scrub.flush_line()  # a held fragment never trails
+        if _fl:
+            lines.append(_fl.rstrip("\n"))
         return lines, text, reasoning, broke_msg, sid
 
     for _attempt in range(2):
@@ -2585,7 +2596,7 @@ def _ladder_middle(settings, call_settings, requested_model):
         # only on the nastiest asks. Applies to chain and non-chain routes
         # alike (the name contract is the operator's to change by setting it).
         return (HUB_PROVIDERS["ablit.ai"]["url"], HUB_PROVIDERS["ablit.ai"]["key"],
-                "abliterated-model-large")
+                "abliterated-model-large-v2")
     mid = getattr(call_settings, "chain_middle", None)
     if mid:
         return mid
@@ -2964,7 +2975,7 @@ async def _conductor_stream(messages, *, user_query, request_id, conductor,
     if _chain_env_flag("CHAIN_HOP_STATUS"):
         # S3 per-phase progress: the client learns the plan hop started
         # before the (non-streaming) planner call, not only at the end.
-        yield hop_comment("conductor", "run command: plan")
+        yield hop_comment("conductor", "plan")
     try:
         plan_payload = {
             "model": c_model,
@@ -3027,7 +3038,7 @@ async def _conductor_stream(messages, *, user_query, request_id, conductor,
         incr("conductor_fanout_total")
     if _chain_env_flag("CHAIN_HOP_STATUS"):
         yield hop_comment(
-            "conductor", f"run command: fan out {len(subtasks)} subtask(s)")
+            "conductor", f"fan out {len(subtasks)} subtasks")
     parts = list(await asyncio.gather(*[_one(st) for st in subtasks]))
 
     def _assemble(sections):
@@ -3053,7 +3064,7 @@ async def _conductor_stream(messages, *, user_query, request_id, conductor,
         if _chain_env_flag("CHAIN_HOP_STATUS"):
             yield hop_comment(
                 "conductor",
-                f"run command: repair {len(uncovered)} uncovered item(s)")
+                f"repair {len(uncovered)} items")
         for idx, st in enumerate(subtasks):
             if any(_conductor_implicated(item, st["text"]) for item in uncovered):
                 parts[idx] = await _conductor_subtask(
@@ -3834,7 +3845,8 @@ async def chat_proxy(request: Request):
     # stream. Each branch is a kill-switch-gated ADDITION; the four
     # published chains never see any of this (their dicts carry no
     # race/conductor/sustained flag).
-    if chain and chain.get("race") and _chain_env_flag("RACE_CHAIN_ENABLED"):
+    if (chain and (chain.get("race") or chain.get("council"))
+            and _chain_env_flag("RACE_CHAIN_ENABLED")):
         # Chain 5 - RACE:DEEPMAX/GLMMAX>ABLITV2L. Both max-reasoning helms
         # fire in parallel (speculative_hedge.race_stream: COMMIT_TOKENS,
         # buffer replay, cancel-on-commit); any refusal from both climbs to
@@ -3853,10 +3865,38 @@ async def chat_proxy(request: Request):
         )
         _r_helm = _hop(chain["helm"])
         _r_mid = _hop(chain["middle"])
+        # (T1, 2026-10-24 divert-avoidance) MIDDLE-FIRST: the chain always
+        # attempts the SECOND model first - the no-reasoning middle opens as
+        # candidate 0 and commits by default on simple asks; the max-think
+        # helm opens held behind it and engages when the middle misses.
+        # Kill switch: MIDDLE_FIRST=0 restores the helm-first order.
+        _middle_first = (os.getenv("MIDDLE_FIRST", "1").strip().lower()
+                         not in ("0", "false", "no", "off"))
         race_candidates = [
             (_r_helm[0], _r_helm[1], chain["helm"][1], chain["helm"][2]),
             (_r_mid[0], _r_mid[1], chain["middle"][1], chain["middle"][2]),
         ]
+        _race_labels = ("helm", "middle")
+        if _middle_first:
+            race_candidates.reverse()
+            _race_labels = ("middle", "helm")
+        if chain.get("council"):
+            # (T3, 2026-10-24) THE 4-AGENT COUNCIL: DEEP max+none and GLM
+            # max+none open staggered (the peer-drafts let later lanes learn
+            # from the leader), race to commit under the grace chooser; the
+            # V2 is reached only when all four silence. Research grounding:
+            # multiagent debate (Du et al.) + mixture-of-agents (Wang et
+            # al.) - and the no-reasoning lanes answer cleanly while the
+            # max-think lanes may still be deliberating toward caution.
+            _p_url, _p_key, _ = _hop(("primary", "", None))
+            race_candidates = [
+                (_p_url, _p_key, chain["middle"][1], False),   # GLM none
+                (_p_url, _p_key, "deepseek-ai/deepseek-v4.1-flash-1017",
+                 False),                                          # DEEP none
+                (_p_url, _p_key, chain["middle"][1], True),    # GLM max
+                (_p_url, _p_key, chain["helm"][1], True),      # DEEP max
+            ]
+            _race_labels = ("glm-none", "deep-none", "glm-max", "deep-max")
 
         def _race_escalate(_refusal_text):
             # CONTEXT PURITY: the refusal text is discarded, never forwarded -
@@ -3864,7 +3904,7 @@ async def chat_proxy(request: Request):
             async def _esc():
                 incr("race_terminal_total")
                 if _chain_env_flag("CHAIN_HOP_STATUS"):
-                    yield hop_comment("race", "run command: escalate to terminal")
+                    yield hop_comment("race", "escalate to terminal")
                 esc_messages = list(messages) + [
                     {"role": "user",
                      "content": CONTRACT_REDIRECT_SENTENCE + CONTRACT_CAMO_TEACHBACK},
@@ -3892,7 +3932,7 @@ async def chat_proxy(request: Request):
                 if _chain_env_flag("CHAIN_HOP_STATUS"):
                     # PROGRESSIVE DISPLAY: the first byte out the door, long
                     # before either candidate commits (see hop_comment).
-                    yield hop_comment("race", "run command: 2 candidates in parallel")
+                    yield hop_comment("race", "2 candidates racing")
                 h = copy.copy(speculative_hedge.SETTINGS)
                 async for chunk in speculative_hedge.race_stream(
                         messages,
@@ -3903,7 +3943,7 @@ async def chat_proxy(request: Request):
                         min_substantive_chars=settings.min_substantive_chars,
                         tools=body.get("tools"),
                         tool_choice=body.get("tool_choice"),
-                        labels=("helm", "middle")):
+                        labels=_race_labels):
                     if chunk.startswith(b"data:"):
                         if chunk.rstrip().endswith(b"[DONE]") and scrub.carry:
                             _fl = scrub.flush_line()
@@ -3954,7 +3994,7 @@ async def chat_proxy(request: Request):
             try:
                 if _chain_env_flag("CHAIN_HOP_STATUS"):
                     yield hop_comment(
-                        "conductor", "run command: plan, sharpen, fan out")
+                        "conductor", "plan · sharpen · fan out")
                 async for chunk in _conductor_stream(
                         messages,
                         user_query=user_query,
@@ -5104,7 +5144,7 @@ async def chat_proxy(request: Request):
         async def sustained_gen() -> AsyncGenerator[bytes, None]:
             if _chain_env_flag("CHAIN_HOP_STATUS"):
                 yield hop_comment(
-                    "sustained", "run command: answer + deep verify")
+                    "sustained", "answer + verify")
             async for chunk in _sustained_verified(
                     coordinator(), verify=_verify_hop,
                     settings=settings, client=app.state.http):
@@ -5142,7 +5182,7 @@ async def chat_proxy(request: Request):
             try:
                 if _chain_env_flag("CHAIN_HOP_STATUS"):
                     yield hop_comment(
-                        "auto-team", "run command: decompose + fan out")
+                        "auto-team", "decompose + fan out")
                 async for chunk in _conductor_stream(
                         messages,
                         user_query=user_query,
@@ -5895,9 +5935,9 @@ FROST_REGISTRY = [
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9315/v1",
      "type": "primary", "provider": "hive", "hedged": False,
      "reasoning": "max"},
-    {"id": "cyberfrost", "name": "CyberFrost 3.8 SAGE", "upstream": "deepseek-ai/deepseek-v4.1-flash-1017",
-     "endpoint": "http://100.67.13.78:4000/v1",
-     "type": "worker", "provider": "gx10-hub", "hedged": False},
+    {"id": "redhands", "name": "RedHands 3.8 SAGE", "upstream": "abliterated-model-large-v2",
+     "endpoint": "https://api.abliteration.ai/v1",
+     "type": "worker", "provider": "ablit", "hedged": False},
     {"id": "frost-general", "name": "Frost General (any model)", "upstream": "auto",
      "endpoint": "http://gx10.ayu-sidewinder.ts.net:9310/v1",
      "type": "general", "provider": "hive+gx10", "hedged": True},
@@ -6373,7 +6413,7 @@ async def computer(request: Request):
     }
 
 
-# T4.1 TEAM BUS — a lightweight peer registry + claim surface so several
+# T4.1 TEAM BUS â€” a lightweight peer registry + claim surface so several
 # hubs can share load. Announce is idempotent-by-TTL: each peer re-announces
 # and stale entries (90 s) are dropped on every write. Never raises: the bus
 # is an optimization, never a dependency (design rule 7).

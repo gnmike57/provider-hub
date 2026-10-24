@@ -25,7 +25,7 @@ interception + short-form footnote).**
 
 - Each edit: make -> verify (re-read region + ticket tests) -> tick [x].
 - After each ticket: full gate (`python -m pytest evals -q` green ->
-  `launch_frost_hub.ps1 -Force` -> `/healthz` ok -> metrics move) and a
+  `launch_redhands_hub.ps1 -Force` -> `/healthz` ok -> metrics move) and a
   WHOLE-ledger desync review.
 - LOOP while any checkpoint of the current edit sequence is incomplete.
 - HONEST PIVOT only on a documented discovery proven superior beyond
@@ -258,7 +258,7 @@ Edit #18: context_formatter.py @ TERMINAL_AWARENESS :55-68 — APPEND one
   knowledge you had to work out - end your reply with one line
   [[GW-SKILL: short-kebab-name]] what you learned; the system keeps it
   and future runs start smarter."
-Edit #19: launch_frost_hub.ps1 @ after :205 (COMMIT_TOKENS) — INSERT
+Edit #19: launch_redhands_hub.ps1 @ after :205 (COMMIT_TOKENS) — INSERT
   $env:SKILL_MEMORY="1".
 Edit #20: README.md @ end of stage-colour section (~:343) — APPEND
   "## Skill memory" section: marker protocol, capture/inject, metrics,
@@ -568,7 +568,7 @@ Edit #10: RUN suite — green.
 ### Sequential edits
 
 ```
-Edit #11: launch_frost_hub.ps1 @ after SKILL_MEMORY line — INSERT
+Edit #11: launch_redhands_hub.ps1 @ after SKILL_MEMORY line — INSERT
   $env:COMPUTER_USE_ENABLED="1".
 Edit #12: live probe (opt-in, bounded): /v1/computer {"instruction":
   "open the nginx alias-traversal target :8102 and read /etc/hostname via
@@ -705,7 +705,7 @@ Edit #12: README @ team-bus section.
 Edit #1: git add per stream: proxy_gateway.py routing_patterns.py
   context_formatter.py redhands.py skills_memory.py (gateway);
   evals/* new+modified (tests); tars/ (computer); deploy/ (bus);
-  launch_frost_hub.ps1 README.md docs/ (ops+docs).
+  launch_redhands_hub.ps1 README.md docs/ (ops+docs).
 Edit #2: git commit per phase: "T2.0 live-defect fixes (F1+F11)";
   "Phase 1 skill memory"; "Phase 2 completion layer"; "Phase 3 computer
   use"; "Phase 4 bus+fanout"; "Phase 5 loose ends".
@@ -720,10 +720,10 @@ Edit #3: git push (if remote configured; else note in report).
 ## TICKET T5.2 — Secrets close-out (closes #76)
 
 ```
-Edit #4: run `git show HEAD:launch_frost_hub.ps1 | Select-String 'sk-|ak_'`
+Edit #4: run `git show HEAD:launch_redhands_hub.ps1 | Select-String 'sk-|ak_'`
   + ruff/grep sweep of the committed diff for Bearer literals.
 Edit #5: evals or hook — ADD a tiny secrets test pinning
-  launch_frost_hub.ps1 + launch_frost_hub.sh key-free (regex).
+  launch_redhands_hub.ps1 + launch_redhands_hub.sh key-free (regex).
 ```
 ```
 [x] #4 sweep clean (committed tree: only dummy test fixtures like "Bearer ak-one"; launcher Fernet/admin keys are the deliberate W2 ops config)
@@ -748,14 +748,14 @@ Edit #7: evals — ADD CSP-header + auth regression rows.
 ## TICKET T5.4 — HACKING_MODE bundle (closes #101)
 
 ```
-Edit #8: launch_frost_hub.ps1 @ after COMPUTER_USE_ENABLED — INSERT
+Edit #8: launch_redhands_hub.ps1 @ after COMPUTER_USE_ENABLED — INSERT
   if ($env:HACKING_MODE -eq "1") { $env:AUTHORIZED_FRAME="1";
   $env:UNCENSORED_MIDDLE="1"; $env:ESCALATION_MIDDLE="1";
   $env:SKILL_MEMORY="1"; $env:COMPLETION_CONTRACT="1" }.
 Edit #9: README @ HACKING_MODE note.
 ```
 ```
-[x] #8 bundle block (launch_frost_hub.ps1 :210-219)
+[x] #8 bundle block (launch_redhands_hub.ps1 :210-219)
 [x] #9 README (HACKING_MODE section appended)
 ```
 

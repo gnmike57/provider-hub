@@ -226,7 +226,7 @@ def test_resolve_ambiguous_bare_model_is_400(tmp_path):
 def test_resolve_frost_name_maps_to_slot_binding():
     s = _dummy_settings()
     got = model_switch.resolve_target(
-        model_switch.parse_switch_request({"target": "worker", "model": "CyberFrost"}),
+        model_switch.parse_switch_request({"target": "worker", "model": "RedHands"}),
         s,
     )
     assert got["url"] == WORKER and got["provider_id"] == "frost:worker"

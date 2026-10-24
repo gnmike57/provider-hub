@@ -1,4 +1,4 @@
-"""Detection / formatter / assembler / Tier 2 - pure unit probes (no network).
+﻿"""Detection / formatter / assembler / Tier 2 - pure unit probes (no network).
 
 2026-10-21: extended with asserted pins (was print-only sections): Gate 7's
 no_go_match diagnostic + every NO_GO_RE category, the watered-down /
@@ -97,7 +97,7 @@ def test_stage_comment_contract():
         "hedge": ("#fdf6ec", "#f59e0b"),       # faint amber-white
     }
     assert stage_comment("middle", "deepseek-ai/deepseek-v4.1-flash-1017") == (
-        b": gw-stage middle deepseek-ai/deepseek-v4.1-flash-1017 "
+        b": gw-stage middle deepseek-v4.1-flash-1017 "
         b"tint=#f3effb glow=#8b5cf6\n\n")
     # an unknown stage still yields a valid comment line (grey tint)
     assert stage_comment("other", "m").startswith(b": gw-stage other m tint=#")

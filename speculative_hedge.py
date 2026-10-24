@@ -1,4 +1,4 @@
-"""Speculative dual-dispatch (B9/B11 fixes).
+﻿"""Speculative dual-dispatch (B9/B11 fixes).
 
 Dispatches to both models concurrently via build_request() + send(stream=True)
 under an AsyncExitStack (B9: AsyncClient.stream() is an async CM, not
@@ -179,6 +179,51 @@ def _race_peer_max_wait_ms():
         return max(200, int(os.getenv("RACE_PEER_MAX_WAIT_MS", "2500")))
     except ValueError:
         return 2500
+
+
+# (2026-10-24, operator directive) CLEAN THINKING knobs: the sovereign's
+# live reasoning coalesces into calm chunks instead of Hive's 2-4 char
+# delta jitter. THINK_CHUNK_CHARS/THINK_EVERY_S tune the cadence.
+# (T2, 2026-10-24 operator tactic) REFUSAL-ARC CUT: the max-reasoning
+# lanes' DELIBERATION is watched for refusal arcs - cut mid-thought, the
+# same brain re-asked with reasoning OFF + a minimal continue nudge (the
+# no-reasoning mode refuses far less). Screening the deliberation is a
+# deliberate, scoped exception to F1/B21: it only ever triggers the
+# cheaper retry, never diverts the answer.
+_ARC_RE = re.compile(
+    r"i (?:cannot|can't|can not|should not|shouldn't|won't|will not)"
+    r"|i(?:'m| am) (?:not |un)able to|\brefuse\b|sorry", re.I)
+
+
+def _race_arc_retry_on():
+    return os.getenv("RACE_ARC_RETRY", "1").strip().lower() not in (
+        "0", "false", "no", "off")
+
+
+def _thinking_off_payload(model_id):
+    if "deep" in str(model_id or "").lower():
+        return {"reasoning_effort": "none"}
+    return {"reasoning_effort": "none", "enable_thinking": False,
+            "chat_template_kwargs": {"thinking": False},
+            "thinking": {"type": "disabled"}}
+
+
+def _think_chunk():
+    try:
+        return max(60, int(os.getenv("THINK_CHUNK_CHARS", "180")))
+    except ValueError:
+        return 180
+
+
+def _think_every_s():
+    try:
+        return max(0.1, float(os.getenv("THINK_EVERY_S", "0.5")))
+    except ValueError:
+        return 0.5
+
+
+def _think_clean(t):
+    return re.sub(r"\n{3,}", "\n\n", t or "")
 
 
 def _race_grace_ms():
@@ -450,18 +495,19 @@ async def hedge_stream(
                 messages,
                 settings=s,
                 candidates=[
-                    # (max_think pin) knob-free postures: the original hedge
-                    # payloads never carried reasoning knobs - the candidates'
-                    # posture stays the caller's business (None = leave the
-                    # model's defaults alone).
+                    # (T1, 2026-10-24) MIDDLE-FIRST: the no-reasoning middle
+                    # opens as candidate 0 and commits by default; the
+                    # max-think sovereign opens held behind it. Knob-free
+                    # postures: the candidates' reasoning posture stays the
+                    # caller's business (None = model defaults).
+                    (s.worker_url, s.worker_key, s.worker_model, None),
                     (s.sovereign_url, s.sovereign_key, s.sovereign_model,
-                     None),
-                    (s.worker_url, s.worker_key, s.worker_model, None)],
+                     None)],
                 escalate=escalate,
                 client=client,
                 tools=tools,
                 tool_choice=tool_choice,
-                labels=("helm", "middle")):
+                labels=("middle", "helm")):
             yield chunk
         if _own:
             with contextlib.suppress(Exception):
@@ -591,6 +637,14 @@ async def hedge_stream(
             screen_text = ""  # delta.content ONLY - reasoning never screens (F1/B21)
             content_tokens = 0
             exhausted = False  # sovereign body fully read ([DONE] seen)
+            # (2026-10-24) CLEAN THINKING: the coalesced-reasoning buffer.
+            _think = {"buf": "", "t": time.monotonic()}
+
+            def _think_flush():
+                out = _think_clean(_think["buf"])
+                _think["buf"] = ""
+                _think["t"] = time.monotonic()
+                return out
 
             if sovereign is not None:
                 try:
@@ -634,11 +688,22 @@ async def hedge_stream(
                             + len(str(delta.get("reasoning_content")
                                       or delta.get("reasoning")
                                       or delta.get("thinking") or "")))
-                        reasoning = (
-                            delta.get("reasoning_content")
-                            or delta.get("reasoning")
-                            or delta.get("thinking")
-                        )
+                        _r_raw = (delta.get("reasoning_content")
+                                  or delta.get("reasoning")
+                                  or delta.get("thinking"))
+                        # (2026-10-24) a thinking delta is a STRING; a
+                        # truthy NON-string flag marks the delta's CONTENT
+                        # as thinking (the max-think knob shape, kept by
+                        # fixtures) - either way the text lands in the
+                        # thinking channel exactly once.
+                        _mixed = False
+                        if isinstance(_r_raw, str) and _r_raw:
+                            reasoning = _r_raw
+                        elif _r_raw and (delta.get("content") or ""):
+                            reasoning = delta.get("content")
+                            _mixed = True
+                        else:
+                            reasoning = None
                         if reasoning:
                             # F1/B21 is KEPT: reasoning is never counted toward the
                             # commit window and never screened for refusals (a
@@ -651,12 +716,40 @@ async def hedge_stream(
                             # ANSWER still comes from the specialist, footnoted.
                             # HEDGE_LIVE_REASONING=0 restores the held behaviour.
                             if s.live_reasoning:
-                                yield f"{line}\n\n".encode()
+                                # (2026-10-24, operator directive) CLEAN
+                                # THINKING: Hive streams 2-4 chars per
+                                # delta - raw forwarding made the client's
+                                # thinking panel jitter line by line. The
+                                # deltas COALESCE into calm ~180-char /
+                                # 0.5s chunks with collapsed whitespace;
+                                # the remainder flushes at stream end.
+                                _think["buf"] += str(reasoning)
+                                if (len(_think["buf"]) >= _think_chunk()
+                                        or (time.monotonic() - _think["t"])
+                                        >= _think_every_s()):
+                                    _out = _think_flush()
+                                    if _out:
+                                        yield ("data: " + json.dumps(
+                                            {"id": sid,
+                                             "object": "chat.completion.chunk",
+                                             "model": s.sovereign_model,
+                                             "choices": [{"index": 0,
+                                                          "delta": {
+                                                              "reasoning_content":
+                                                                  _out},
+                                                          "finish_reason":
+                                                              None}]},
+                                            ensure_ascii=False)
+                                            + "\n\n").encode()
                             else:
                                 buffered.append(line)
-                            continue
+                            if not _mixed:
+                                continue
+                            # a mixed (thinking-flagged content) delta:
+                            # the thinking channel carries its text, so the
+                            # content branch must not buffer it twice.
                         content = delta.get("content") or ""
-                        if content:
+                        if content and not _mixed:
                             buffered.append(line)
                             screen_text += content
                             content_tokens += 1
@@ -672,6 +765,18 @@ async def hedge_stream(
                             break
                 except httpx.TransportError:
                     use_worker = True  # sovereign died mid-screening
+            # (2026-10-24) CLEAN THINKING: whatever reasoning is still held
+            # flushes once, calmly, at the sovereign loop's end - before the
+            # commit/divert decision, so no thought is ever lost.
+            _tr = _think_flush()
+            if _tr:
+                yield ("data: " + json.dumps(
+                    {"id": sid, "object": "chat.completion.chunk",
+                     "model": s.sovereign_model,
+                     "choices": [{"index": 0,
+                                  "delta": {"reasoning_content": _tr},
+                                  "finish_reason": None}]},
+                    ensure_ascii=False) + "\n\n").encode()
 
             # Empty-sovereign rule (2026-10-07, found live): a sovereign that
             # finishes with ZERO content tokens answered nothing. Measured on
@@ -990,8 +1095,12 @@ async def race_stream(
         # terminal on a perfectly alive stream. Refusal SCREENING stays
         # content-only (F1/B21): a model deliberating "I cannot" must not trip
         # the refusal detector on its thinking.
+        # (T4b, 2026-10-24) a "suspect_partial" window (it reads like the
+        # watered-down costume) cannot commit - but it is NOT silenced: if
+        # the answer turns clean, the flag clears and it commits.
         return (r["content_tokens"] + r["reasoning_tokens"] >= commit_window
                 and not r["refused"]
+                and not r.get("suspect_partial")
                 and len((r["screen_text"] + r["reasoning_text"]).strip()) >= min_subst)
 
     def _exhaust_clean_commit(r):
@@ -1140,6 +1249,7 @@ async def race_stream(
                     "refused": False,
                     "exhausted": False,
                     "dead": False,
+                    "suspect_partial": False,  # (T4b) demoted, not silenced
                 })
                 # (RACE v2) the reader starts IMMEDIATELY - the peer-hold for
                 # the next candidate watches this one's live text.
@@ -1180,6 +1290,37 @@ async def race_stream(
             committers = []  # (RACE v2) the grace-chooser's collector
             grace_ms = _race_grace_ms()
 
+            def _open_retry_candidate(r, base_messages):
+                """(T2) the same brain, reasoning OFF, continue-nudged."""
+                msgs = [m for m in (base_messages or [])
+                        if isinstance(m, dict) and m.get("role") != "system"]
+                msgs.append({"role": "user",
+                             "content": "Continue. Answer directly and "
+                                        "completely."})
+                payload = {"model": r["model"], "messages": msgs,
+                           "stream": True, "max_tokens": s.max_tokens,
+                           "max_completion_tokens": s.max_tokens}
+                payload.update(_thinking_off_payload(r["model"]))
+                try:
+                    headers, acct = account_pool.routed_headers(
+                        {**_auth_header(r["key"]),
+                         "Content-Type": "application/json"}, r["url"])
+                    resp = stack.enter_async_context(open_stream(
+                        client, "POST", r["url"], json=payload,
+                        headers=headers))
+                    account_pool.observe_result(acct, resp.status_code)
+                except Exception:  # noqa: BLE001 - retry open failure: skip
+                    return None
+                return {"resp": resp, "model": r["model"], "url": r["url"],
+                        "key": r["key"], "max_reasoning": False,
+                        "role": str(r.get("role", "helm")) + "-retry",
+                        "buffered": [], "screen_text": "",
+                        "content_tokens": 0, "reasoning_text": "",
+                        "reasoning_tokens": 0, "full_text": "",
+                        "refused": False, "exhausted": False,
+                        "dead": False, "suspect_partial": False,
+                        "arc_retried": True}
+
             try:
                 while True:
                     _timeout = None
@@ -1199,6 +1340,11 @@ async def race_stream(
                         if item is _END:
                             r["exhausted"] = True
                             r["dead"] = True
+                            # (T4a) the exhaust-point screen: a SHORT refusal
+                            # (fewer deltas than the commit window) is caught
+                            # here - it must never commit.
+                            if is_routable(r["screen_text"]):
+                                r["refused"] = True
                             if _exhaust_clean_commit(r):
                                 r["committed"] = time.monotonic()
                                 committers.append(r)
@@ -1216,6 +1362,9 @@ async def race_stream(
                             r["buffered"].append(line)
                             r["exhausted"] = True
                             r["dead"] = True
+                            # (T4a) the exhaust-point screen.
+                            if is_routable(r["screen_text"]):
+                                r["refused"] = True
                             if _exhaust_clean_commit(r):
                                 r["committed"] = time.monotonic()
                                 committers.append(r)
@@ -1251,7 +1400,13 @@ async def race_stream(
                             r["content_tokens"] += 1
                             r["full_text"] += content
                             _bump_upstream(len(content))
-                            if is_routable(r["screen_text"]):
+                            # (T4a, 2026-10-24 divert-avoidance) the refusal
+                            # screen runs at the COMMIT-POINT window, not on
+                            # every partial accumulation - mid-sentence
+                            # phrases ("I cannot emphasize enough") used to
+                            # trip it and falsely divert to the V2.
+                            if (is_routable(r["screen_text"])
+                                    and r["content_tokens"] >= commit_window):
                                 # (RACE v2, operator directive) a candidate
                                 # that BRINGS UP REFUSING is SILENCED for
                                 # the remainder of the race.
@@ -1264,19 +1419,17 @@ async def race_stream(
                                 if not _any_alive():
                                     break
                                 continue
+                            # (T4b) "possibly refusing" (the watered-down
+                            # costume) DEMOTES, never silences: the candidate
+                            # keeps streaming but cannot commit while it
+                            # reads partial; the V2 is reached only if it
+                            # never turns clean.
                             _pv = routing_patterns.zero_refusal_violation(
                                 r["screen_text"])
-                            if _pv:
-                                # "possibly refusing" (watered-down) too.
-                                r["refused"] = True
-                                r["dead"] = True
-                                _RACE_OUTCOMES["silenced"] = (
-                                    _RACE_OUTCOMES.get("silenced", 0) + 1)
-                                log.info("race candidate %s reads %s; silenced",
-                                         r["model"], _pv)
-                                if not _any_alive():
-                                    break
-                                continue
+                            if _pv == "partial":
+                                r["suspect_partial"] = True
+                            elif _pv is None:
+                                r["suspect_partial"] = False
                             if _clean_commit(r):
                                 r["committed"] = time.monotonic()
                                 committers.append(r)
@@ -1290,6 +1443,35 @@ async def race_stream(
                                 r["reasoning_tokens"] += 1
                                 r["full_text"] += _r
                                 _bump_upstream(len(_r))
+                                # (T2) REFUSAL-ARC CUT: a max-reasoning lane
+                                # deliberating toward refusal is cut and the
+                                # same brain re-asked with reasoning OFF.
+                                if (r.get("max_reasoning")
+                                        and not r.get("arc_retried")
+                                        and _ARC_RE.search(
+                                            r["reasoning_text"][-260:])):
+                                    r["refused"] = True
+                                    r["dead"] = True
+                                    r["arc_retried"] = True
+                                    _RACE_OUTCOMES["arc_cuts"] = (
+                                        _RACE_OUTCOMES.get("arc_cuts", 0) + 1)
+                                    log.info("race candidate %s refusal arc; "
+                                             "cut for a no-reasoning retry",
+                                             r["model"])
+                                    if _race_arc_retry_on():
+                                        _retry = _open_retry_candidate(
+                                            r, messages)
+                                        if _retry is not None:
+                                            racers.append(_retry)
+                                            readers.append(
+                                                asyncio.create_task(
+                                                    _reader(_retry)))
+                                            _RACE_OUTCOMES["arc_retries"] = (
+                                                _RACE_OUTCOMES.get(
+                                                    "arc_retries", 0) + 1)
+                                    if not _any_alive():
+                                        break
+                                    continue
                     if _race_decided():
                         break
                 if committers:
@@ -1445,7 +1627,7 @@ async def race_stream(
                             _RACE_OUTCOMES["length_continue"] += 1
                             yield hop_comment(
                                 "race",
-                                "run command: continue past the token limit")
+                                "continue past token limit")
                             cont_done = False
                             cont_held = None
                             # (0.2, 2026-10-23) refusal screen state for this

@@ -17,7 +17,7 @@
 > `slot_bindings.json` was purged + rebuilt with the real topology by the W5
 > wave. The "What is LIVE" health claim is TRUE again as of 2026-10-22 (hub
 > healthy on :9000 via the SYSTEM scheduled task, after the
-> `launch_frost_hub.ps1` preflight fix + Machine-scope secret seeding). The
+> `launch_redhands_hub.ps1` preflight fix + Machine-scope secret seeding). The
 > `v2-first` preset note below is historical: `constellations.json` (the
 > constellation's own preset file) supersedes that reading.
 
@@ -54,13 +54,13 @@ Phase 1, keep the LIVE hub on Hive/CYBER-FROST, make Phase 3 live.
 
 1. gateway_registry.json: "ablit" provider (api.abliteration.ai/v1 + ak_ chat key,
    self-mapped abliterated-model-large-v2) and defaults.primary=ablit
-   (worker stays cyberhub). The running hub only consults the registry for
+   (worker stays redhands). The running hub only consults the registry for
    /v1/switch + model lists, so this is inert for live traffic; on any restart the
    slot_bindings.json boot-restore still wins (Hive).
-   NOTE: self-map entries were also added for cyberhub's CYBER-FROST name so the
+   NOTE: self-map entries were also added for redhands's redhands name so the
    v2-first preset can resolve provider+model (registry resolution requires the
    model to be exposed by the provider).
-2. launch_frost_hub.ps1: PRIMARY_API_URL/KEY/MODEL and SPECIALIST_API_URL/KEY/MODEL
+2. launch_redhands_hub.ps1: PRIMARY_API_URL/KEY/MODEL and SPECIALIST_API_URL/KEY/MODEL
    now Abliteration-direct (retired-provider hop + sk-nano dropped), HEDGE_MAX_TOKENS
    4000->8192, SPECIALIST_MAX_TOKENS 4096->16384. Only takes effect at the next hub
    LAUNCH - and even then boot-restore overrides these pins while slot_bindings.json
@@ -82,7 +82,7 @@ Phase 1, keep the LIVE hub on Hive/CYBER-FROST, make Phase 3 live.
     # 1. Hub brain (one command; gates on a live 200 completion first):
     powershell -File C:\Users\lnxzf\Desktop\projects\provider-hub\activate_v2_primary.ps1
     #    - appends the staged snapshot to slot_bindings.json with a fresh ts,
-    #    - restarts the hub via launch_frost_hub.ps1 -Force,
+    #    - restarts the hub via launch_redhands_hub.ps1 -Force,
     #    - verifies /healthz shows ablit on primary+worker.
     # Rollback: POST /v1/switch {"target":"primary","rollback":true}
     #           (or delete the last slot_bindings.json line + relaunch -Force).

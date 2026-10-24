@@ -8,7 +8,7 @@
   2. chat_proxy CONTINUE_ENABLED=0: the inline is_routable check diverts a
      refusal immediately, with no grace window.
   3. providers.FROST_ALIASES + FROST_REGISTRY: the plain Frost names
-     (deepfrost/glmfrost/cyberfrost) resolve and are published again.
+     (deepfrost/glmfrost/redhands) resolve and are published again.
   4. /healthz: default is a config snapshot (no live probe, ok=true) and
      with HEALTHZ_PROBE=1 the models URL is derived from the provider BASE
      and probed through the shared (mockable) transport.
@@ -143,14 +143,14 @@ def test_plain_frost_names_resolve_and_are_published(gw, script, monkeypatch):
     # CYBER-FROST RETIRED (2026-10-21): the legacy name addresses the
     # constellation's uncensored terminal on the worker slot
     # (providers.FROST_ALIASES).
-    assert providers.resolve_frost_alias("cyberfrost 3.8 sage") == (
+    assert providers.resolve_frost_alias("redhands 3.8 sage") == (
         "worker", "abliterated-model-large-v2")
     assert providers.resolve_frost_alias("frost-general") == ("primary", None)
     # raw upstream ids and unknown names keep passing through
     assert providers.resolve_frost_alias("gpt-4o") is None
     data = gw.get("/v1/models").json()["data"]
     ids = {m["id"] for m in data}
-    assert {"deepfrost", "glmfrost", "cyberfrost", "frost-general",
+    assert {"deepfrost", "glmfrost", "redhands", "frost-general",
             "deepfrost max think", "glmfrost max think"} <= ids
 
 

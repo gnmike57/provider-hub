@@ -29,7 +29,7 @@
       "slots": {
         "helm": {"provider": "hive", "model": "glmfrost-max-think"},
         "specialist": {"provider": "ablit", "model": "abliterated-model-large-v2"},
-        "scout": {"provider": "ablit", "model": "abliterated-model-large"}
+        "scout": {"provider": "ablit", "model": "abliterated-model-large-v2"}
       }
     }
   }

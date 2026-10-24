@@ -1,4 +1,4 @@
-"""User credit billing + usage metering for the Frost interception gateway."""
+"""User credit billing + usage metering for the RedHands interception gateway."""
 
 import json
 import os

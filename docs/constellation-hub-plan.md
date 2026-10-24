@@ -46,7 +46,7 @@
 > * **Hub autostart (fixed 2026-10-22)**: the SYSTEM scheduled-task launch died
 >   in preflight (`Write-Note` called before it was defined, and SYSTEM cannot
 >   see the operator's User-scope secrets). Fixed in
->   `launch_frost_hub.ps1` (Write-Note hoisted above the preflight; secret
+>   `launch_redhands_hub.ps1` (Write-Note hoisted above the preflight; secret
 >   resolution gained a Machine-scope fallback) and the five secrets were
 >   seeded to Machine scope. Verified: task LastResult=0, hub healthy under
 >   SYSTEM, watchdog pass `[OK]`.

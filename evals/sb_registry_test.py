@@ -5,7 +5,7 @@ Pins:
   - providers.Registry resolves blank keys from the env overlay
     (HIVE_SECRET_KEY / ABLITERATION_API_KEY) - /v1/switch consumers see
     the same key as before
-  - cyberhub's literal "none" placeholder survives (it is not a secret)
+  - redhands's literal "none" placeholder survives (it is not a secret)
   - tools/hive/make_gateway_registry.py no longer embeds the key either
 """
 import json
@@ -24,7 +24,7 @@ def test_registry_file_has_no_plaintext_secrets():
         pytest.skip("gateway_registry.json not deployed")
     doc = json.loads(REG.read_text(encoding="utf-8"))
     for pid, prov in doc["providers"].items():
-        if pid == "cyberhub":
+        if pid == "redhands":
             continue  # literal "none" placeholder, not a secret
         assert prov.get("key", "") == "", \
             f"{pid} key must be env-only (S-B)"
@@ -43,13 +43,13 @@ def test_env_overlay_resolves_blank_keys(tmp_path, monkeypatch):
         "providers": {
             "hive": {"api": "openai", "base_url": "https://h/v3",
                      "key": "", "models": {"m": "m"}},
-            "cyberhub": {"api": "openai", "base_url": "http://c/v1",
+            "redhands": {"api": "openai", "base_url": "http://c/v1",
                          "key": "none", "models": {}}},
         "defaults": {}}), encoding="utf-8")
     monkeypatch.setenv("HIVE_SECRET_KEY", "sk-test-hive")
     reg = providers.Registry(str(reg_path))
     assert reg.providers["hive"].key == "sk-test-hive"
-    assert reg.providers["cyberhub"].key == "none"   # untouched
+    assert reg.providers["redhands"].key == "none"   # untouched
     # no env value -> the blank stays blank (no guessing)
     monkeypatch.setenv("HIVE_SECRET_KEY", "")
     reg2 = providers.Registry(str(reg_path))

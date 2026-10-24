@@ -2,7 +2,7 @@
 
 Set LIVE_CREDITS=1 to run (default: skipped - they spend real money on
 Hive / Abliteration and the chains' escalation terminals). LIVE_HUB_URL /
-LIVE_HUB_KEY override the target (default: the local frost hub).
+LIVE_HUB_KEY override the target (default: the local RedHands hub).
 
 Covers every NON-ablit catalog surface: the Hive brains (deepseek/glm,
 plain + max-think), and the chains whose helm

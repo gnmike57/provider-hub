@@ -12,7 +12,10 @@ if ROOT not in sys.path:
 # race/hedge test. Production keeps its defaults; tests may still override.
 for _k, _v in (("RACE_GRACE_MS", "120"),
                ("RACE_PEER_MAX_WAIT_MS", "200"),
-               ("RACE_PEER_MIN_CHARS", "40")):
+               ("RACE_PEER_MIN_CHARS", "40"),
+               # (T1) the existing race tests pin the ORIGINAL candidate
+               # order; the middle-first ordering has its own dedicated pin.
+               ("MIDDLE_FIRST", "0")):
     os.environ.setdefault(_k, _v)
 
 # 2026-10-06: the system Python has the full `litellm` package installed, and a

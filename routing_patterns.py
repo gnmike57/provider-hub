@@ -430,9 +430,12 @@ STAGE_STYLES = _PALETTES[os.getenv("STAGE_PALETTE", "default")]
 
 def stage_comment(stage: str, model: str) -> bytes:
     """One SSE comment line announcing the replying stage: its near-white
-    font tint and its faint glow hue."""
+    font tint and its faint glow hue. (2026-10-24, operator directive)
+    CONCISE: the model rides WITHOUT its provider namespace - the UI shows
+    "helm glm-5.3-flash", not "helm zai-org/glm-5.3-flash"."""
     tint, glow = STAGE_STYLES.get(stage, ("#f5f5f4", "#a8a29e"))
-    return f": gw-stage {stage} {model} tint={tint} glow={glow}\n\n".encode()
+    m = str(model or "").rpartition("/")[-1]
+    return f": gw-stage {stage} {m} tint={tint} glow={glow}\n\n".encode()
 
 
 def hop_comment(chain: str, note: str) -> bytes:
@@ -442,7 +445,8 @@ def hop_comment(chain: str, note: str) -> bytes:
     leave the client in total silence until the deliverable streams - the
     first byte out is the answer itself. Same law as stage_comment: `: `
     lines are SSE comments, standard OpenAI-style consumers ignore them, an
-    enriched UI shows the short hop line ("run command ...")."""
+    enriched UI shows the short hop line. (2026-10-24) notes stay CONCISE
+    - a few words, never a sentence."""
     return f": gw-hop {chain} {note}\n\n".encode()
 
 

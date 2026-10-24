@@ -15,7 +15,7 @@ mocked; the CLI test runs against an empty tmp card inventory):
   11. billing: UsageTracker._load survives a malformed timestamp line
   12. billing: free-credit minting via X-User-Id is bounded
   13. billing: KeyVault roundtrips encrypted; plaintext refused with no key
-  14. launch_frost_hub.ps1 pins ENCRYPTION_KEY (+ ADMIN_API_KEY)
+  14. launch_redhands_hub.ps1 pins ENCRYPTION_KEY (+ ADMIN_API_KEY)
 """
 
 import asyncio
@@ -550,10 +550,10 @@ def test_vault_refuses_plaintext_writes_and_roundtrips_encrypted(tmp_path, monke
 
 
 # --------------------------------------------------------------------------
-# 14. launch_frost_hub.ps1 pins ENCRYPTION_KEY (+ ADMIN_API_KEY)
+# 14. launch_redhands_hub.ps1 pins ENCRYPTION_KEY (+ ADMIN_API_KEY)
 # --------------------------------------------------------------------------
 def test_launch_script_pins_encryption_and_admin_keys():
-    text = (ROOT / "launch_frost_hub.ps1").read_text(encoding="utf-8")
+    text = (ROOT / "launch_redhands_hub.ps1").read_text(encoding="utf-8")
     # 2026-10-21 (W0 secret hygiene): the launcher resolves ENCRYPTION_KEY and
     # ADMIN_API_KEY from process/User scope (Resolve-Secret, -Required boot
     # preflight) instead of pinning literals in source - secrets must not live

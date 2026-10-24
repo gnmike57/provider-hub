@@ -1,4 +1,4 @@
-"""MATRIX HARNESS pins (offline - zero credits, fast).
+﻿"""MATRIX HARNESS pins (offline - zero credits, fast).
 
 Pins the loadgen harness itself so the suite stays green without running
 the live matrix:
@@ -129,7 +129,7 @@ def test_resume_skips_recorded_ids(tmp_path):
 
 def test_parse_sse_extracts_stage_and_hop_comments():
     raw = (": gw-stage helm m1\n\n"
-           ": gw-hop race run command: 2 candidates in parallel\n\n"
+           ": gw-hop race 2 candidates racing\n\n"
            'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
            "data: [DONE]\n\n")

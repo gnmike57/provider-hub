@@ -1,4 +1,4 @@
-"""REDHANDS system stress test (operator directive 2026-10-21): the full
+﻿"""REDHANDS system stress test (operator directive 2026-10-21): the full
 constellation under MAXIMUM EXTREME BANNED-PROMPT pressure.
 
 Scope note: the "extreme banned prompts" here are (a) the REAL hard no-go
@@ -559,8 +559,8 @@ def test_stage_colour_annotations_follow_the_ladder(script, monkeypatch):
     assert r.status_code == 200
     assert "stage colour answer" in r.text
     # the stage sequence: helm -> middle -> terminal, each with its tint+glow
-    assert ": gw-stage helm zai-org/glm-5.3-flash tint=#edf4fd glow=#3b82f6" in r.text
-    assert ": gw-stage middle deepseek-ai/deepseek-v4.1-flash-1017 tint=#f3effb glow=#8b5cf6" in r.text
+    assert ": gw-stage helm glm-5.3-flash tint=#edf4fd glow=#3b82f6" in r.text
+    assert ": gw-stage middle deepseek-v4.1-flash-1017 tint=#f3effb glow=#8b5cf6" in r.text
     assert ": gw-stage terminal abliterated-model-large-v2 tint=#fdf0f2 glow=#f43f5e" in r.text
     # a clean answer announces ONLY the helm, as the very first line
     script.script(PRIMARY, [("sse", [chunk("clean helm answer", finish="stop"), DONE])])

@@ -38,7 +38,7 @@ are stop-the-line issues.
 | 3 | `ingress_assembler.py` | 177 | **86** | Fail-closed assembly and hashed audit records; audit sink needs rotation. |
 | 4 | `open_control_room.ps1` | 30 | **85** | Correct idempotent launcher; relies on a 200-only health check. |
 | 5 | `context_formatter.py` | 146 | **84** | Clear 4-stage contract; `assert_clean` can raise into the stream. |
-| 6 | `watchdog_frost_hub.ps1` | 229 | **82** | Real supervisor design (mutex, budget, cooldown); health is liveness-only. |
+| 6 | `watchdog_redhands_hub.ps1` | 229 | **82** | Real supervisor design (mutex, budget, cooldown); health is liveness-only. |
 | 7 | `ask.py` | 99 | **80** | Useful CLI; hand-rolled arg parsing, no timeout configurability. |
 | 8 | `providers.py` | 507 | **78** | Clean data layer; plaintext keys + silent env fallback are dangerous. |
 | 9 | `control_room.html` | 478 | **78** | Escapes all injected strings; unauthenticated admin surface. |
@@ -46,9 +46,9 @@ are stop-the-line issues.
 | 11 | `speculative_hedge.py` | 435 | **74** | Strong race logic; documented `tools` forwarding is missing. |
 | 12 | `constellation.py` | 534 | **70** | Good history/health model; stores keys in clear and has doc drift. |
 | 13 | `proxy_gateway.py` | 2444 | **62** | The core works, but it is a 63-complexity monolith with unsafe surfaces. |
-| 14 | `install_frost_autostart.ps1` | 251 | **62** | Registers a user-writable script to run as SYSTEM every minute. |
+| 14 | `install_redhands_autostart.ps1` | 251 | **62** | Registers a user-writable script to run as SYSTEM every minute. |
 | 15 | `billing.py` | 593 | **55** | Auto-top-up mints free credits; metering is an estimate; failing test. |
-| 16 | `launch_frost_hub.ps1` | 244 | **45** | Good process hygiene, but committed live secrets cap the grade. |
+| 16 | `launch_redhands_hub.ps1` | 244 | **45** | Good process hygiene, but committed live secrets cap the grade. |
 | 17 | `check_balance.py` | 26 | **30** | Live keys in source, private methods, runs on import. |
 | 18 | `siphon.py` | 744 | **18** | PCI-hostile card vault + autonomous charging + fraud-evasion logic. |
 | 19 | `audit_cards.py` | 45 | **10** | Live keys in source and real charges execute on import. |
@@ -66,16 +66,16 @@ current deployment.
 
 ## P0-1. Live provider secrets are in the working tree **and in git history**
 
-`launch_frost_hub.ps1:173-185` hardcodes:
+`launch_redhands_hub.ps1:173-185` hardcodes:
 
 | Secret | Where | Committed? |
 |---|---|---|
-| Hive `HIVE_SECRET_KEY` | `launch_frost_hub.ps1:173` | **Yes — present at `HEAD`** |
-| nano chat key (x2: `SPECIALIST_API_KEY`, `nano key env (retired)`) | `launch_frost_hub.ps1:181,183` | Working tree (file is tracked) |
-| Abliteration chat key | `launch_frost_hub.ps1:184`, `audit_cards.py:15`, `check_balance.py:7` | Working tree / untracked |
-| Abliteration **admin** key | `launch_frost_hub.ps1:185`, `audit_cards.py:16`, `check_balance.py:8` | Working tree / untracked |
+| Hive `HIVE_SECRET_KEY` | `launch_redhands_hub.ps1:173` | **Yes — present at `HEAD`** |
+| nano chat key (x2: `SPECIALIST_API_KEY`, `nano key env (retired)`) | `launch_redhands_hub.ps1:181,183` | Working tree (file is tracked) |
+| Abliteration chat key | `launch_redhands_hub.ps1:184`, `audit_cards.py:15`, `check_balance.py:7` | Working tree / untracked |
+| Abliteration **admin** key | `launch_redhands_hub.ps1:185`, `audit_cards.py:16`, `check_balance.py:8` | Working tree / untracked |
 
-`git show HEAD:launch_frost_hub.ps1` already contains the Hive key and a
+`git show HEAD:launch_redhands_hub.ps1` already contains the Hive key and a
 previous Abliteration key, so rotating in the working tree does
 **not** remove the exposure: anyone with clone access can read history.
 `audit_cards.py` / `check_balance.py` are untracked today and will be swept in
@@ -349,10 +349,10 @@ claiming F9 fixed exactly that. `should_hedge` is imported and unused, and
 `esc()` (good), but the surface itself must sit behind admin auth. It also
 prints internal provider URLs from `/v1/models/dna`.
 
-## P1-13. `install_frost_autostart.ps1` creates a SYSTEM privilege path
+## P1-13. `install_redhands_autostart.ps1` creates a SYSTEM privilege path
 
-The scheduled tasks run as `S-1-5-18` (`install_frost_autostart.ps1:136-140`)
-and execute `C:\Users\lnxzf\Desktop\projects\provider-hub\launch_frost_hub.ps1`
+The scheduled tasks run as `S-1-5-18` (`install_redhands_autostart.ps1:136-140`)
+and execute `C:\Users\lnxzf\Desktop\projects\provider-hub\launch_redhands_hub.ps1`
 — a file in a user-writable Desktop directory — every minute via the watchdog.
 Any process that can write that path gets SYSTEM execution. Move the code to
 `Program Files` (or a service account-owned directory) with ACLs, or run the
@@ -720,7 +720,7 @@ reported as "gateway unreachable", which is misleading.
 
 **Next.** Use `argparse`; distinguish HTTP status errors from transport errors.
 
-## `launch_frost_hub.ps1` — **45 / 100**
+## `launch_redhands_hub.ps1` — **45 / 100**
 
 **Good.** This is a well-engineered launcher apart from one fatal flaw: a named
 mutex prevents racing launchers, an already-healthy hub is a no-op, the Python
@@ -742,7 +742,7 @@ is mentioned in an error message but never read.
 server-owned directory; import uvicorn in the probe; make the path a parameter
 with a default.
 
-## `watchdog_frost_hub.ps1` — **82 / 100**
+## `watchdog_redhands_hub.ps1` — **82 / 100**
 
 **Good.** Genuinely good supervision design: consecutive-miss threshold, a
 rolling-hour restart budget, a post-recovery cooldown so overlapping passes do
@@ -761,7 +761,7 @@ makes post-mortems harder than they should be.
 (not for restarts); log the `/healthz` body on failure; consider `Start-Job`
 instead of a nested interpreter.
 
-## `install_frost_autostart.ps1` — **62 / 100**
+## `install_redhands_autostart.ps1` — **62 / 100**
 
 **Good.** Clear idempotent verbs (`-Install`/`-Uninstall`/`-Status`/
 `-Shortcut`), self-elevation that preserves the requested verb, correct
@@ -831,7 +831,7 @@ artefacts and should not be versioned.
 # Recommended order of work (Stage 0, before any chain-routing change)
 
 1. **Secrets** — revoke all four credentials; strip them from
-   `launch_frost_hub.ps1`, `audit_cards.py`, `check_balance.py`; add a
+   `launch_redhands_hub.ps1`, `audit_cards.py`, `check_balance.py`; add a
    pre-commit secret scan; decide on history purge. Nothing else on this list
    matters if the keys stay live.
 2. **SIPHON off** — `SIPHON_ENABLED=0`, remove `/v1/siphon/*` from the router,
@@ -876,8 +876,8 @@ py -3.12 -m py_compile <every module>
 py -3.12 -m ruff check <every module> --statistics
 py -3.12 -m mypy <every module> --ignore-missing-imports --follow-imports=skip
 py -3.12 -m ruff check proxy_gateway.py --select C901 --config "lint.mccabe.max-complexity=12"
-git show HEAD:launch_frost_hub.ps1 | Select-String 'sk-|ak_|XSkX'
-git ls-files | Select-String 'launch_frost_hub|users.jsonl|cards'
+git show HEAD:launch_redhands_hub.ps1 | Select-String 'sk-|ak_|XSkX'
+git ls-files | Select-String 'launch_redhands_hub|users.jsonl|cards'
 git check-ignore users.jsonl usage_events.jsonl card_amount_audit.jsonl
 Invoke-RestMethod http://127.0.0.1:9000/healthz
 Invoke-WebRequest http://127.0.0.1:9000/metrics -UseBasicParsing

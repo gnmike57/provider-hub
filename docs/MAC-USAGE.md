@@ -32,7 +32,7 @@ pip install -r requirements.txt
 export ABLITERATION_ADMIN_KEY="sk_..."   # org admin key (operator-issued)
 export ABLITERATION_API_KEY="ak_..."       # your inference key
 
-bash launch_frost_hub.sh          # hub on :9000, catalog = the 3 chains
+bash launch_redhands_hub.sh          # hub on :9000, catalog = the 3 chains
 curl -s localhost:9000/v1/models  # -> GLMMAX>…, DEEPMAX>…, ABLITV2L>…
 ```
 
@@ -66,7 +66,7 @@ python3 -c "from abliteration_keys import KeyFactory; \
 - `_env_or_user_scope()` in `audit_cards.py` / `check_balance.py` /
   `abliteration_keys.py`: process env first; the Windows registry lookup is
   `ImportError`-guarded, so on a Mac the shell profile is the only source.
-- `launch_frost_hub.sh` is the macOS/Linux twin of `launch_frost_hub.ps1`
+- `launch_redhands_hub.sh` is the macOS/Linux twin of `launch_redhands_hub.ps1`
   (same env pins, `CONSTELLATION_ONLY=1`, uvicorn on :9000).
 - The gx10 router (Linux) and the vision bridge are unchanged — Mac users
   reach them over the tailnet as normal.

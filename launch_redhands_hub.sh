@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================================
-# launch_frost_hub.sh - macOS/Linux launcher for the Frost hub
-# (mirrors launch_frost_hub.ps1 on Windows; operator directive 2026-10-21:
+# launch_redhands_hub.sh - macOS/Linux launcher for the RedHands hub
+# (mirrors launch_redhands_hub.ps1 on Windows; operator directive 2026-10-21:
 # the whole system must be runnable by Mac users, locally or via the gx10).
 #
 # Keys: export ABLITERATION_API_KEY / ABLITERATION_ADMIN_KEY in your shell
@@ -11,7 +11,7 @@
 #   export ABLITERATION_API_KEY="ak_..."     # inference key
 #   python3 abliteration_keys.py ensure-pool 2   # mint the 2-key pool
 #
-# Usage:  bash launch_frost_hub.sh [port]
+# Usage:  bash launch_redhands_hub.sh [port]
 # ============================================================================
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -21,7 +21,7 @@ PORT="${1:-9000}"
 : "${ABLITERATION_API_KEY:?export ABLITERATION_API_KEY (ak_... inference key) first}"
 : "${ABLITERATION_ADMIN_KEY:?export ABLITERATION_ADMIN_KEY (sk_... admin key) first}"
 
-# --- Frost system environment (single source for this boot) -------------------
+# --- RedHands system environment (single source for this boot) -------------------
 export PRIMARY_API_URL="https://api.abliteration.ai/v1/chat/completions"
 export PRIMARY_API_KEY="$ABLITERATION_API_KEY"
 export PRIMARY_MODEL="abliterated-model-large-v2"
@@ -41,5 +41,5 @@ export SPECIALIST_MAX_TOKENS="16384"
 export MAX_CONCURRENT_STREAMS="64"
 export PYTHONUNBUFFERED="1"
 
-echo "Frost hub starting on :$PORT (catalog: the 3 constellation chains)"
+echo "RedHands hub starting on :$PORT (catalog: the 3 constellation chains)"
 exec python3 -m uvicorn proxy_gateway:app --host 0.0.0.0 --port "$PORT"

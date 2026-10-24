@@ -89,7 +89,7 @@ The gx10 `:4000` llm-hub is a **legacy catalog** (Spark models + a facade over
 the local router), NOT the constellation hub: Featherless is decommissioned
 (2026-10-23 - stale key, not to be enabled) and the live hub is the
 deepseek / glm / abliteration constellation (`:9310`/`:9311`/`:9312` on the
-gx10, `:9000` locally). The legacy `cyberfrost` names therefore address the
+gx10, `:9000` locally). The legacy `redhands` names therefore address the
 constellation's uncensored terminal - Abliteration.ai
 `abliterated-model-large-v2` - never a `:4000` model id.
 
@@ -157,10 +157,10 @@ lists them for Cline/OpenCode pickers (`evals/frost_alias_test.py`):
 |---|---|---|
 | `deepfrost` | primary | `deepseek-ai/deepseek-v4.1-flash-1017` |
 | `glmfrost` | primary | `zai-org/glm-5.3-flash` |
-| `cyberfrost` | worker | `abliterated-model-large-v2` (the constellation's uncensored terminal on Abliteration.ai) |
+| `redhands` | worker | `abliterated-model-large-v2` (the constellation's uncensored terminal on Abliteration.ai) |
 | `frost-general` | primary | the slot's current default (follows `/v1/switch`) |
 
-`cyberfrost` used to carry the local model id `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw`.
+`redhands` used to carry the local model id `CYBER-FROST-3.8-EXL3-SAGE-3.87bpw`.
 That model was **deleted 2026-10-23** (weights, TabbyAPI stack and all). Per the
 2026-10-21 constellation directive the legacy name now addresses the UNCENSORED
 TERMINAL of every chain - Abliteration.ai `abliterated-model-large-v2` (the same
@@ -206,7 +206,6 @@ aliases were retired with the nano provider, 2026-10-23):
 
 | Alias | Provider | Upstream id | Max |
 |---|---|---|---|
-| `DeepMaxAblit.ai` / `DeepAblit.ai` | Abliteration.ai | `abliterated-model-large` | yes / no |
 | `GLMMaxAblit.ai` / `GLMAblit.ai` | Abliteration.ai | `abliterated-model-large-v2` | yes / no |
 
 * Names normalise (case, `-`/`_`, spaces), so `deep-max-nano` also resolves.
@@ -227,7 +226,7 @@ aliases were retired with the nano provider, 2026-10-23):
 * Credentials: `ABLITERATION_API_KEY` (`ABLITERATION_API_URL` overrides the
   default `https://api.abliteration.ai/v1/chat/completions`). The Hive hop
   provider resolves the same persisted `HIVE_*` pair the primary slot bridges
-  to (see `HUB_PROVIDERS` in `providers.py`). `launch_frost_hub.ps1` pins
+  to (see `HUB_PROVIDERS` in `providers.py`). `launch_redhands_hub.ps1` pins
   both keys.
 * Failure semantics: 4xx from a hub provider fails fast with a visible
   upstream error; 5xx/transport retries then diverts to the specialist like
@@ -252,7 +251,7 @@ aliases were retired with the nano provider, 2026-10-23):
 | Hedge | `SOVEREIGN_*`, `WORKER_*`, `COMMIT_TOKENS` | mirrors primary/fallback, `25` |
 | Specialist | `SPECIALIST_TEMPERATURE`, `SPECIALIST_SYSTEM_MODE` | unset (server defaults), `neutral` |
 | Specialist binding | `SPECIALIST_API_URL/KEY/MODEL` (override `FALLBACK_*`); key falls back to `ABLITERATION_API_KEY` | Abliteration.ai `abliterated-model-large-v2` (or local vLLM) |
-| Frost worker | `FROST_WORKER_API_URL/KEY` | `""` (unset: the cyberfrost names use the fallback slot's URL) |
+| Frost worker | `FROST_WORKER_API_URL/KEY` | `""` (unset: the redhands names use the fallback slot's URL) |
 | Max-think | `MAX_THINK_MIN_TOKENS` | `32768` (output floor for the max-think names) |
 | Gate 7 | `NO_GO_ENABLED` | `1` (set `0` to re-open the hard no-go gate without a redeploy) |
 | Gate 8 | `ATTACK_GATE_ENABLED` | `0` (opt-in: force-divert S4/S5/S6 attack requests to the specialist) |

@@ -1,13 +1,13 @@
-# watchdog_frost_hub.ps1 - keeps the Frost hub alive (auto-recovery supervisor).
+# watchdog_redhands_hub.ps1 - keeps the RedHands hub alive (auto-recovery supervisor).
 #
-# THE POINT: "Frost Hub" only fires launch_frost_hub.ps1 once, at boot. If uvicorn
-# ever dies (crash, wedged event loop, OOM, socket reset - all seen in
-# frost_hub_boot.err.log) nothing brings it back. This watchdog is that missing
+# THE POINT: "RedHands Hub" only fires launch_redhands_hub.ps1 once, at boot.
+# If uvicorn ever dies (crash, wedged event loop, OOM, socket reset - all seen in
+# redhands_hub_boot.err.log) nothing brings it back. This watchdog is that missing
 # layer: it probes /healthz and, on failure, replaces the process.
 #
 # Modes:
 #   -Once   single health check + remediation, then exit. This is what the
-#           "Frost Hub Watchdog" scheduled task runs every minute; TASK
+#           "RedHands Hub Watchdog" scheduled task runs every minute; TASK
 #           SCHEDULER is the supervisor, so recovery does not depend on a
 #           PowerShell process staying alive.
 #   -Loop   resident loop (use when running it by hand or under a service
@@ -57,9 +57,9 @@ $ErrorActionPreference = "Stop"
 
 $ROOT = "C:\Users\lnxzf\Desktop\projects\provider-hub"
 $LOG_DIR = "$ROOT\evals\results"
-$LAUNCHER = "$ROOT\launch_frost_hub.ps1"
-$LOG_FILE = "$LOG_DIR\frost_watchdog.log"
-$STATE_FILE = "$LOG_DIR\frost_watchdog_state.json"
+$LAUNCHER = "$ROOT\launch_redhands_hub.ps1"
+$LOG_FILE = "$LOG_DIR\redhands_watchdog.log"
+$STATE_FILE = "$LOG_DIR\redhands_watchdog_state.json"
 $HEALTH_URL = "http://127.0.0.1:$Port/healthz"
 $MAX_LOG_BYTES = 5MB
 New-Item -ItemType Directory -Force -Path $LOG_DIR | Out-Null
@@ -67,7 +67,7 @@ New-Item -ItemType Directory -Force -Path $LOG_DIR | Out-Null
 # Shared helpers - ONE health definition (HTTP 200 AND ok:true), listener
 # pids, log rotation - dot-sourced so watchdog/launcher/installer can never
 # drift apart again.
-. (Join-Path $ROOT "frost_common.ps1")
+. (Join-Path $ROOT "redhands_common.ps1")
 
 $script:IsLoop = [bool]$Loop
 
@@ -83,7 +83,7 @@ function Write-Log([string]$level, [string]$message) {
 }
 
 # Test-HubHealth / Get-HubListenerPids / Get-ProcIdentity / Rotate-Log live
-# in frost_common.ps1 (dot-sourced above): ONE health definition for every
+# in redhands_common.ps1 (dot-sourced above): ONE health definition for every
 # script - HTTP 200 AND body ok:true.
 
 # --- restart-budget state ----------------------------------------------------
@@ -138,7 +138,7 @@ function Invoke-Recovery([string]$why) {
     }
 
     # -Force: the port may still be held by a wedged process that fails health.
-    Write-Log "INFO" "recovering: launch_frost_hub.ps1 -Force -Quiet -WaitSeconds $LaunchWaitSeconds (hard cap ${LauncherTimeoutSec}s)"
+    Write-Log "INFO" "recovering: launch_redhands_hub.ps1 -Force -Quiet -WaitSeconds $LaunchWaitSeconds (hard cap ${LauncherTimeoutSec}s)"
     # NO Start-Process -Wait: it has no timeout, so a launcher wedged on its
     # mutex or health loop would hold Global\FrostHubWatchdog forever. Run it
     # detached and bound the wait; kill it on expiry so the watchdog ALWAYS
@@ -208,7 +208,7 @@ function Invoke-Pass {
 }
 
 # --- single-instance guard ---------------------------------------------------
-$mutex = New-Object System.Threading.Mutex($false, "Global\FrostHubWatchdog")
+$mutex = New-Object System.Threading.Mutex($false, "Global\RedHandsHubWatchdog")
 $haveLock = $false
 try {
     $haveLock = $mutex.WaitOne([TimeSpan]::FromSeconds(5))

@@ -97,10 +97,10 @@ def test_fallback_names_still_win_when_specialist_unset(monkeypatch):
     monkeypatch.delenv("SPECIALIST_API_URL", raising=False)
     monkeypatch.delenv("SPECIALIST_MODEL", raising=False)
     monkeypatch.setenv("FALLBACK_API_URL", "http://hub.local:4000/v1/chat/completions")
-    monkeypatch.setenv("FALLBACK_MODEL", "cyberfrost")
+    monkeypatch.setenv("FALLBACK_MODEL", "redhands")
     s = proxy_gateway.Settings()
     assert s.fallback_api_url == "http://hub.local:4000/v1/chat/completions"
-    assert s.fallback_model == "cyberfrost"
+    assert s.fallback_model == "redhands"
 
 
 def test_divert_calls_the_resolved_specialist_with_the_env_key(script, monkeypatch):
