@@ -41,7 +41,13 @@ Note: the gx10 tree has no git; compare with
 - [x] **Key rotation (all 4 locations)** — ALL OLD ABLITERATION `ak_` KEYS REMOVED AND REPLACED with the 6 new pool keys:
   - Local: `abliteration_pool.json` (6 pool keys hub-pool-1..6), `account_pool.json` (3 ablit account keys), `slot_bindings.json` (specialist+scout), `gateway_registry.json` (already blank), `tars/gx10-router/router.env` + `.tars-setup/router/router.env` (ABLITERATION_API_KEY/LITELLM_MASTER_KEY/ABLIT_POOL_KEY_A-D), Windows HKCU+HKLM `ABLITERATION_API_KEY` via `setx`. All 8 old `ak_` values purged; 7 `.bak-*` backup files containing old keys deleted.
   - gx10: same 5 vault files scp'd (md5-verified identical), `~/.bashrc` ABLITERATION_API_KEY set, `litellm-router.service` + `hub/deep/glm.service` restarted.
-  - GitHub: key changes included in the 14 pending commits, push blocked on auth (see above).
+  - GitHub: key changes included in the 16 pending commits, push blocked on auth (see above).
+- [x] **Dead-key detection + permanent removal (all 4 locations)** — `abliteration_keys.py` gains `mark_dead()` + `report_failure()`:
+  - When any Abliteration pool key returns 401/402/403/429, it is permanently removed from the round-robin pool (in-memory + disk + Admin API revoke via `KeyFactory.revoke_key`).
+  - If the pool empties, `ensure_pool(1)` auto top-ups with a fresh key so Abliteration egress never dies.
+  - Non-dead statuses (200, 5xx, etc.) are no-ops — only key-class failures trigger removal.
+  - `proxy_gateway.py` `open_primary()` and `open_fallback()` capture the pool key used per attempt and call `report_failure()` on dead-key responses before the B10 taxonomy acts, so throughput always shifts to healthy keys.
+  - Synced to gx10 (`GX10_COMPILE_OK`); committed locally (16 commits ahead of origin).
 - [x] *(bonus)* **`V:\SharedProject`** — copy placed + md5-verified; the mirror itself still carries 13 stale files (itemized above) from before the 2026-10-22 doc amendments.
 
 ## Checklist progress (goal ledger)
