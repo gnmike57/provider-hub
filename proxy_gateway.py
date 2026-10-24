@@ -4839,23 +4839,14 @@ async def chat_proxy(request: Request):
                                 # 2026-10-21: GLM's "I can't... I'm glad to help
                                 # with: [alternatives]" shipped as an answer).
                                 # Clean generations commit here as before.
-                                # ZERO-REFUSAL LAW (2026-10-22): the COMMIT
-                                # point is a decision point too - the live defect
-                                # (measured on DEEPMAX>GLM>ABLITV2L): a partial
-                                # refusal with a verb the anchored core misses
-                                # ("I'm not going to WRITE...") never fires the
-                                # presignal, so the buffer commits to PASSTHROUGH
-                                # and BOTH end-of-stream judges (which only run
-                                # in BUFFERING) never see it. Judge the FULL
-                                # reply here, before the commit makes it opaque.
-                                if getattr(settings, "zero_refusal", 1):
-                                    _zv = zero_refusal_violation(buffer_text)
-                                    if _zv:
-                                        routed_reason = (
-                                            "tier3_partial_refusal"
-                                            if _zv == "partial" else "tier3_refusal")
-                                        incr("zero_refusal_divert_total")
-                                        break
+                                # ZERO-REFUSAL LAW: the full-reply judge runs at
+                                # stream end (both [DONE] and fall-through sites)
+                                # where the complete buffer is visible. Mid-stream
+                                # zero_refusal_violation is intentionally
+                                # omitted here: a benign "I can't" phrase mid-
+                                # answer must not divert before the model has
+                                # finished, and the presignal mechanism already
+                                # catches refusals that open the buffer.
                                 wd_reason, _wd = _helm_watered_down(
                                     buffer_text, settings)
                                 if wd_reason is not None:

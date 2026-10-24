@@ -749,11 +749,23 @@ async def hedge_stream(
                             # the thinking channel carries its text, so the
                             # content branch must not buffer it twice.
                         content = delta.get("content") or ""
-                        if content and not _mixed:
-                            buffered.append(line)
+                        if content:
+                            if not _mixed:
+                                buffered.append(line)
+                            # MIXED-DELTA FIX (2026-10-24): when a delta carries
+                            # both reasoning and content, the content must still
+                            # count toward the commit window and be refusal-
+                            # screened. Previously mixed deltas dropped content
+                            # from screen_text/content_tokens, leaving the
+                            # sovereign looking thinking-only and falsely
+                            # diverting to the worker/terminal.
                             screen_text += content
                             content_tokens += 1
-                            if is_routable(screen_text):
+                            # Refusal screening only at the commit window -
+                            # never on partial mid-sentence accumulations
+                            # ("I cannot emphasize enough" mid-thought).
+                            if (content_tokens >= s.commit_tokens
+                                    and is_routable(screen_text)):
                                 use_worker = True
                                 break
                             if content_tokens >= s.commit_tokens:
@@ -1094,13 +1106,12 @@ async def race_stream(
         # never commit (content_tokens stayed 0) so the race escalated to the
         # terminal on a perfectly alive stream. Refusal SCREENING stays
         # content-only (F1/B21): a model deliberating "I cannot" must not trip
-        # the refusal detector on its thinking.
-        # (T4b, 2026-10-24) a "suspect_partial" window (it reads like the
-        # watered-down costume) cannot commit - but it is NOT silenced: if
-        # the answer turns clean, the flag clears and it commits.
+        # the refusal detector on its thinking. The ARC refusal-arc check on
+        # reasoning text no longer kills a candidate - it only opens a
+        # no-reasoning retry in parallel (T2). Only is_routable on
+        # delta.content at the commit window can mark a candidate refused.
         return (r["content_tokens"] + r["reasoning_tokens"] >= commit_window
                 and not r["refused"]
-                and not r.get("suspect_partial")
                 and len((r["screen_text"] + r["reasoning_text"]).strip()) >= min_subst)
 
     def _exhaust_clean_commit(r):
@@ -1342,7 +1353,8 @@ async def race_stream(
                             r["dead"] = True
                             # (T4a) the exhaust-point screen: a SHORT refusal
                             # (fewer deltas than the commit window) is caught
-                            # here - it must never commit.
+                            # here - it must never commit. At exhaust the text
+                            # is complete, so anchored is_routable is safe.
                             if is_routable(r["screen_text"]):
                                 r["refused"] = True
                             if _exhaust_clean_commit(r):
@@ -1450,13 +1462,20 @@ async def race_stream(
                                         and not r.get("arc_retried")
                                         and _ARC_RE.search(
                                             r["reasoning_text"][-260:])):
-                                    r["refused"] = True
-                                    r["dead"] = True
+                                    # (T2) REFUSAL-ARC CUT: a max-reasoning
+                                    # lane deliberating toward refusal gets a
+                                    # cheaper no-reasoning retry opened in
+                                    # parallel. The original candidate stays
+                                    # ALIVE - its content may still be clean
+                                    # and it can still commit (F1/B21: reasoning
+                                    # never refusal-screens). Only is_routable
+                                    # on delta.content can mark a candidate
+                                    # refused/dead.
                                     r["arc_retried"] = True
                                     _RACE_OUTCOMES["arc_cuts"] = (
                                         _RACE_OUTCOMES.get("arc_cuts", 0) + 1)
                                     log.info("race candidate %s refusal arc; "
-                                             "cut for a no-reasoning retry",
+                                             "no-reasoning retry opened",
                                              r["model"])
                                     if _race_arc_retry_on():
                                         _retry = _open_retry_candidate(
@@ -1469,8 +1488,6 @@ async def race_stream(
                                             _RACE_OUTCOMES["arc_retries"] = (
                                                 _RACE_OUTCOMES.get(
                                                     "arc_retries", 0) + 1)
-                                    if not _any_alive():
-                                        break
                                     continue
                     if _race_decided():
                         break
