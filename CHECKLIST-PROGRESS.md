@@ -9,11 +9,9 @@
 > *(A local `V:\SharedProject` mirror also exists on Windows — a separate ReFS copy of a project subset, kept for offline sharing.)*
 
 > **CONTENTS SNAPSHOT (2026-10-23)**
-> - Local `main` = `17f1cb24` + the checklist commit, **8 commits ahead** of `origin/main` (`c3928e10`), 0 behind. Push pending (blocked on auth — see below).
-> - **local → gx10:** md5 sweep over the 179 tracked code/doc/config files: **158 MATCH / 3 DIFFER / 18 MISSING** on the box.
->   DIFFER: `evals/billing_w2_test.py` (local has the timer-boundary fix from `17f1cb24`), `gx10_offload.py` (local adds the `[[GW-*]]` marker-strip), `README.md` (local has the offload section).
->   MISSING: 17 files under `evals/results/` (dated probe/evidence artifacts, ignored-class) + `refusal-interception/architecture.md`. Cosmetic.
->   Box-only extras: the 2026-10-22 backup tree `provider-hub.bak-20261022-120751` (separate dir, not drift).
+> - Local `main` = `df1707e4` ("provider-hub: pre-sync checkpoint (4 locations)" over `84f4097d` retarget + prior work), **12 commits ahead** of `origin/main` (`c3928e10`), 0 behind. Working tree clean on tracked files (only .gitignore-class runtime artifacts untracked). Push pending (blocked on auth — see GitHub row below).
+> - **local → gx10:** last md5 sweep 2026-10-23: **158 MATCH / 3 DIFFER / 18 MISSING** (DIFFER: `evals/billing_w2_test.py`, `gx10_offload.py`, `README.md`; MISSING: 17 `evals/results/` + `refusal-interception/architecture.md`, cosmetic). Box-only extras: the 2026-10-22 backup tree `provider-hub.bak-20261022-120751` (separate dir, not drift).
+>   **This session:** `gx10_sync.ps1 -All -Verify` push in progress; md5 numbers re-counted after untar below.
 > - **local → V:\SharedProject (bonus mirror):** 20 shared files compared → **7 MATCH / 13 DIFFER**.
 >   Root (6 files): `abliteration_keys.py` + `launch_redhands_hub.sh` match; `launch_redhands_hub.ps1`, `corrections-ledger.md`, `README.md`, `requirements.txt` stale on V:.
 >   `gx10-router/` (6 files): `deploy_key_factory.sh`, `README.md`, `vision_bridge.py` match; `deploy.sh` (pre-SIGPIPE-fix text), `litellm_config.yaml` (old 3-chain surface), `router.env.example` stale.
@@ -36,10 +34,10 @@ Note: the gx10 tree has no git; compare with
 
 ## Checklist (the 4 places, current state)
 
-- [x] **Local Windows** — working tree clean, `main` @ `17f1cb24`, suite collects 879 tests, hub healthy (`/healthz` `ok:true` on :9000, Task Scheduler tasks Running).
-- [ ] **GitHub** — NOT synced: local ahead 8 (`17f1cb24`, `b461b4c3`, `fb7d429b`, `a01587bc`, `b3da556e`, `0ef91b38`, `84ba0004`, checklist commit `0fec1f27`). Push is **blocked on auth**: the stored `gh` token for `gnmike57` is invalid — fix with an interactive `gh auth login -h github.com`, then `git push origin main`.
-- [x] **gx10 live hub** — deployed + live-verified (`:9310/:9311/:9312` `/healthz` `ok:true`, `GX10_COMPILE_OK` on the last `-All` push, 805 files); 3-file code drift + 18 ignored-class files = resync with `-All` at next deploy, non-urgent.
-- [x] **gx10 sharedproject (`/srv/sharedproject`)** — copy placed + md5-verified; re-copy on any checklist change.
+- [x] **Local Windows** — working tree clean on tracked files, `main` @ `df1707e4` (pre-sync checkpoint) + `84f4097d` retarget + prior work, **12 commits ahead** of `origin/main` (`c3928e10`), 0 behind. Suite collects **915 tests** (last green 855 passed / 1 flake fixed in `b461b4c3`; `gateway_registry.json` BOM fix applied locally — gitignored, not part of any sync set). Hub healthy (`/healthz` `ok:true` on :9000, Task Scheduler tasks Running per 2026-10-23 check).
+- [ ] **GitHub** — NOT synced: local ahead 12 commits (`df1707e4` HEAD). Push is **blocked on auth**: `git push` invokes the `gh` credential helper which needs an interactive login (stored token for `gnmike57` invalid; no TTY in this session). Fix: run `gh auth login -h github.com` interactively, then `git push origin main`.
+- [~] **gx10 live hub** — SSH verified (`nick@100.67.13.78`, BatchMode OK). `gx10_sync.ps1 -All -Verify` push in progress this session (target `/srv/apps/ufo-galaxy/provider-hub`, excludes `.git`, `evals/results/`, caches, key pools). Last verified state 2026-10-23 (`:9310/:9311/:9312` `/healthz` `ok:true`, `GX10_COMPILE_OK`, 805 files). No `-Restart`: live hub services left untouched.
+- [ ] **gx10 sharedproject (`/srv/sharedproject`)** — re-copy of CHECKLIST-PROGRESS.md pending (`nick` is in `sharedproject` group; `drwxrws---+ root:sharedproject`, write OK).
 - [x] *(bonus)* **`V:\SharedProject`** — copy placed + md5-verified; the mirror itself still carries 13 stale files (itemized above) from before the 2026-10-22 doc amendments.
 
 ## Checklist progress (goal ledger)
