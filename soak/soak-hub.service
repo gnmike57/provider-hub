@@ -1,0 +1,13 @@
+[Unit]
+Description=RedHands Hub soak instance (:9100 - real Hive DEEP/GLM + mocked abliteration)
+After=network-online.target
+
+[Service]
+EnvironmentFile=%h/soak/hub.env
+WorkingDirectory=%h/soak/repo
+ExecStart=/usr/bin/python3 -m uvicorn proxy_gateway:app --host 127.0.0.1 --port 9100 --log-level info
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

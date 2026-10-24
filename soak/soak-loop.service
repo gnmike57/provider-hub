@@ -1,0 +1,12 @@
+[Unit]
+Description=RedHands Hub soak loop (continuous self-improving testing)
+After=soak-hub.service
+
+[Service]
+WorkingDirectory=%h/soak
+ExecStart=/usr/bin/python3 %h/soak/soak_loop.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
