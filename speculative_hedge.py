@@ -942,7 +942,12 @@ async def _drain_worker(worker, s, stream_id: str = "",
             if delta_c:
                 screen_text += delta_c
                 screened_tokens += 1
-                if is_routable(screen_text):
+                # Refusal screening only at the commit window - never on
+                # partial mid-sentence accumulations ("I cannot emphasize
+                # enough" mid-thought). Same fix as hedge_stream sovereign
+                # screening (see commit at hedge_stream).
+                if (screened_tokens >= max(1, int(s.commit_tokens or 1))
+                        and is_routable(screen_text)):
                     if state is not None:
                         state["refused"] = True
                         state["text"] = screen_text
