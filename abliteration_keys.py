@@ -52,6 +52,8 @@ __all__ = [
     "pool_summary",
     "pool_summary_from_keys",
     "reload_pool",
+    "mark_dead",
+    "report_failure",
 ]
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -220,6 +222,99 @@ def pool_summary() -> Dict:
     summary = pool_summary_from_keys(data.get("keys"))
     summary["source"] = "file"
     return summary
+
+
+# Dead-key status codes: the upstream tells us this key is unusable.
+# 401 = unauthenticated / revoked, 402 = payment required (out of balance),
+# 403 = forbidden, 429 = rate-limited (treated as dead for pool purposes so
+# throughput shifts to healthy keys immediately).
+_DEAD_STATUSES = frozenset({401, 402, 403, 429})
+
+
+def _persist_pool(keys: List[str], prefix: str = POOL_PREFIX) -> None:
+    """Write the current pool (minus any dead keys) back to disk as
+    hub-pool-1..N entries. Called only from the hot path under _LOCK."""
+    data = {
+        "project_id": _load_pool_file().get("project_id", ""),
+        "saved_at": time.time(),
+        "keys": [
+            {"id": f"key_{prefix}_{i+1}", "name": f"{prefix}-{i+1}", "value": k, "created_at": int(time.time())}
+            for i, k in enumerate(keys)
+        ],
+    }
+    tmp = POOL_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    os.replace(tmp, POOL_PATH)
+
+
+def _find_key_id(key: str, factory, client: Optional[httpx.Client] = None) -> Optional[str]:
+    """Look up the remote key id for a given key value, so we can revoke it."""
+    try:
+        for k in factory.list_keys(client):
+            if k.get("value") == key:
+                return k.get("id")
+    except Exception:
+        pass
+    return None
+
+
+def mark_dead(key: str, reason: str = "") -> None:
+    """Permanently remove a dead / out-of-balance key from the pool.
+
+    Removes the key from the in-memory round-robin immediately, persists the
+    shrunken pool to disk, and revokes the key via the Admin API so it can
+    never be selected again. If the pool empties, auto top-ups with a fresh
+    key so the hub never loses its Abliteration egress path.
+
+    Safe to call from any thread; never raises into the request path.
+    """
+    if not key:
+        return
+    with _LOCK:
+        keys = list(_resolve_keys())
+        if key not in keys:
+            return
+        keys.remove(key)
+        # Update in-memory state immediately so next_key() skips it.
+        _STATE["spec"] = None  # force reload on next _resolve_keys
+        _STATE["keys"] = keys
+        _STATE["idx"] = 0
+        # Persist to disk (without the dead key).
+        try:
+            _persist_pool(keys)
+        except Exception:
+            pass
+    # Revoke remotely (outside the lock - can block on network).
+    try:
+        f = KeyFactory()
+        own = httpx.Client(timeout=30.0)
+        try:
+            key_id = _find_key_id(key, f, own)
+            if key_id:
+                f.revoke_key(key_id, own)
+        finally:
+            own.close()
+    except Exception:
+        pass
+    # Auto top-up if the pool is empty.
+    if not keys:
+        try:
+            ensure_pool(1)
+        except Exception:
+            pass
+
+
+def report_failure(key: str, status_code: int) -> None:
+    """Call when an Abliteration request returns a dead-key status.
+
+    For 401/402/403/429 the key is permanently removed from the pool
+    (mark_dead). All other status codes are no-ops - transient failures
+    (429 handled here too since rate-limited keys should not keep the
+    round-robin slot warm while healthy keys exist).
+    """
+    if status_code in _DEAD_STATUSES:
+        mark_dead(key, f"http_{status_code}")
 
 
 # ---------------------------------------------------------------------------

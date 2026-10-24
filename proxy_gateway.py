@@ -1434,6 +1434,12 @@ async def open_primary(client, payload, headers, settings: Settings = None) -> h
     # Abliteration round-robin pool: rotates Authorization when the primary
     # targets api.abliteration.ai (no-op for every other provider).
     headers = abliteration_keys.pooled_headers(headers, s.primary_api_url)
+    # Capture the Abliteration pool key used for this attempt so we can
+    # permanently remove it if the upstream reports it as dead (401/402/403/429).
+    _ablit_key = ""
+    _ah = headers.get("Authorization", "")
+    if _ah.startswith("Bearer "):
+        _ablit_key = _ah[7:]
     # Multi-account pool: sticky route = model + primary URL (prompt-cache
     # locality per the reference design, keyed on routing context).
     headers, _acct = _routed_primary(headers, payload, s)
@@ -1451,6 +1457,10 @@ async def open_primary(client, payload, headers, settings: Settings = None) -> h
             headers, _acct = _routed_primary(headers, payload, s)
             continue
         action = classify_status(resp.status_code)
+        # Permanently retire any Abliteration pool key the upstream rejects
+        # as dead / out of balance before the B10 taxonomy decides what to do.
+        if _ablit_key:
+            abliteration_keys.report_failure(_ablit_key, resp.status_code)
         _pool_outcome(account_pool.observe_result(_acct, resp.status_code))
         if action == "ok":
             return resp
@@ -1494,6 +1504,12 @@ async def open_fallback(client, payload, headers, settings: Settings = None) -> 
         # attempt when the specialist targets api.abliteration.ai (no-op for
         # other providers).
         headers = abliteration_keys.pooled_headers(headers, s.fallback_api_url)
+        # Capture the Abliteration pool key used for this attempt so we can
+        # permanently remove it if the upstream reports it as dead (401/402/403/429).
+        _ablit_key = ""
+        _ah = headers.get("Authorization", "")
+        if _ah.startswith("Bearer "):
+            _ablit_key = _ah[7:]
         req = client.build_request(
             "POST", s.fallback_api_url, json=payload,
             headers=headers)
@@ -1511,6 +1527,10 @@ async def open_fallback(client, payload, headers, settings: Settings = None) -> 
             headers, _acct = _routed_fallback(headers, s)
             continue
         action = classify_status(resp.status_code)
+        # Permanently retire any Abliteration pool key the upstream rejects
+        # as dead / out of balance before the B10 taxonomy decides what to do.
+        if _ablit_key:
+            abliteration_keys.report_failure(_ablit_key, resp.status_code)
         _pool_outcome(account_pool.observe_result(_acct, resp.status_code))
         if action == "ok":
             BREAKER.record_success()
